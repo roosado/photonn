@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photonn"
+version = "0.1.0"
+description = "Physical photonic neural network simulator: ideal wave-optics design in Python, handed off to a MATLAB as-built hardware-error model."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "h5py>=3.10",
+    "torch>=2.2",
+    "matplotlib>=3.8",
+    "plotly>=5.18",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+# photonn-hw/ is MATLAB and is deliberately not a Python package.
+[tool.setuptools]
+packages = ["photonn"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

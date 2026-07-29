@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Data / handoff artifacts (regenerated, not versioned)
+*.h5
+*.hdf5
+*.mat
+data/
+*.pt
+
+# Generated build artifact for Artifact publishing (index.html is the Pages copy)
+site/_artifact_body.html
+
+# MATLAB
+*.asv
+slprj/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

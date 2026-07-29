@@ -1,0 +1,14 @@
+# Normalize all text files to LF in the repository and working tree. Keeps line
+# endings consistent across platforms and silences the "LF will be replaced by
+# CRLF" warnings on Windows.
+* text=auto eol=lf
+
+# Binary assets: never apply line-ending or text processing.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.pdf  binary
+*.h5   binary
+*.hdf5 binary
+*.mat  binary
+*.pt   binary

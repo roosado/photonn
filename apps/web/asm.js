@@ -188,21 +188,33 @@
   }
 
   // --------------------------------------------------------------- propagator
-  // Full ASM pipeline: ifftshift -> fft2 -> xH -> ifft2 -> fftshift, then |E|^2.
-  // Returns a Float64Array(n*n) of intensity in centre-origin layout, matching
+  // One propagation step on a complex field: ifftshift -> fft2 -> xH -> ifft2 ->
+  // fftshift. Returns fresh [re, im] in centre-origin layout; the inputs are not
+  // modified. Mirrors photonn.layers.AngularSpectrumLayer.forward.
+  //
+  // H is passed in already built rather than derived from (dx, lambda, z) because
+  // the caller usually propagates the same distance repeatedly -- the D2NN makes
+  // six identical-z hops through its mask stack, so it builds H once and reuses it
+  // (see d2nn.js). Use buildTransfer(n, dx, lambda, z) to make one.
+  function propagateField(re, im, n, hre, him) {
+    let [a, b] = shift2(re, im, n);        // ifftshift
+    fft2(a, b, n, false);
+    for (let i = 0; i < n * n; i++) {
+      const x = a[i], y = b[i], c = hre[i], d = him[i];
+      a[i] = x * c - y * d;
+      b[i] = x * d + y * c;
+    }
+    fft2(a, b, n, true);
+    return shift2(a, b, n);                // fftshift
+  }
+
+  // Full ASM pipeline for a hard-aperture input, then |E|^2. Returns a
+  // Float64Array(n*n) of intensity in centre-origin layout, matching
   // photonn.propagate.angular_spectrum(field, z).intensity().
   function propagateIntensity(n, dx, lambda, z, shape, size) {
-    let [re, im] = aperture(n, dx, shape, size);
-    [re, im] = shift2(re, im, n);          // ifftshift
-    fft2(re, im, n, false);
+    const [re0, im0] = aperture(n, dx, shape, size);
     const [hre, him] = buildTransfer(n, dx, lambda, z);
-    for (let i = 0; i < n * n; i++) {
-      const a = re[i], b = im[i], cc = hre[i], d = him[i];
-      re[i] = a * cc - b * d;
-      im[i] = a * d + b * cc;
-    }
-    fft2(re, im, n, true);
-    [re, im] = shift2(re, im, n);          // fftshift
+    const [re, im] = propagateField(re0, im0, n, hre, him);
     const I = new Float64Array(n * n);
     for (let i = 0; i < n * n; i++) I[i] = re[i] * re[i] + im[i] * im[i];
     return I;
@@ -218,7 +230,7 @@
 
   const ASM = {
     fft1d, fft2, shift2, fftfreq, buildTransfer, aperture,
-    propagateIntensity, zCrit, zFraunhofer,
+    propagateField, propagateIntensity, zCrit, zFraunhofer,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = ASM;

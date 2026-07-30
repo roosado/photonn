@@ -24,6 +24,7 @@ import os
 
 from PIL import Image
 
+from apps.d2nn_demo import d2nn_bundle, d2nn_mount
 from apps.diffraction_explorer import explorer_bundle, explorer_mount
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -319,6 +320,14 @@ BODY = r"""
       example: an input digit field diffracting to its detector plane (bottom). Each mask is a fabricated
       surface relief; training only ever adjusted these phase profiles.</figcaption>
     </figure>
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="d2nn"></div></div>
+      <p class="cap">Live &mdash; the trained network itself, running in your browser. Pick a digit
+      from the frozen test set or draw one; the five masks and the propagation between them are the
+      exported parameters, and the ten detector boxes are where the class is read. It is right about
+      77% of the time, so the gallery includes digits it gets wrong. A drawing is further out of
+      distribution than an MNIST test digit &mdash; expect it to struggle more there.</p>
+    </div>
   </section>
 
   <section class="phase reveal">
@@ -461,6 +470,8 @@ BODY = r"""
 </script>
 @@EXPLORER_BUNDLE@@
 @@EXPLORER_MOUNT@@
+@@D2NN_BUNDLE@@
+@@D2NN_MOUNT@@
 """
 
 HEAD_META = (
@@ -480,6 +491,10 @@ def render():
         body = body.replace(f"@@FIG_{key}@@", encode_figure(FIGURES[key], **opt))
     body = body.replace("@@EXPLORER_BUNDLE@@", explorer_bundle())
     body = body.replace("@@EXPLORER_MOUNT@@", explorer_mount("explorer"))
+    # asm.js is already inlined by the explorer bundle above; the D2NN bundle
+    # reuses that same window.ASM rather than shipping a second copy.
+    body = body.replace("@@D2NN_BUNDLE@@", d2nn_bundle(include_asm=False))
+    body = body.replace("@@D2NN_MOUNT@@", d2nn_mount("d2nn"))
 
     full = (
         "<!doctype html>\n<html lang=\"en\">\n<head>\n"

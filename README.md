@@ -7,6 +7,19 @@ imperfections are introduced.
 > **Central question:** how precisely must a photonic processor be fabricated before it stops
 > computing what it was trained to compute?
 
+## Live
+
+### → **[roosado.github.io/photonn](https://roosado.github.io/photonn/)**
+
+The project explainer: every phase, all figures, and the Phase-1 diffraction explorer recomputing
+scalar diffraction **live in your browser** as you move the controls.
+
+### → **[Classify a digit with light](https://roosado.github.io/photonn/classifier.html)**
+
+The trained diffractive network itself, running its forward pass in your browser. Draw a digit or
+pick one from the frozen MNIST test set, and watch it diffract through five trained phase masks onto
+ten detectors. No libraries, no network, nothing precomputed.
+
 Two codebases, one project, separated by a one-directional boundary:
 
 - **`photonn/`** — Python. Pure-NumPy scalar wave-optics physics, differentiable (PyTorch)
@@ -18,11 +31,22 @@ See [`CLAUDE.md`](CLAUDE.md) for the full architecture, phase roadmap, and scope
 
 ## Status
 
-**Project explainer + live diffraction explorer (done).** A single self-contained
-[explainer page](site/index.html) tells the whole story — every phase, all figures, and the Phase-1
-diffraction explorer embedded and running **live in the browser** — published as a
-[claude.ai Artifact](https://claude.ai/code/artifact/cf11d0f4-09ad-4c36-a30d-a193978c5c71) and
-buildable for GitHub Pages (`python -m apps.build_site`). The explorer itself was rebuilt: its
+**In-browser D²NN classifier (done).** The trained diffractive network now runs its forward pass
+client-side on its own page: encode a digit into the entrance field, propagate through the five
+trained phase masks, integrate intensity over ten detector regions. It shows the entrance field, the
+intensity arriving at each mask, and the detector plane with the class regions drawn on. Trained
+parameters are exported to a browser bundle by `python -m apps.export_d2nn_web`
+([`apps/web/d2nn_weights.js`](apps/web/d2nn_weights.js), committed — the `.h5`/`.pt` exports are
+not versioned). The JavaScript is held to the trained model:
+[`tests/test_d2nn_crosscheck.py`](tests/test_d2nn_crosscheck.py) runs it under Node against
+reference logits from PyTorch and asserts **identical predictions** (max class-score error 5.5e-7)
+plus a bilinear resize matching torch's `align_corners=False` convention to 1.2e-7. Accuracy is
+**0.7695**, so the shipped gallery deliberately includes digits the model gets wrong.
+
+**Project explainer + live diffraction explorer (done).** A single self-contained explainer page
+tells the whole story — every phase, all figures, and the Phase-1 diffraction explorer embedded and
+running **live in the browser** — deployed to GitHub Pages by `python -m apps.build_site`, which
+writes both pages plus a body-only variant for embedding. The explorer itself was rebuilt: its
 scalar-diffraction physics is ported to ~200 lines of dependency-free JavaScript
 ([`apps/web/asm.js`](apps/web/asm.js)) — a faithful translation of
 `photonn.propagate.angular_spectrum`, cross-checked against it to **< 1e-6**
@@ -91,8 +115,9 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, and JS-cross-check tests pass (`61 passed`). The browser-physics
-cross-check (`test_asm_crosscheck.py`) requires Node on `PATH`; it skips cleanly if Node is absent.
+Physics, layer, model, handoff, and JS-cross-check tests pass (`66 passed`). The browser cross-checks
+(`test_asm_crosscheck.py`, `test_d2nn_crosscheck.py`) require Node on `PATH`; they skip cleanly if
+Node is absent.
 
 ## The handoff
 
@@ -105,9 +130,9 @@ in [`docs/handoff_schema.md`](docs/handoff_schema.md); see `photonn/export.py` (
 
 ```
 photonn/        # Python design side (see CLAUDE.md for per-module responsibilities)
-apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (explainer page)
-apps/web/       # asm.js, explorer.js — the dependency-free live browser-side diffraction explorer
-site/           # generated self-contained explainer page (index.html) — GitHub Pages ready
+apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier)
+apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_weights.js (trained classifier)
+site/           # generated, self-contained, GitHub Pages ready: index.html (explainer) · classifier.html (live D²NN)
 tests/          # pytest suite
 docs/           # handoff schema + parameter-source ledger
 photonn-hw/     # MATLAB as-built side (+io, +err, +mc, +viz, ErrorBudgetApp)

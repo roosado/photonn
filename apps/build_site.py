@@ -137,6 +137,17 @@ body{margin:0;background:var(--bg);color:var(--ink);
   border-radius:999px;padding:5px 13px;cursor:pointer;transition:color .15s,border-color .15s;}
 .theme-toggle:hover{color:var(--ink);border-color:var(--beam);}
 .theme-toggle:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.navlink{font-family:var(--mono);font-size:.74rem;letter-spacing:.04em;text-decoration:none;
+  color:var(--beam);border:1px solid color-mix(in srgb,var(--beam) 45%,transparent);
+  background:var(--beam-soft);border-radius:999px;padding:5px 13px;white-space:nowrap;
+  transition:border-color .15s,background .15s;}
+.navlink:hover{border-color:var(--beam);background:color-mix(in srgb,var(--beam) 16%,transparent);}
+.navlink:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
+@media (max-width:640px){
+  .brand span.brand-tail{display:none;}
+  .navlink{padding:5px 10px;}
+}
 
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px;}
 .col{max-width:var(--measure);}
@@ -246,8 +257,11 @@ BODY = r"""
 <div class="spectral-rule"></div>
 <header class="topbar">
   <div class="topbar-in">
-    <span class="brand"><b>photonn</b> · a fabrication-tolerance study of optical neural networks</span>
-    <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme">◐ theme</button>
+    <span class="brand"><b>photonn</b><span class="brand-tail"> · a fabrication-tolerance study of optical neural networks</span></span>
+    <div class="topbar-right">
+      <a class="navlink" href="@@CLASSIFIER_HREF@@">Classify a digit with light &rarr;</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme">◐ theme</button>
+    </div>
   </div>
 </header>
 
@@ -307,6 +321,8 @@ BODY = r"""
       <p>And its ceiling is honest: the whole stack, masks and all, is <strong>one linear operator
       followed by a single intensity readout.</strong> With no optical nonlinearity, expressivity is
       capped &mdash; a limitation this project characterises rather than engineers around.</p>
+      <p>This trained network runs in the browser:
+      <a class="link" href="@@CLASSIFIER_HREF@@">classify a digit with light &rarr;</a></p>
     </div>
     <div class="stats col">
       <div class="s"><div class="v">0.770</div><div class="l">test accuracy (chance 0.10)</div></div>
@@ -320,14 +336,6 @@ BODY = r"""
       example: an input digit field diffracting to its detector plane (bottom). Each mask is a fabricated
       surface relief; training only ever adjusted these phase profiles.</figcaption>
     </figure>
-    <div class="explorer-band reveal">
-      <div class="pe-host"><div id="d2nn"></div></div>
-      <p class="cap">Live &mdash; the trained network itself, running in your browser. Pick a digit
-      from the frozen test set or draw one; the five masks and the propagation between them are the
-      exported parameters, and the ten detector boxes are where the class is read. It is right about
-      77% of the time, so the gallery includes digits it gets wrong. A drawing is further out of
-      distribution than an MNIST test digit &mdash; expect it to struggle more there.</p>
-    </div>
   </section>
 
   <section class="phase reveal">
@@ -450,7 +458,14 @@ BODY = r"""
 
 </main>
 
-<script>
+@@PAGE_SCRIPT@@
+@@EXPLORER_BUNDLE@@
+@@EXPLORER_MOUNT@@
+"""
+
+# Shared page chrome: the theme toggle (persisted) and the scroll-reveal observer.
+# Both generated pages get the same block so the toggle carries across navigation.
+PAGE_SCRIPT = r"""<script>
 (function(){
   var root=document.documentElement, btn=document.getElementById('themeToggle');
   try{var saved=localStorage.getItem('photonn-theme'); if(saved){root.setAttribute('data-theme',saved);}}catch(e){}
@@ -467,9 +482,104 @@ BODY = r"""
     if(e.isIntersecting){e.target.classList.add('in'); io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px'});
   els.forEach(function(el){io.observe(el);});
 })();
-</script>
-@@EXPLORER_BUNDLE@@
-@@EXPLORER_MOUNT@@
+</script>"""
+
+# --------------------------------------------------------------------- CLASSIFIER
+# The D2NN demo gets its own page rather than a band inside Phase 2: it is the one
+# thing on the site a visitor *operates* rather than reads, and it carries ~450 KB
+# of trained phase masks that the explainer page should not pay for.
+CLASSIFIER_BODY = r"""
+<div class="spectral-rule"></div>
+<header class="topbar">
+  <div class="topbar-in">
+    <span class="brand"><b>photonn</b><span class="brand-tail"> · a fabrication-tolerance study of optical neural networks</span></span>
+    <div class="topbar-right">
+      <a class="navlink" href="./">&larr; The study</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme">◐ theme</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero col reveal">
+    <p class="eyebrow">Phase two &middot; Diffractive network, running live</p>
+    <h1>Classify a digit <em>with light</em></h1>
+    <div class="underbar"></div>
+    <p class="standfirst">Below is the trained diffractive network itself &mdash; not a recording of it.
+    Your digit is encoded into a coherent field, diffracted through <b>five trained phase masks</b>,
+    and classified by where the light lands on ten detectors. The masks are the exported parameters;
+    the propagation is the same angular-spectrum physics as the Python reference. It all runs in
+    your browser, with <b>no libraries and no network</b>.</p>
+  </section>
+
+  <div class="explorer-band reveal">
+    <div class="pe-host"><div id="d2nn"></div></div>
+    <p class="cap">Pick a digit from the frozen MNIST test set, or draw your own. The five masks and
+    the propagation between them are the trained parameters; the ten boxes are where the class is read.</p>
+  </div>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What you are looking at</p>
+      <h2>Every panel is a real optical field</h2></div></div>
+    <div class="prose col">
+      <p>The <strong>entrance field</strong> is the digit written into the amplitude <em>and</em> phase of
+      the light entering the stack. The five small frames are the intensity <strong>arriving at each
+      phase mask</strong> &mdash; watch the digit dissolve into structured speckle that means nothing to
+      the eye and everything to the detectors. The <strong>detector plane</strong> is the final intensity,
+      with the ten class regions drawn on; the class is simply whichever box collects the most power.</p>
+      <p>There is no electronic network here. The only nonlinearity in the entire model is the
+      <span class="q">|E|&sup2;</span> of detection &mdash; everything before it is one linear optical
+      operator. That is the whole computation, and also its ceiling.</p>
+    </div>
+    <div class="stats col">
+      <div class="s"><div class="v">0.7695</div><div class="l">test accuracy (chance 0.10)</div></div>
+      <div class="s"><div class="v">5 masks</div><div class="l">81,920 trained phases</div></div>
+      <div class="s"><div class="v">6 hops</div><div class="l">3&nbsp;mm each, 532&nbsp;nm, N=128</div></div>
+      <div class="s"><div class="v">&lt;10<sup>&minus;3</sup></div><div class="l">class-score agreement with PyTorch</div></div>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Read the failures, not just the wins</p>
+      <h2>It is wrong about one digit in four</h2></div></div>
+    <div class="prose col">
+      <p>The network scores <strong>0.7695</strong> on MNIST, so the gallery deliberately includes
+      digits it <strong>gets wrong</strong> &mdash; hiding them would misrepresent the model. Watch the
+      power share when it fails: a confident answer takes ~25&ndash;30% of the output power, a wrong one
+      usually much less.</p>
+      <p>Drawings are harder still. Your strokes are <strong>out of distribution</strong> relative to
+      MNIST no matter what we do, so expect more errors there. To keep the comparison fair rather than
+      flattering, a drawing is normalised the way MNIST itself was built &mdash; cropped to the ink,
+      scaled so its longer side is 20&nbsp;px, and centred by centre of mass &mdash; so a size or
+      position mismatch cannot masquerade as an optical failure.</p>
+      <p>What the browser computes is not an approximation of the trained model: on frozen test digits
+      it reproduces PyTorch&rsquo;s predictions <strong>exactly</strong>, with class scores agreeing to
+      better than 10<sup>&minus;3</sup>. And how much fabrication error this same network survives is
+      the subject of <a class="link" href="./">the study &rarr;</a></p>
+    </div>
+  </section>
+
+  <footer class="reveal">
+    <div class="foot-grid">
+      <div><h3>The physics</h3><p>Band-limited angular spectrum, ported to dependency-free JavaScript
+        and cross-checked against the NumPy reference to &lt;10<sup>&minus;6</sup>. Six propagations and
+        five phase masks per classification.</p></div>
+      <div><h3>The parameters</h3><p>Exported straight from the trained PyTorch model &mdash; 81,920
+        phase values as float32, wrapped to [&minus;&pi;,&nbsp;&pi;). Nothing is retrained or tuned for
+        the browser.</p></div>
+      <div><h3>Privacy</h3><p>Everything happens on your machine. Nothing you draw is uploaded, stored,
+        or sent anywhere &mdash; the page makes no network requests at all.</p></div>
+    </div>
+    <p class="colophon">photonn &mdash; a portfolio study in optical computing and fabrication tolerance.
+    Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
+  </footer>
+
+</main>
+
+@@PAGE_SCRIPT@@
 @@D2NN_BUNDLE@@
 @@D2NN_MOUNT@@
 """
@@ -483,39 +593,64 @@ HEAD_META = (
 )
 
 
-def render():
-    """Return (full_document_html, artifact_body_html)."""
-    body = BODY
-    for key in FIGURES:
-        opt = {**DEFAULT_OPT, **FIG_OPTS.get(key, {})}
-        body = body.replace(f"@@FIG_{key}@@", encode_figure(FIGURES[key], **opt))
-    body = body.replace("@@EXPLORER_BUNDLE@@", explorer_bundle())
-    body = body.replace("@@EXPLORER_MOUNT@@", explorer_mount("explorer"))
-    # asm.js is already inlined by the explorer bundle above; the D2NN bundle
-    # reuses that same window.ASM rather than shipping a second copy.
-    body = body.replace("@@D2NN_BUNDLE@@", d2nn_bundle(include_asm=False))
-    body = body.replace("@@D2NN_MOUNT@@", d2nn_mount("d2nn"))
+#: Filename of the classifier subpage within the site, and its published address.
+#: The artifact is a single standalone body with no sibling pages, so its copy of
+#: the explainer must link out to the deployed page instead of a relative path.
+CLASSIFIER_PAGE = "classifier.html"
+CLASSIFIER_URL = "https://roosado.github.io/photonn/" + CLASSIFIER_PAGE
 
-    full = (
+
+def _document(body: str) -> str:
+    """Wrap a rendered body in the shared document shell."""
+    return (
         "<!doctype html>\n<html lang=\"en\">\n<head>\n"
         + HEAD_META
         + "\n<style>\n" + CSS + "\n</style>\n</head>\n<body>\n"
         + body
         + "\n</body>\n</html>\n"
     )
-    artifact_body = "<style>\n" + CSS + "\n</style>\n" + body
-    return full, artifact_body
+
+
+def render():
+    """Return (explainer_html, artifact_body_html, classifier_html)."""
+    body = BODY
+    for key in FIGURES:
+        opt = {**DEFAULT_OPT, **FIG_OPTS.get(key, {})}
+        body = body.replace(f"@@FIG_{key}@@", encode_figure(FIGURES[key], **opt))
+    body = body.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
+    body = body.replace("@@EXPLORER_BUNDLE@@", explorer_bundle())
+    body = body.replace("@@EXPLORER_MOUNT@@", explorer_mount("explorer"))
+
+    full = _document(body.replace("@@CLASSIFIER_HREF@@", CLASSIFIER_PAGE))
+    artifact_body = ("<style>\n" + CSS + "\n</style>\n"
+                     + body.replace("@@CLASSIFIER_HREF@@", CLASSIFIER_URL))
+
+    # The classifier page carries the whole engine: no explorer bundle runs here,
+    # so it inlines asm.js itself.
+    cls = CLASSIFIER_BODY
+    cls = cls.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
+    cls = cls.replace("@@D2NN_BUNDLE@@", d2nn_bundle(include_asm=True))
+    cls = cls.replace("@@D2NN_MOUNT@@", d2nn_mount("d2nn"))
+    classifier = _document(cls).replace(
+        "<title>photonn &mdash; photonic neural networks &amp; fabrication tolerance</title>",
+        "<title>photonn &mdash; classify a digit with light</title>",
+    )
+    return full, artifact_body, classifier
 
 
 def main():
     os.makedirs(SITE, exist_ok=True)
-    full, artifact_body = render()
-    with open(os.path.join(SITE, "index.html"), "w", encoding="utf-8") as fh:
-        fh.write(full)
-    with open(os.path.join(SITE, "_artifact_body.html"), "w", encoding="utf-8") as fh:
-        fh.write(artifact_body)
-    print(f"wrote {os.path.join(SITE, 'index.html')} ({len(full)//1024} KB)")
-    print(f"wrote {os.path.join(SITE, '_artifact_body.html')} ({len(artifact_body)//1024} KB)")
+    full, artifact_body, classifier = render()
+    outputs = (
+        ("index.html", full),
+        ("_artifact_body.html", artifact_body),
+        (CLASSIFIER_PAGE, classifier),
+    )
+    for name, text in outputs:
+        path = os.path.join(SITE, name)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        print(f"wrote {path} ({len(text) // 1024} KB)")
 
 
 if __name__ == "__main__":

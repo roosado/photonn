@@ -20,6 +20,9 @@ data/
 # Generated build artifact for Artifact publishing (index.html is the Pages copy)
 site/_artifact_body.html
 
+# Local planning notes -- kept in the working tree, never published
+plans/
+
 # MATLAB
 *.asv
 slprj/

@@ -24,6 +24,7 @@ import os
 
 from PIL import Image
 
+from apps.analogy_demo import analogy_bundle, analogy_mount
 from apps.d2nn_demo import d2nn_bundle, d2nn_mount
 from apps.diffraction_explorer import explorer_bundle, explorer_mount
 
@@ -184,6 +185,8 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .prose{color:var(--ink-dim);}
 .prose p{margin:.85rem 0;max-width:var(--measure);}
 .prose strong{color:var(--ink);font-weight:600;}
+.sub-h{font-family:var(--serif);font-weight:600;color:var(--ink);
+  font-size:clamp(1.15rem,2vw,1.42rem);line-height:1.2;margin:2.1rem 0 .2rem;}
 .q{font-family:var(--mono);font-size:.92em;background:var(--surface-2);
   border:1px solid var(--border);border-radius:5px;padding:.05em .38em;color:var(--ink);
   white-space:nowrap;}
@@ -222,7 +225,8 @@ a.link:hover{border-bottom-color:var(--beam);}
 .explorer-band .cap{font-family:var(--mono);font-size:.76rem;letter-spacing:.05em;
   color:var(--muted);margin:14px 0 0;}
 .pe-host .pe-root{--pe-fg:var(--ink);--pe-muted:var(--muted);--pe-panel:var(--surface);
-  --pe-border:var(--border);--pe-accent:var(--beam);--pe-ok:var(--good);--pe-warn:var(--bad);}
+  --pe-border:var(--border);--pe-accent:var(--beam);--pe-ok:var(--good);--pe-warn:var(--bad);
+  --pa-mix:var(--fringe);}
 
 /* planned cards */
 .planned{opacity:.96;}
@@ -338,7 +342,7 @@ BODY = r"""
     </figure>
   </section>
 
-  <section class="phase reveal">
+  <section class="phase reveal" id="phase3">
     <div class="phase-head col"><span class="ph-num">03</span>
       <div><p class="eyebrow">Phase three &middot; MZI mesh</p>
       <h2>The same linear algebra, built from interferometers</h2></div></div>
@@ -354,6 +358,7 @@ BODY = r"""
       footprint&ndash;versus&ndash;input&#8209;dimensionality trade, not a modelling failure. Several of
       its singular values exceed 1 &mdash; physically that needs gain, a documented finding.</p>
     </div>
+
     <div class="stats col">
       <div class="s"><div class="v">0.736</div><div class="l">accuracy vs 0.770 (D&sup2;NN)</div></div>
       <div class="s"><div class="v">2,628</div><div class="l">parameters &middot; ~31&times; fewer</div></div>
@@ -366,6 +371,42 @@ BODY = r"""
       learned singular-value spectrum &mdash; effectively low-rank, only ~15&ndash;20 of 36 values carry
       weight, which is why so few parameters suffice.</figcaption>
     </figure>
+
+    <div class="prose col">
+      <h3 class="sub-h">Why they are the same machine</h3>
+      <p>A chip of waveguides looks nothing like a stack of etched glass, and everything above reads
+      as two unrelated devices. They are not. Strip both to their skeletons and the same sequence
+      appears: <strong>a layer of phases you train, a layer of fixed hardware that mixes channels,
+      repeated, closed by a square-law detector.</strong> A phase mask <em>is</em> a column of phase
+      shifters. A 3&nbsp;mm air gap <em>is</em> a column of couplers. In both machines you only ever
+      train phases; in both, the mixing is unprogrammable.</p>
+      <p>They part on exactly one axis &mdash; <strong>how far one mixing layer reaches</strong>, and
+      that single number sets everything else. Diffraction hands you a wide reach for free but you
+      cannot steer it; a coupler reaches exactly one neighbour, so you need as many columns as modes,
+      and in exchange you can dial in <em>any</em> unitary. That is the whole free-space&nbsp;&rarr;&nbsp;chip
+      transformation. The rest is packaging.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="analogy"></div></div>
+      <p class="cap">Live &mdash; every number here is read from the trained models, not typed into
+      the figure. The mesh drawn is the actual Clements schedule; the cone is
+      <span style="white-space:nowrap">z&middot;&lambda;/(2&middot;dx&sup2;)</span> per hop.</p>
+    </div>
+
+    <div class="finding col reveal">
+      <p class="tag">Finding &middot; the D&sup2;NN is connected by 0.8 px</p>
+      <p class="body">Six hops of 3&nbsp;mm give each pixel a reach of <strong>74.8&nbsp;px</strong>.
+      The worst case the design has to cover &mdash; an input pixel at one edge of the entrance
+      window influencing the detector pixel farthest from it &mdash; is <strong>74&nbsp;px</strong>.
+      So every input pixel <em>can</em> reach every detector, with <strong>0.81&nbsp;px of margin,
+      about 1%</strong>. Shrink the mask separation below <strong>2.967&nbsp;mm</strong> and parts of
+      the input become physically invisible to parts of the readout, whatever the masks are set to.
+      Nothing in training knew about this bound &mdash; the operating point happens to clear it. The
+      mesh has no such fragility: 36 columns for 36 modes is the Clements bound exactly, so full
+      connectivity is guaranteed by the topology. <strong>One machine&rsquo;s connectivity is an
+      accident that holds by 1%; the other&rsquo;s is a theorem.</strong></p>
+    </div>
   </section>
 
   <section class="phase reveal">
@@ -461,6 +502,8 @@ BODY = r"""
 @@PAGE_SCRIPT@@
 @@EXPLORER_BUNDLE@@
 @@EXPLORER_MOUNT@@
+@@ANALOGY_BUNDLE@@
+@@ANALOGY_MOUNT@@
 """
 
 # Shared page chrome: the theme toggle (persisted) and the scroll-reveal observer.
@@ -514,9 +557,17 @@ CLASSIFIER_BODY = r"""
   </section>
 
   <div class="explorer-band reveal">
+    <div class="pe-host"><div id="stage"></div></div>
+    <p class="cap">The machine itself &mdash; entrance plane, five phase masks, detector plane, drawn
+    along the optical axis with the light computed on each. Drag to orbit; hit <b>Sweep</b> to watch
+    one wavefront cross the stack.</p>
+  </div>
+
+  <div class="explorer-band reveal">
     <div class="pe-host"><div id="d2nn"></div></div>
-    <p class="cap">Pick a digit from the frozen MNIST test set, or draw your own. The five masks and
-    the propagation between them are the trained parameters; the ten boxes are where the class is read.</p>
+    <p class="cap">Pick a digit from the frozen MNIST test set, or draw your own &mdash; the 3D view
+    above follows whatever you choose here. The five masks and the propagation between them are the
+    trained parameters; the ten boxes are where the class is read.</p>
   </div>
 
   <section class="phase reveal">
@@ -524,7 +575,18 @@ CLASSIFIER_BODY = r"""
       <div><p class="eyebrow">What you are looking at</p>
       <h2>Every panel is a real optical field</h2></div></div>
     <div class="prose col">
-      <p>The <strong>entrance field</strong> is the digit written into the amplitude <em>and</em> phase of
+      <p>The <strong>3D view</strong> is the geometry: seven parallel planes along the optical axis
+      &mdash; the entrance, the five masks, the detector &mdash; each carrying the field actually
+      computed on it. The haze between them is the field at <strong>intermediate depths</strong>, and
+      it is real physics rather than a gradient: splitting a 3&nbsp;mm hop into sub-hops reproduces the
+      whole hop exactly while the gap stays under
+      <span class="q">z_crit = 15.4&nbsp;mm</span>. <strong>No rays are drawn.</strong> Scalar
+      diffraction is not ray optics, and straight lines from digit to detector would misrepresent the
+      one thing this page exists to show. Toggle <em>Mask phase</em> to swap the arriving light for the
+      fabricated surface that acts on it. The stack is 18&nbsp;mm long across a 1.02&nbsp;mm aperture,
+      roughly 18:1, so the depth axis is compressed &mdash; the figure states its own factor.</p>
+      <p>Below it, the same run as exact frames. The <strong>entrance field</strong> is the digit
+      written into the amplitude <em>and</em> phase of
       the light entering the stack. The five small frames are the intensity <strong>arriving at each
       phase mask</strong> &mdash; watch the digit dissolve into structured speckle that means nothing to
       the eye and everything to the detectors. The <strong>detector plane</strong> is the final intensity,
@@ -620,6 +682,9 @@ def render():
     body = body.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
     body = body.replace("@@EXPLORER_BUNDLE@@", explorer_bundle())
     body = body.replace("@@EXPLORER_MOUNT@@", explorer_mount("explorer"))
+    body = body.replace("@@ANALOGY_BUNDLE@@", analogy_bundle())
+    # Open on the finished machines: the "0.8 px to spare" reading is the point.
+    body = body.replace("@@ANALOGY_MOUNT@@", analogy_mount("analogy", t=1))
 
     full = _document(body.replace("@@CLASSIFIER_HREF@@", CLASSIFIER_PAGE))
     artifact_body = ("<style>\n" + CSS + "\n</style>\n"
@@ -630,7 +695,7 @@ def render():
     cls = CLASSIFIER_BODY
     cls = cls.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
     cls = cls.replace("@@D2NN_BUNDLE@@", d2nn_bundle(include_asm=True))
-    cls = cls.replace("@@D2NN_MOUNT@@", d2nn_mount("d2nn"))
+    cls = cls.replace("@@D2NN_MOUNT@@", d2nn_mount("d2nn", stage_id="stage"))
     classifier = _document(cls).replace(
         "<title>photonn &mdash; photonic neural networks &amp; fabrication tolerance</title>",
         "<title>photonn &mdash; classify a digit with light</title>",

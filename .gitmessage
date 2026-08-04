@@ -1,0 +1,18 @@
+# <subject: imperative, <=72 chars, no trailing period>
+#
+# Why this change exists and what it does. Prose, not a changelog -- the diff
+# already says what changed line by line; this says what a reader could not
+# reconstruct from it. Wrap at ~80.
+#
+# Numbers that moved (accuracy, test count, page size) go here explicitly.
+#
+# Files:
+#   path/to/file            what changed in it, and why, in one line
+#
+# Anything deliberately left undone, and why:
+#
+# Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+#
+# ---------------------------------------------------------------------------
+# Lines starting with '#' are stripped. Delete this block as you go.
+# `git commit -v` appends the diff below for reference; it is not committed.

@@ -150,6 +150,38 @@ def fraunhofer(field: Field, z: float) -> Field:
     return Field(out, dx_out, lam, z=field.z + z, units=field.units)
 
 
+def diffraction_reach_px(n: int, dx: float, wavelength: float, z: float) -> float:
+    """Farthest, in pixels, one propagation of ``z`` can move energy along one axis.
+
+    A plane-wave component at spatial frequency ``f`` travels at ``sin(theta) =
+    lam * f``, so over a distance ``z`` it lands ``z * tan(theta)`` off-axis. The
+    grid cannot carry any frequency above Nyquist, ``f_max = 1/(2*dx)``, so no
+    pixel can influence one farther away than
+
+        reach = z * lam / (2 * dx^2)    [pixels, paraxial]
+
+    which is this function's return value. It is the *connectivity radius* of a
+    single free-space hop: the diffractive counterpart of how many waveguide modes
+    one column of a coupler mesh can mix (exactly one neighbour). Stacking ``m``
+    hops gives ``m * reach`` -- see ``docs/phase3_mesh.md``.
+
+    Beyond ``z_crit = n * dx^2 / lam`` the Matsushima-Shimobaba band limit in
+    :func:`angular_spectrum_transfer` cuts the spectrum below Nyquist, and the
+    reach saturates at that lower limit rather than growing with ``z``; this
+    function applies the same cut, so it never over-states the reach.
+
+    The exact obliquity form, ``z * lam * f_max / sqrt(1 - (lam*f_max)^2) / dx``,
+    is larger by ``(lam/(2*dx))^2 / 2`` in relative terms -- 0.06% at the Phase-2
+    operating point. The paraxial value is returned because it is the quotable
+    closed form and it errs on the conservative side for a connectivity claim.
+    """
+    du = 1.0 / (n * dx)
+    # Matsushima & Shimobaba (2009), as applied in angular_spectrum_transfer.
+    u_limit = 1.0 / (wavelength * np.sqrt((2.0 * du * abs(z)) ** 2 + 1.0))
+    f_max = min(1.0 / (2.0 * dx), u_limit)
+    return abs(z) * wavelength * f_max / dx
+
+
 def check_sampling(field: Field, z: float, method: str = "angular_spectrum") -> SamplingReport:
     """Check that ``field`` is adequately sampled to propagate distance ``z``.
 

@@ -68,9 +68,65 @@ for (let k = 0; k < NET.nGallery; k++) {
   if (NET.classify(NET.galleryDigit(k)).pred === NET.galleryLabel(k)) galleryCorrect++;
 }
 
+// 5. the 3D stage's intermediate slices are display-only and must not be able to
+//    move a class score: classify() before and after must be bit-identical, and
+//    the slices landing on the mask planes must reproduce the canonical hops.
+const slices = [];
+for (let k = 0; k < Math.min(4, NET.nGallery); k++) {
+  const digit = NET.galleryDigit(k);
+  const before = NET.classify(digit);
+  const field = NET.encodeInput(before.canvas);
+  const S = 4;
+  const walk = NET.sliceForward(field[0], field[1], S);
+  const after = NET.classify(digit);
+
+  let logitDelta = 0;
+  for (let i = 0; i < 10; i++) {
+    const d = Math.abs(before.logits[i] - after.logits[i]);
+    if (d > logitDelta) logitDelta = d;
+  }
+
+  // Relative agreement between each sub-stepped mask plane and forward()'s own.
+  let planeRel = 0;
+  for (let Lz = 0; Lz < NET.weights.n_layers; Lz++) {
+    const got = walk[(Lz + 1) * S].I;
+    const ref = before.planes[Lz];
+    let err = 0, peak = 0;
+    for (let i = 0; i < ref.length; i++) {
+      const e = Math.abs(got[i] - ref[i]);
+      if (e > err) err = e;
+      if (ref[i] > peak) peak = ref[i];
+    }
+    const rel = peak > 0 ? err / peak : 0;
+    if (rel > planeRel) planeRel = rel;
+  }
+  let detErr = 0, detPeak = 0;
+  const last = walk[walk.length - 1].I;
+  for (let i = 0; i < last.length; i++) {
+    const e = Math.abs(last[i] - before.intensity[i]);
+    if (e > detErr) detErr = e;
+    if (before.intensity[i] > detPeak) detPeak = before.intensity[i];
+  }
+
+  slices.push({
+    index: k,
+    predBefore: before.pred,
+    predAfter: after.pred,
+    logitDelta,
+    planeRel,
+    detectorRel: detPeak > 0 ? detErr / detPeak : 0,
+    count: walk.length,
+    expectedCount: (NET.weights.n_layers + 1) * S + 1,
+    firstZ: walk[0].z,
+    lastZ: walk[walk.length - 1].z,
+    totalZ: (NET.weights.n_layers + 1) * NET.weights.separation,
+  });
+}
+
 process.stdout.write(JSON.stringify({
   cases,
   resize,
   geometry,
   gallery: { correct: galleryCorrect, total: NET.nGallery },
+  slices,
 }));

@@ -71,6 +71,93 @@ electronic head, exactly as the D²NN. Trained with Adam, seed recorded.
   effective dimensions. Several σ exceed 1 — a real device would need gain or a
   global rescale-plus-loss.
 
+## Why they are the same machine
+
+A chip of waveguides and a stack of etched glass look like unrelated devices, and
+the comparison table below reads that way too. They are not unrelated. Strip both
+to their skeletons and the same sequence appears:
+
+```
+[ diagonal phase ] → [ fixed mixing ] → [ diagonal phase ] → [ fixed mixing ] → … → |E|²
+```
+
+| | **D²NN (free space)** | **MZI mesh (chip)** |
+|---|---|---|
+| a "channel" is | one pixel of the field — 16 384 of them | one waveguide mode — 36 of them |
+| the **trainable** part | a phase mask, `e^{iφ}` per pixel | a phase shifter, `e^{iφ}` per MZI arm |
+| set in hardware by | etched surface relief, or an SLM pixel | a thermo-optic heater current |
+| the **fixed** part | 3 mm of air — diffraction | a 50:50 directional coupler |
+| readout | integrated intensity, 10 detector boxes | intensity on the first 10 output modes |
+
+**In both machines you only ever train phases. The mixing is unprogrammable
+hardware in both.** A phase mask *is* a column of phase shifters; a 3 mm air gap
+*is* a column of couplers. That is the whole free-space → chip transformation;
+everything else is packaging.
+
+This is a shared abstraction, not shared hardware — 16 384 pixels and 36 modes are
+nowhere near the same scale, and no rearrangement turns one into the other.
+
+### Reach per layer is the only real difference
+
+The machines part on one axis: **how far one mixing layer moves information
+sideways.** That number sets depth, footprint, and failure mode.
+
+| | reach / layer | layers | total reach | channels | fully connected? |
+|---|---|---|---|---|---|
+| D²NN | **12.5 px** (`z·λ/(2·dx²)`) | 6 hops | 74.8 px | 16 384 px | yes, by **0.8 px** |
+| Mesh (36-mode) | **1 mode** | 36 columns | 36 modes | 36 modes | yes, **by construction** |
+
+Diffraction hands you a wide reach for free, but you cannot *choose* it: the
+12.5 px is fixed by `z`, `λ` and the pixel pitch, and it is the same operator for
+every pixel. A coupler reaches exactly one neighbour, so you need `N` columns —
+and in exchange each of those `N·(N−1)/2` couplings is steered individually, which
+is what makes any unitary realisable (Clements). **Free space → chip trades one
+wide, fixed, unsteerable mixing operator for `N` sparse ones you can steer.**
+
+The per-hop figure is `photonn.propagate.diffraction_reach_px`: the steepest ray
+the grid can carry is at Nyquist, `f = 1/(2·dx)`, so one hop displaces energy by
+at most `z·λ/(2·dx²)` **per axis** (the FFT band is a square in `(fx, fy)`, so `x`
+and `y` bound separately). Below `z_crit = n·dx²/λ = 15.40 mm` the Matsushima band
+limit is inactive and the full Nyquist band propagates; the Phase-2 gap is 3 mm,
+well inside that.
+
+### Finding: the D²NN is connected by 0.8 px
+
+Six hops give **74.81 px** of reach. The worst case the design has to cover — an
+input pixel at one edge of the entrance window (px 32–95) influencing the detector
+pixel farthest from it (patches span px 21–106 in `x`, 25–102 in `y`) — is
+**74 px**. So every input pixel *can* reach every detector region, with
+**0.81 px of margin, about 1%**.
+
+Equivalently, as a tolerance on the one dimension a builder sets: mask separation
+must stay above **2.967 mm**, against a design value of 3.000 mm — **33 µm of
+headroom**. Below it, part of the input becomes physically invisible to part of the
+readout, whatever the masks are trained to.
+
+Nothing in the training procedure knew about this bound; the operating point
+happens to clear it. The mesh has no equivalent fragility — 36 columns for 36
+modes is the Clements bound exactly, so full connectivity is guaranteed by the
+topology. **One machine's connectivity is an accident that holds by 1%; the
+other's is a theorem.**
+
+Note this is a bound on what *can* couple, not a claim about how much power
+actually does: the corner of the cone is the Nyquist ray, which carries little
+energy in practice. It says where the design sits relative to a hard limit.
+
+Derived, never typed: `apps/export_analogy_web.py` reads the reach from
+`propagate.diffraction_reach_px`, the detector layout from `detect.default_regions`
+and the topology from `layers.MZIMeshLayer._schedule`, and writes
+`apps/web/analogy_geom.js`. `tests/test_correspondence.py` re-derives all of it.
+The interactive version of this figure is `apps/web/analogy.js` (Phase-3 section of
+the explainer page); the static one is below.
+
+![Free space ↔ chip correspondence](figures/phase3_correspondence.png)
+
+*The shared skeleton at both machines' true depths (top), and the reach that
+explains the depth difference (bottom): a diffraction cone widening 12.5 px per
+hop against a coupler cone widening one mode per column, each drawn against the
+real detector layout and the real Clements schedule.*
+
 ## Direct comparison to the D²NN
 
 | | **MZI mesh (36-mode SVD)** | **D²NN (Phase 2)** |
@@ -103,9 +190,14 @@ ceiling: one linear optical transform followed by `|·|²` detection.
 
 ## Verification
 
-- `pytest -q` — 60 passing, 0 skips. `tests/test_mzi.py` covers MZI unitarity,
+- `pytest -q` — 86 passing, 0 skips. `tests/test_mzi.py` covers MZI unitarity,
   Clements/Reck reconstruction, the SVD real-matrix layer, `mesh_forward` ==
   matrix multiply, and the torch mesh == NumPy replication.
+- `tests/test_correspondence.py` re-derives every number in the section above —
+  reach from the propagator, detector layout from `detect.default_regions`,
+  topology from `MZIMeshLayer._schedule` — and fails if `analogy_geom.js` drifts.
+  It also checks that `analogy.js` only reads fields the bundle defines, since a
+  missing key renders as `undefined` in a browser rather than raising.
 - `python -m apps.mesh_toolkit` — reconstruction to ~1e-15 and the topology figure.
 - `python -m apps.train_mesh` — trains, exports the mesh handoff (`mesh` path,
   `phase_theta`/`phase_phi`), and prints the comparison.
@@ -116,7 +208,9 @@ ceiling: one linear optical transform followed by `|·|²` detection.
 python -m apps.train_mesh            # train + export + comparison (deliverable)
 python -m apps.train_mesh --quick    # fast smoke config
 python -m apps.mesh_toolkit          # verify decompositions + render topology
-pytest -q tests/test_mzi.py
+python -m apps.export_analogy_web    # regenerate apps/web/analogy_geom.js
+python -m apps.analogy_figure        # docs/figures/phase3_correspondence.png
+pytest -q tests/test_mzi.py tests/test_correspondence.py
 ```
 
 ## What Phase 3 does not cover / next

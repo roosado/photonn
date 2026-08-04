@@ -166,6 +166,8 @@
       gallery: Math.min(opts.gallery || 0, NET.nGallery - 1),
       drawing: false,
     };
+    const subscribers = [];
+    let last = null;
 
     const root = el("div", "pe-root pd-root");
     container.innerHTML = "";
@@ -360,6 +362,21 @@
         + `${(NET.weights.separation * 1e3).toFixed(0)} mm at `
         + `${(NET.weights.wavelength * 1e9).toFixed(0)} nm, ${N}×${N} grid — `
         + `computed in your browser in ${ms.toFixed(0)} ms.`;
+
+      // Anything else showing the same digit (the 3D stage) follows from here,
+      // so there is exactly one digit source on the page.
+      last = { res, meta: { trueLabel } };
+      for (let i = 0; i < subscribers.length; i++) subscribers[i](res, last.meta);
+    }
+
+    /** Register a view that should follow this widget's current digit. */
+    function subscribe(fn) {
+      subscribers.push(fn);
+      if (last) fn(last.res, last.meta);
+      return () => {
+        const i = subscribers.indexOf(fn);
+        if (i >= 0) subscribers.splice(i, 1);
+      };
     }
 
     let scheduled = false;
@@ -429,6 +446,8 @@
 
     selectGallery();
     setMode("gallery");
+
+    return { subscribe, recompute: requestCompute };
   }
 
   const API = { mount };

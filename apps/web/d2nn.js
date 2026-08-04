@@ -268,6 +268,64 @@
     return { logits, fractions, pred, intensity, planes };
   }
 
+  /**
+   * The same optical path, sampled *between* the mask planes -- display only.
+   *
+   * Each of the n_layers+1 hops is walked in `subSteps` equal sub-hops, so the
+   * returned list is the field's intensity at every intermediate depth as well as
+   * at the planes themselves. This is exact, not interpolated: the transfer
+   * function composes as H(z1)*H(z2) = H(z1+z2), and the Matsushima band limit --
+   * the one z-dependent term -- is inactive while z < z_crit = N*dx^2/lam
+   * (15.40 mm here, against 3 mm hops), so it multiplies by 1 either way. See
+   * tests/test_propagate.py:test_substep_propagation_equals_one_hop.
+   *
+   * `classify()` deliberately does NOT use this. The prediction must keep coming
+   * from the canonical n_layers+1 propagations that the PyTorch cross-check pins;
+   * these slices are for drawing and can never move a class score.
+   *
+   * Cost is (n_layers+1)*subSteps propagations -- ~4x the forward pass at
+   * subSteps=4 -- so callers should run it on digit change, not per pointer move.
+   *
+   * Returns [{z, I}] ordered by depth, starting at the entrance plane (z=0).
+   */
+  function sliceForward(re, im, subSteps) {
+    const S = Math.max(1, subSteps | 0);
+    const dz = W.separation / S;
+    const Hs = ASM.buildTransfer(N, W.dx, W.wavelength, dz);
+
+    let a = Float64Array.from(re), b = Float64Array.from(im);
+    const intensityOf = (x, y) => {
+      const I = new Float64Array(N * N);
+      for (let i = 0; i < I.length; i++) I[i] = x[i] * x[i] + y[i] * y[i];
+      return I;
+    };
+
+    const out = [{ z: 0, I: intensityOf(a, b) }];
+    for (let L = 0; L <= W.n_layers; L++) {
+      for (let s = 0; s < S; s++) {
+        const p = ASM.propagateField(a, b, N, Hs[0], Hs[1]);
+        a = p[0]; b = p[1];
+        out.push({ z: (L * S + s + 1) * dz, I: intensityOf(a, b) });
+      }
+      if (L === W.n_layers) break;
+      // A pure phase mask leaves |E| alone, so the slice just recorded at this
+      // plane is the arriving *and* departing intensity -- no duplicate needed.
+      const off = L * N * N;
+      for (let i = 0; i < N * N; i++) {
+        const c = MASK_COS[off + i], s2 = MASK_SIN[off + i];
+        const x = a[i], y = b[i];
+        a[i] = x * c - y * s2;
+        b[i] = x * s2 + y * c;
+      }
+    }
+    return out;
+  }
+
+  /** Trained phase of mask L as an N*N Float32Array in radians (for display). */
+  function maskPhase(L) {
+    return MASKS.subarray(L * N * N, (L + 1) * N * N);
+  }
+
   /** 28x28 digit in [0,1] -> full result, including the input map for display. */
   function classify(img28) {
     const canvas = preprocess(img28);
@@ -291,6 +349,7 @@
     galleryDigit,
     galleryLabel: (k) => W.gallery_labels[k],
     resize, resampleRect, preprocess, normalizeDrawn, encodeInput, forward, classify,
+    sliceForward, maskPhase,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = NET;

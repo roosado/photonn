@@ -102,3 +102,47 @@ def test_gallery_is_honest(results):
         f"gallery accuracy {g['correct']}/{g['total']} -- expected a mix of "
         "correct and misclassified digits"
     )
+
+
+@pytest.mark.skipif(node is None, reason="node not on PATH; browser D2NN cross-check skipped")
+def test_stage_slices_cannot_move_the_prediction(results):
+    """The 3D stage is a view, not a second model.
+
+    ``sliceForward`` walks the same optics in sub-steps to draw the light between
+    the masks. It must never disturb ``classify()`` -- the prediction has to keep
+    coming from the canonical n_layers+1 propagations these tests pin to torch.
+    """
+    assert results["slices"], "no slice cases in runner output"
+    for s in results["slices"]:
+        assert s["predBefore"] == s["predAfter"], (
+            f"digit {s['index']}: prediction changed after slicing "
+            f"({s['predBefore']} -> {s['predAfter']})"
+        )
+        assert s["logitDelta"] == 0.0, (
+            f"digit {s['index']}: logits moved by {s['logitDelta']:.2e} after slicing"
+        )
+
+
+@pytest.mark.skipif(node is None, reason="node not on PATH; browser D2NN cross-check skipped")
+def test_stage_slices_reproduce_the_canonical_planes(results):
+    """Sub-stepping a hop is exact, so the drawn light is the real field.
+
+    H(z1)*H(z2) = H(z1+z2), and the one z-dependent term -- the Matsushima band
+    limit -- is inactive below z_crit, so walking a 3 mm hop in four 0.75 mm steps
+    must land on the same field. Anything worse than float64 round-off means the
+    stage is drawing light the model never computed.
+    """
+    for s in results["slices"]:
+        assert s["count"] == s["expectedCount"], (
+            f"digit {s['index']}: {s['count']} slices, expected {s['expectedCount']}"
+        )
+        assert s["firstZ"] == 0.0
+        assert s["lastZ"] == pytest.approx(s["totalZ"], rel=1e-12)
+        assert s["planeRel"] < 1e-11, (
+            f"digit {s['index']}: sub-stepped mask planes differ from the canonical "
+            f"hops by {s['planeRel']:.2e} of peak"
+        )
+        assert s["detectorRel"] < 1e-11, (
+            f"digit {s['index']}: sub-stepped detector plane differs by "
+            f"{s['detectorRel']:.2e} of peak"
+        )

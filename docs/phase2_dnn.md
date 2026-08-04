@@ -211,6 +211,42 @@ still applies.
 
 ---
 
+## Seeing the machine: the 3D stage
+
+The trained network runs live in the browser (`apps/web/d2nn.js`, cross-checked to
+torch), and the classifier page draws it two ways. The filmstrip is the precise
+instrument — seven exact per-plane images. Above it, `apps/web/d2nn_stage.js`
+draws the **optical stack itself**: the entrance plane, the five masks and the
+detector plane as parallel panels along the optical axis, each carrying the field
+computed on it, orbitable, with a sweep that walks one wavefront through.
+
+Three things make that cheap and honest:
+
+- An orthographic projection of a flat plane is **affine**, so one
+  `setTransform` + `drawImage` renders a 128² plane as a correct parallelogram —
+  no WebGL, no library, consistent with the rest of the browser side.
+- The panels are parallel and never intersect, so **back-to-front painting is
+  exact occlusion**. (Light is composited additively rather than occluded: the
+  masks are transmissive, so a plate must not darken the field behind it.)
+- The light **between** the masks is real. Sub-stepping a hop is exact because
+  `H(z₁)·H(z₂) = H(z₁+z₂)` and the one z-dependent term — the Matsushima band
+  limit — is inactive below `z_crit = N·dx²/λ = 15.40 mm`, against 3 mm hops.
+  `NET.sliceForward` computes those intermediate planes; the equality and its
+  breakdown above `z_crit` are both asserted in `tests/test_propagate.py`.
+
+Two things it deliberately does not do. It **draws no rays** — scalar diffraction
+is not ray optics, and straight lines from digit to detector would misrepresent
+the physics this page exists to show. And it **cannot touch the prediction**:
+`classify()` still runs the canonical `n_layers+1` propagations that the torch
+cross-check pins, and `tests/test_d2nn_crosscheck.py` asserts logits are
+bit-identical with slicing enabled.
+
+The stack is 18 mm long across a 1.024 mm aperture — about 18:1 — so drawn to
+scale it is an unreadable needle. The depth axis is compressed ~×5.9 and the
+figure states that factor on its face.
+
+---
+
 ## Reproduce
 
 ```bash
@@ -218,7 +254,9 @@ python -m apps.train_d2nn --quick          # ~15 s smoke config (grid 64)
 python -m apps.train_d2nn                   # deliverable config (grid 128)
 python -m apps.train_d2nn --subset-train 60000 --epochs 30   # full run
 python -m apps.visualize_d2nn               # render trained masks + example
+python -m apps.d2nn_demo                    # standalone live classifier + 3D stage
 pytest -q tests/test_layers.py tests/test_models.py tests/test_detect.py tests/test_encode.py
+pytest -q tests/test_d2nn_crosscheck.py tests/test_stage_projection.py
 ```
 
 ## What Phase 2 does not cover

@@ -165,9 +165,21 @@ These may be revisited only after Phase 4 is complete:
 
 ## Open decisions
 
-Unresolved. Do not assume an answer; ask.
+Still open. Do not assume an answer; ask.
 
-1. **PyTorch or JAX.** PyTorch has better complex-tensor documentation. JAX composes better if the error model later needs to be differentiated through.
-2. **Phase 4 ordering.** Possibly run the error budget on the D²NN before completing Phase 3, rather than after. Likely better.
 3. **Quantum branch placement.** Inline in Phase 3, or a separate deeper Phase 5.
-4. **Parameter source standardization.** Which foundry PDK or paper set is the canonical source for error magnitudes, so numbers stay internally consistent.
+
+### Resolved
+
+Kept here so a later session does not reopen a question the project already answered.
+
+1. **PyTorch or JAX** → **PyTorch.** Used throughout: `photonn/layers.py`, `models.py`,
+   `train.py`. The error model lives in MATLAB and is never differentiated through, so JAX's
+   composability advantage never came due.
+2. **Phase 4 ordering** → **error budget first.** Run against the trained D²NN before Phase 3
+   was complete; see `docs/tolerance_d2nn.md`. The MZI-specific sources (coupler imbalance,
+   per-MZI loss) stay deferred stubs, since they have no meaning for phase masks.
+4. **Parameter source standardization** → **resolved for the D²NN**, still open for the mesh.
+   The canonical set is the SLM / phase-plate and sCMOS measurement literature, not an
+   integrated-photonics PDK; the ledger is `docs/parameter_sources.md`. The Phase-3 mesh will
+   need its own PDK-anchored set.

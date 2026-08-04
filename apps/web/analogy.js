@@ -1,0 +1,676 @@
+/*
+ * analogy.js -- why a stack of phase masks and a chip full of interferometers
+ * are the same machine.
+ *
+ * Two panels and one slider:
+ *
+ *  1. "One skeleton, two machines" -- both processors drawn as the same
+ *     alternating stripe rhythm, [trainable phase] -> [fixed mixing] -> ... -> |E|^2,
+ *     at their true depths. Hovering a stripe highlights its counterpart in the
+ *     other machine and names the crosswalk (a mask pixel <-> a phase shifter, a
+ *     3 mm air gap <-> a coupler column).
+ *
+ *  2. "Reach" -- the one axis on which they differ. A lightcone per machine,
+ *     grown by the shared slider: diffraction widens 12.5 px per hop, a coupler
+ *     column widens exactly one mode. That is the whole reason one machine is six
+ *     layers deep and the other is thirty-six.
+ *
+ * Every number drawn comes from window.PHOTONN_ANALOGY_GEOM (analogy_geom.js,
+ * generated from the trained models by apps/export_analogy_web.py) -- the figure
+ * cannot drift from the models it describes. Pure geometry and arithmetic: no
+ * physics is run here, no weights are loaded, nothing is fetched.
+ *
+ * Usage:  window.PhotonnAnalogy.mount(containerElement, opts)
+ * opts (all optional): { t: <initial slider position, 0..1> }
+ */
+(function () {
+  "use strict";
+
+  const GEOM = (typeof window !== "undefined" && window.PHOTONN_ANALOGY_GEOM)
+    ? window.PHOTONN_ANALOGY_GEOM
+    : (typeof require !== "undefined" ? require("./analogy_geom.js") : null);
+
+  const STYLE_ID = "pa-style";
+  const CSS = `
+.pa-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
+  --pe-accent:#3b6ea5;--pe-ok:#3f8f4e;--pe-warn:#c14a3d;--pa-mix:#c9701f;
+  color:var(--pe-fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  display:flex;flex-direction:column;gap:16px;}
+@media (prefers-color-scheme:dark){.pa-root{--pe-fg:#e6eaf0;--pe-muted:#9aa6b5;
+  --pe-panel:#1c2128;--pe-border:#30363d;--pe-accent:#6ea8e0;--pe-ok:#5cc06e;
+  --pe-warn:#e0705f;--pa-mix:#f2994a;}}
+.pa-box{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
+  padding:14px 16px;}
+.pa-box h4{margin:0 0 3px;font-size:12px;color:var(--pe-muted);font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;}
+.pa-box .sub{margin:0 0 12px;font-size:13px;color:var(--pe-muted);max-width:70ch;}
+.pa-canvas{display:block;width:100%;}
+.pa-key{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--pe-muted);
+  margin-top:10px;}
+.pa-key i{display:inline-block;width:11px;height:11px;border-radius:3px;
+  margin-right:6px;vertical-align:-1px;}
+.pa-key .k-phase i{background:var(--pe-accent);}
+.pa-key .k-mix i{background:var(--pa-mix);}
+.pa-readout{min-height:2.9em;margin:10px 0 0;font-size:13px;color:var(--pe-fg);
+  border-top:1px solid var(--pe-border);padding-top:10px;}
+.pa-readout b{color:var(--pe-accent);}
+.pa-readout .mixw{color:var(--pa-mix);}
+.pa-slider{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 2px;}
+.pa-slider input[type=range]{flex:1 1 260px;accent-color:var(--pe-accent);min-width:180px;}
+.pa-slider .lab{font-size:12px;font-weight:600;color:var(--pe-muted);white-space:nowrap;}
+.pa-slider .pos{font-size:12px;color:var(--pe-fg);font-variant-numeric:tabular-nums;
+  white-space:nowrap;}
+.pa-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(166px,1fr));gap:10px;
+  margin-top:12px;}
+.pa-stat{border:1px solid var(--pe-border);border-radius:8px;padding:9px 12px;}
+.pa-stat .v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;}
+.pa-stat .l{font-size:11.5px;color:var(--pe-muted);margin-top:2px;line-height:1.35;}
+.pa-stat.full .v{color:var(--pe-ok);}
+.pa-stat.tight .v{color:var(--pe-warn);}
+.pa-table{width:100%;border-collapse:collapse;font-size:13px;}
+.pa-table th,.pa-table td{text-align:left;padding:7px 10px;border-top:1px solid var(--pe-border);
+  vertical-align:top;}
+.pa-table thead th{border-top:0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--pe-muted);font-weight:600;}
+.pa-table tbody th{font-weight:500;color:var(--pe-muted);width:11em;}
+.pa-table tr.on td,.pa-table tr.on th{background:color-mix(in srgb,var(--pe-accent) 11%,transparent);}
+.pa-table tr.on-mix td,.pa-table tr.on-mix th{background:color-mix(in srgb,var(--pa-mix) 13%,transparent);}
+.pa-table td b{font-weight:600;}
+.pa-note{font-size:12px;color:var(--pe-muted);margin:10px 0 0;}
+@media (max-width:560px){
+  .pa-table tbody th{width:7.5em;}
+  .pa-table th,.pa-table td{padding:6px 6px;font-size:12px;}
+}
+`;
+
+  function injectStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
+
+  function el(tag, cls, html) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  function fmt(x, d) { return x.toFixed(d == null ? 1 : d); }
+  function group(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
+
+  /** Size a canvas to its CSS box at device resolution; return a ready 2D context. */
+  function fitCanvas(canvas, cssW, cssH) {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.height = cssH + "px";
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    return ctx;
+  }
+
+  /** Resolve the widget's live theme colours (the page toggle rewrites them). */
+  function palette(root) {
+    const cs = getComputedStyle(root);
+    const get = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
+    return {
+      fg: get("--pe-fg", "#1b1f24"),
+      muted: get("--pe-muted", "#5a6472"),
+      border: get("--pe-border", "#d7dde5"),
+      phase: get("--pe-accent", "#3b6ea5"),
+      mix: get("--pa-mix", "#c9701f"),
+      warn: get("--pe-warn", "#c14a3d"),
+      ok: get("--pe-ok", "#3f8f4e"),
+    };
+  }
+
+  function label(ctx, text, x, y, color, size, align, weight) {
+    ctx.fillStyle = color;
+    ctx.font = `${weight || 400} ${size || 11}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+    ctx.textAlign = align || "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x, y);
+  }
+
+  function mount(container, opts) {
+    opts = opts || {};
+    injectStyle();
+
+    const D = GEOM.d2nn, M = GEOM.mesh;
+    const N = D.n, HOPS = D.hops, COLS = M.n_columns, MODES = M.n_modes;
+    const REACH = D.reach_px_per_hop;
+
+    const state = {
+      t: opts.t == null ? 1 : opts.t,   // slider position, 0..1 of each machine's depth
+      hover: null,                      // "phase" | "mix" | null
+    };
+
+    const root = el("div", "pe-root pa-root");
+    container.innerHTML = "";
+    container.appendChild(root);
+
+    // ------------------------------------------------------- panel 1: skeleton
+    const skelBox = el("div", "pa-box");
+    skelBox.appendChild(el("h4", null, "One skeleton, two machines"));
+    skelBox.appendChild(el("p", "sub",
+      "Both processors are the same alternating sequence: a layer you train, then a layer "
+      + "of fixed hardware that mixes channels, repeated, ending in a square-law detector. "
+      + "In both, <em>only the phases are trainable</em> — the mixing is unprogrammable. "
+      + "Hover a stripe to see its counterpart."));
+    const skelCanvas = el("canvas", "pa-canvas");
+    skelBox.appendChild(skelCanvas);
+    const key = el("div", "pa-key",
+      '<span class="k-phase"><i></i>trainable phase</span>'
+      + '<span class="k-mix"><i></i>fixed mixing (hardware)</span>');
+    skelBox.appendChild(key);
+    const readout = el("p", "pa-readout", "");
+    skelBox.appendChild(readout);
+    root.appendChild(skelBox);
+
+    // ---------------------------------------------------------- panel 2: reach
+    const reachBox = el("div", "pa-box");
+    reachBox.appendChild(el("h4", null, "Reach — the one axis they differ on"));
+    reachBox.appendChild(el("p", "sub",
+      "How far can one layer move information sideways? Diffraction hands you a wide reach "
+      + "for free but you cannot steer it; a coupler reaches exactly one neighbour, so you need "
+      + "as many columns as modes — and in exchange you can dial in <em>any</em> unitary. "
+      + "Drag to walk both machines from their input to their output."));
+    const reachCanvas = el("canvas", "pa-canvas");
+    reachBox.appendChild(reachCanvas);
+
+    const slider = el("div", "pa-slider");
+    slider.appendChild(el("span", "lab", "Layers traversed"));
+    const range = document.createElement("input");
+    range.type = "range"; range.min = "0"; range.max = "1000"; range.step = "1";
+    range.value = String(Math.round(state.t * 1000));
+    range.setAttribute("aria-label", "Layers traversed, as a fraction of each machine's depth");
+    slider.appendChild(range);
+    const pos = el("span", "pos", "");
+    slider.appendChild(pos);
+    reachBox.appendChild(slider);
+
+    const stats = el("div", "pa-stats");
+    const statEls = [];
+    for (let i = 0; i < 4; i++) {
+      const s = el("div", "pa-stat");
+      const v = el("div", "v", "–"), l = el("div", "l", "");
+      s.appendChild(v); s.appendChild(l);
+      stats.appendChild(s);
+      statEls.push({ s, v, l });
+    }
+    reachBox.appendChild(stats);
+    reachBox.appendChild(el("p", "pa-note",
+      `Reach per hop is <code>z·λ/(2·dx²)</code> = ${fmt(REACH, 1)} px at `
+      + `z = ${fmt(D.separation * 1e3, 0)} mm — the steepest ray a `
+      + `${D.dx * 1e6} µm pixel grid can carry. Nothing beyond the cone can influence the `
+      + "readout, whatever the masks are set to."));
+    root.appendChild(reachBox);
+
+    // ------------------------------------------------------ panel 3: crosswalk
+    const tableBox = el("div", "pa-box");
+    tableBox.appendChild(el("h4", null, "The crosswalk"));
+    const table = el("table", "pa-table");
+    const ROWS = [
+      ["", "a channel is",
+        `one pixel of the field — <b>${group(N * N)}</b> of them`,
+        `one waveguide mode — <b>${MODES}</b> of them`],
+      ["phase", "you train",
+        `a phase mask: <b>e<sup>iφ</sup></b> per pixel`,
+        `a phase shifter: <b>e<sup>iφ</sup></b> per MZI arm`],
+      ["phase", "set in hardware by",
+        "etched surface relief, or an SLM pixel",
+        "a thermo-optic heater current"],
+      ["mix", "the fixed mixing is",
+        `<b>${fmt(D.separation * 1e3, 0)} mm of air</b> — diffraction`,
+        "a <b>50:50 directional coupler</b>"],
+      ["mix", "one mixing layer reaches",
+        `<b>${fmt(REACH, 1)} px</b> — wide, but not steerable`,
+        "<b>1 mode</b> — narrow, but individually steerable"],
+      ["", "so its depth is",
+        `<b>${D.n_layers}</b> masks, <b>${HOPS}</b> propagations`,
+        `<b>${COLS}</b> columns (<b>${M.svd_columns}</b> for U·Σ·V†)`],
+      ["", "readout",
+        "integrated intensity in 10 detector boxes",
+        "intensity on the first 10 output modes"],
+    ];
+    let thead = "<thead><tr><th></th><th>Free space — D²NN</th>"
+      + "<th>Chip — MZI mesh</th></tr></thead><tbody>";
+    for (const [kind, name, a, b] of ROWS) {
+      thead += `<tr data-kind="${kind}"><th>${name}</th><td>${a}</td><td>${b}</td></tr>`;
+    }
+    table.innerHTML = thead + "</tbody>";
+    tableBox.appendChild(table);
+    tableBox.appendChild(el("p", "pa-note",
+      "Two realisations of one abstraction — not two arrangements of the same hardware. "
+      + `A ${group(N * N)}-pixel field and a ${MODES}-mode chip are nowhere near the same size; `
+      + "what they share is the skeleton, not the scale."));
+    root.appendChild(tableBox);
+
+    const rowEls = Array.from(table.querySelectorAll("tbody tr"));
+
+    // ------------------------------------------------------------- skeleton draw
+    // Stripe tracks, in order from input to output. Each entry is [kind, count]
+    // laid out left to right; both machines get the same track width, so the mesh's
+    // 72 stripes are drawn thin and the depth difference is visible before any
+    // label is read.
+    function stripes(kind0, n0, kind1, n1, startWith) {
+      // Interleave, beginning with `startWith`; counts are exact, not padded.
+      const out = [];
+      let a = 0, b = 0, turn = startWith;
+      while (a < n0 || b < n1) {
+        if (turn === kind0 && a < n0) { out.push(kind0); a++; turn = kind1; }
+        else if (turn === kind1 && b < n1) { out.push(kind1); b++; turn = kind0; }
+        else if (a < n0) { out.push(kind0); a++; }
+        else { out.push(kind1); b++; }
+      }
+      return out;
+    }
+    // D2NN: propagate, mask, propagate, ..., propagate  (HOPS mixes, n_layers phases)
+    const SKEL_D = stripes("mix", HOPS, "phase", D.n_layers, "mix");
+    // Mesh: each Clements column is a diagonal of phase shifters then its couplers.
+    const SKEL_M = stripes("phase", COLS, "mix", COLS, "phase");
+
+    const skelHits = [];   // {x0,x1,y0,y1,kind,row,idx}
+
+    function drawSkeleton() {
+      const w = skelCanvas.clientWidth || 760;
+      const h = 176;
+      const p = palette(root);
+      const ctx = fitCanvas(skelCanvas, w, h);
+      skelHits.length = 0;
+
+      const padL = Math.min(96, Math.max(64, w * 0.13));
+      const padR = 58;
+      const trackW = w - padL - padR;
+      const barH = 34;
+      const rows = [
+        { y: 34, skel: SKEL_D, name: "D²NN", sub: "free space" },
+        { y: 108, skel: SKEL_M, name: "mesh", sub: "chip" },
+      ];
+
+      for (let r = 0; r < rows.length; r++) {
+        const row = rows[r];
+        label(ctx, row.name, padL - 12, row.y + barH / 2 - 6, p.fg, 12, "right", 600);
+        label(ctx, row.sub, padL - 12, row.y + barH / 2 + 8, p.muted, 10.5, "right");
+
+        const n = row.skel.length;
+        const sw = trackW / n;
+        for (let i = 0; i < n; i++) {
+          const kind = row.skel[i];
+          const x = padL + i * sw;
+          const dim = state.hover && state.hover !== kind;
+          ctx.globalAlpha = dim ? 0.22 : (state.hover === kind ? 1 : 0.82);
+          ctx.fillStyle = kind === "phase" ? p.phase : p.mix;
+          // Hairline gaps only once the stripes are wide enough to show them.
+          const gap = sw > 5 ? 1 : 0;
+          ctx.fillRect(x + gap * 0.5, row.y, Math.max(0.6, sw - gap), barH);
+          ctx.globalAlpha = 1;
+          skelHits.push({ x0: x, x1: x + sw, y0: row.y, y1: row.y + barH, kind, row: r, idx: i });
+        }
+
+        // The square-law detector closes both machines: the one nonlinearity there is.
+        const dx0 = padL + trackW + 8;
+        ctx.strokeStyle = p.fg;
+        ctx.globalAlpha = 0.75;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(dx0, row.y + 4, 26, barH - 8);
+        ctx.globalAlpha = 1;
+        label(ctx, "|E|²", dx0 + 13, row.y + barH / 2, p.fg, 10.5, "center", 600);
+
+        // Depth annotation under each track.
+        const nPhase = row.skel.filter((k) => k === "phase").length;
+        const nMix = row.skel.length - nPhase;
+        label(ctx, `${nPhase} phase layers · ${nMix} mixing layers`,
+          padL, row.y + barH + 13, p.muted, 11, "left");
+      }
+
+      // Rule between the two tracks, broken for its own caption.
+      const capY = 34 + barH + 26;
+      const cap = "same rhythm, different depth";
+      ctx.font = "400 10.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+      const capW = ctx.measureText(cap).width + 16;
+      const mid = padL + trackW / 2;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = p.muted;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padL, capY); ctx.lineTo(mid - capW / 2, capY);
+      ctx.moveTo(mid + capW / 2, capY); ctx.lineTo(padL + trackW, capY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      label(ctx, cap, mid, capY, p.muted, 10.5, "center");
+    }
+
+    const HOVER_TEXT = {
+      phase: () => `<b>Trainable phase.</b> On the left, one of ${D.n_layers} phase masks: `
+        + `${group(N * N)} pixel-wise values of e<sup>iφ</sup>, one per pixel of the field. `
+        + `On the right, one of ${COLS} columns of phase shifters: one e<sup>iφ</sup> per MZI arm. `
+        + "Same operation — a diagonal matrix of unit-modulus entries — at two scales.",
+      mix: () => `<span class="mixw"><b>Fixed mixing.</b></span> On the left, `
+        + `${fmt(D.separation * 1e3, 0)} mm of empty space: diffraction spreads every pixel over `
+        + `±${fmt(REACH, 1)} px of its neighbours. On the right, a column of 50:50 couplers, `
+        + "each blending exactly two adjacent modes. Neither is trainable — the mixing is "
+        + "geometry and hardware, and training only ever moves the phases between them.",
+    };
+    const IDLE_TEXT = "<b>Both machines alternate the same two layers.</b> Everything trainable is a "
+      + "phase; everything that moves information between channels is fixed hardware. That is the "
+      + "whole correspondence — the rest is packaging.";
+
+    function setHover(kind) {
+      if (state.hover === kind) return;
+      state.hover = kind;
+      readout.innerHTML = kind ? HOVER_TEXT[kind]() : IDLE_TEXT;
+      for (const tr of rowEls) {
+        const k = tr.getAttribute("data-kind");
+        tr.className = (k && k === kind) ? (k === "mix" ? "on on-mix" : "on") : "";
+      }
+      drawSkeleton();
+    }
+
+    // ---------------------------------------------------------------- reach draw
+    function drawReach() {
+      const w = reachCanvas.clientWidth || 760;
+      const narrow = w < 620;
+      const h = narrow ? 520 : 300;
+      const p = palette(root);
+      const ctx = fitCanvas(reachCanvas, w, h);
+
+      const hop = state.t * HOPS;           // continuous, so the cone grows smoothly
+      const col = state.t * COLS;
+
+      const gap = narrow ? 26 : 30;
+      const boxW = narrow ? w : (w - gap) / 2;
+      const boxH = narrow ? (h - gap) / 2 : h;
+      const boxes = narrow
+        ? [{ x: 0, y: 0, w: boxW, h: boxH }, { x: 0, y: boxH + gap, w: boxW, h: boxH }]
+        : [{ x: 0, y: 0, w: boxW, h: boxH }, { x: boxW + gap, y: 0, w: boxW, h: boxH }];
+
+      // Each diagram owns its box: the D2NN cone runs off the edge of the field
+      // well before the detector plane, and must not bleed into its neighbour.
+      for (const [box, draw, arg] of [[boxes[0], drawD2NNCone, hop], [boxes[1], drawMeshCone, col]]) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(box.x, box.y, box.w, box.h);
+        ctx.clip();
+        draw(ctx, box, p, arg);
+        ctx.restore();
+      }
+    }
+
+    /** Left: a 1-D cut of the optical stack; x is pixel index, y is propagation. */
+    function drawD2NNCone(ctx, box, p, hop) {
+      const padL = 34, padR = 14, padT = 32, padB = 46;
+      const x0 = box.x + padL, x1 = box.x + box.w - padR;
+      const y0 = box.y + padT, y1 = box.y + box.h - padB;
+      const sx = (px) => x0 + (px / (N - 1)) * (x1 - x0);
+      const sy = (k) => y0 + (k / HOPS) * (y1 - y0);
+
+      label(ctx, `Free space — ${N} pixels across`, box.x, box.y + 9, p.fg, 11.5, "left", 600);
+
+      // Plane rules: the input, each phase mask, the detector.
+      ctx.lineWidth = 1;
+      for (let k = 0; k <= HOPS; k++) {
+        const y = sy(k);
+        const isMask = k > 0 && k < HOPS;
+        ctx.strokeStyle = isMask ? p.phase : p.border;
+        ctx.globalAlpha = isMask ? (k <= hop ? 0.85 : 0.3) : 0.9;
+        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      // The cone: a worst-case source pixel at the far edge of the input window.
+      const src = D.input_window[1];
+      const spread = hop * REACH;
+      ctx.fillStyle = p.mix;
+      ctx.globalAlpha = 0.17;
+      ctx.beginPath();
+      ctx.moveTo(sx(src), sy(0));
+      ctx.lineTo(sx(Math.max(0, src + spread)), sy(hop));
+      ctx.lineTo(sx(Math.max(0, src - spread)), sy(hop));
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = p.mix;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(sx(src), sy(0)); ctx.lineTo(sx(src - spread), sy(hop));
+      ctx.moveTo(sx(src), sy(0)); ctx.lineTo(sx(src + spread), sy(hop));
+      ctx.stroke();
+
+      // Input aperture: the window photonn.train embeds the digit into.
+      ctx.strokeStyle = p.fg;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sx(D.input_window[0]), sy(0)); ctx.lineTo(sx(D.input_window[1]), sy(0));
+      ctx.stroke();
+      label(ctx, "input window", sx(D.input_window[0]), sy(0) - 11, p.muted, 10.5, "left");
+      ctx.fillStyle = p.mix;
+      ctx.beginPath(); ctx.arc(sx(src), sy(0), 3.2, 0, 2 * Math.PI); ctx.fill();
+
+      // Detector patches on the readout plane.
+      const yD = sy(HOPS);
+      const seen = new Set();
+      for (const r of D.regions) {
+        const k = r[2] + ":" + r[3];
+        if (seen.has(k)) continue;
+        seen.add(k);
+        ctx.fillStyle = p.fg;
+        ctx.globalAlpha = 0.55;
+        ctx.fillRect(sx(r[2]), yD, sx(r[3] - 1) - sx(r[2]), 5);
+        ctx.globalAlpha = 1;
+      }
+      label(ctx, "ten detectors", x1, yD + 16, p.muted, 10.5, "right");
+      label(ctx, "px 0", x0, yD + 16, p.muted, 10, "left");
+
+      // The finding: at full depth the cone's near edge lands a hair inside the
+      // farthest detector pixel. Show the margin rather than assert it.
+      if (hop > HOPS - 0.02) {
+        const edge = src - D.reach_px_total;
+        ctx.strokeStyle = p.warn;
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath(); ctx.moveTo(sx(edge), sy(0)); ctx.lineTo(sx(edge), yD + 8); ctx.stroke();
+        ctx.setLineDash([]);
+        // Canvas text cannot wrap, so split the line when the panel is narrow.
+        const lines = (box.w < 400)
+          ? [`cone edge px ${fmt(edge, 1)} · detector px ${D.detector_x[0]}`,
+             `${fmt(D.margin_px, 2)} px to spare`]
+          : [`cone edge px ${fmt(edge, 1)} · first detector px ${D.detector_x[0]}`
+             + ` — ${fmt(D.margin_px, 2)} px to spare`];
+        lines.forEach((line, i) =>
+          label(ctx, line, x0, yD + 30 + i * 13, p.warn, 10.5, "left", 600));
+      } else {
+        label(ctx, `±${fmt(spread, 1)} px after ${fmt(hop, 1)} of ${HOPS} hops`,
+          x0, yD + 30, p.muted, 10.5, "left");
+      }
+
+      ctx.save();
+      ctx.translate(box.x + 12, (y0 + y1) / 2);
+      ctx.rotate(-Math.PI / 2);
+      label(ctx, "propagation →", 0, 0, p.muted, 10, "center");
+      ctx.restore();
+    }
+
+    /** Right: the Clements mesh; x is column, y is mode, marks are real MZIs. */
+    function drawMeshCone(ctx, box, p, col) {
+      const padL = 34, padR = 30, padT = 32, padB = 46;
+      const x0 = box.x + padL, x1 = box.x + box.w - padR;
+      const y0 = box.y + padT, y1 = box.y + box.h - padB;
+      const sx = (c) => x0 + (c / COLS) * (x1 - x0);
+      const sy = (m) => y0 + (m / (MODES - 1)) * (y1 - y0);
+
+      label(ctx, `Chip — ${MODES} waveguide modes`, box.x, box.y + 9, p.fg, 11.5, "left", 600);
+
+      // Waveguides, then the MZIs exactly where MZIMeshLayer puts them: the drawn
+      // brick pattern *is* the trained Clements schedule.
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = p.border;
+      for (let m = 0; m < MODES; m++) {
+        ctx.beginPath(); ctx.moveTo(x0, sy(m)); ctx.lineTo(x1, sy(m)); ctx.stroke();
+      }
+      const cw = (x1 - x0) / COLS;
+      const mh = (y1 - y0) / (MODES - 1);
+      ctx.fillStyle = p.phase;
+      ctx.globalAlpha = 0.34;
+      for (let c = 0; c < COLS; c++) {
+        for (const m of M.columns[c]) {
+          ctx.fillRect(sx(c) + cw * 0.32, sy(m), Math.max(1.1, cw * 0.36), mh);
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // The cone, over the topology: worst-case source is the outermost mode,
+      // which needs MODES-1 columns to reach the far side.
+      const src = MODES - 1;
+      ctx.fillStyle = p.mix;
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.moveTo(sx(0), sy(src));
+      ctx.lineTo(sx(col), sy(Math.max(0, src - col)));
+      ctx.lineTo(sx(col), sy(Math.min(MODES - 1, src + col)));
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Where the slider has got to, so the columns crossed are unambiguous.
+      ctx.strokeStyle = p.muted;
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(sx(col), y0 - 4); ctx.lineTo(sx(col), y1 + 4); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = p.mix;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(sx(0), sy(src));
+      ctx.lineTo(sx(col), sy(Math.max(0, src - col)));
+      ctx.stroke();
+      ctx.fillStyle = p.mix;
+      ctx.beginPath(); ctx.arc(sx(0), sy(src), 3.2, 0, 2 * Math.PI); ctx.fill();
+
+      // Readout: the first ten modes carry the classes.
+      ctx.fillStyle = p.fg;
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(x1 + 4, sy(0) - 2, 5, sy(9) - sy(0) + 4);
+      ctx.globalAlpha = 1;
+      label(ctx, "first 10 modes = the classes", x1 + 9, y1 + 14, p.muted, 10, "right");
+
+      label(ctx, "mode 0", x0, y0 - 10, p.muted, 10, "left");
+      label(ctx, `mode ${MODES - 1}`, x0, y1 + 14, p.muted, 10, "left");
+      const reached = Math.min(MODES, Math.floor(col) + 1);
+      label(ctx, `${reached} of ${MODES} modes after ${Math.floor(col)} of ${COLS} columns`,
+        x0, y1 + 32, p.muted, 10.5, "left");
+    }
+
+    // ------------------------------------------------------------------ readouts
+    function updateStats() {
+      const hop = state.t * HOPS;
+      const col = state.t * COLS;
+      const spread = hop * REACH;
+      const channelsM = Math.min(MODES, Math.floor(col) + 1);
+
+      pos.textContent = `D²NN hop ${fmt(hop, 1)} / ${HOPS}`
+        + ` · mesh column ${Math.floor(col)} / ${COLS}`;
+
+      const done = state.t > 0.999;
+      const items = [
+        {
+          v: `±${fmt(spread, 1)} px`,
+          l: done
+            ? `D²NN reach from any one pixel, after ${HOPS} hops of ${fmt(D.separation * 1e3, 0)} mm`
+            : `D²NN reach from any one pixel, ${fmt(hop, 1)} hops in`,
+          cls: "",
+        },
+        {
+          v: done ? `${fmt(D.margin_px, 1)} px spare` : `${fmt(D.required_px, 0)} px needed`,
+          l: done
+            ? `it needs ${D.required_px} px to link every input pixel to every detector`
+            : `worst input pixel → farthest detector pixel`,
+          cls: done ? "tight" : "",
+        },
+        {
+          v: `${channelsM} of ${MODES}`,
+          l: `mesh reach — one mode per coupler column`,
+          cls: "",
+        },
+        {
+          v: done ? "exactly enough" : `${M.required_columns} columns needed`,
+          l: done
+            ? `${COLS} columns for ${MODES} modes — the Clements bound, full connectivity by construction`
+            : "mode 0 ↔ mode 35 is the worst pair",
+          cls: done ? "full" : "",
+        },
+      ];
+      for (let i = 0; i < items.length; i++) {
+        statEls[i].v.textContent = items[i].v;
+        statEls[i].l.textContent = items[i].l;
+        statEls[i].s.className = "pa-stat " + items[i].cls;
+      }
+    }
+
+    // -------------------------------------------------------------------- events
+    let raf = false;
+    function redraw() {
+      if (raf) return;
+      raf = true;
+      requestAnimationFrame(() => {
+        raf = false;
+        drawSkeleton();
+        drawReach();
+        updateStats();
+      });
+    }
+
+    range.addEventListener("input", () => {
+      state.t = Number(range.value) / 1000;
+      redraw();
+    });
+
+    function hitTest(ev) {
+      const r = skelCanvas.getBoundingClientRect();
+      const x = ev.clientX - r.left, y = ev.clientY - r.top;
+      for (const hbox of skelHits) {
+        if (x >= hbox.x0 && x <= hbox.x1 && y >= hbox.y0 && y <= hbox.y1) return hbox;
+      }
+      return null;
+    }
+    skelCanvas.addEventListener("pointermove", (ev) => {
+      const hbox = hitTest(ev);
+      skelCanvas.style.cursor = hbox ? "pointer" : "default";
+      setHover(hbox ? hbox.kind : null);
+    });
+    skelCanvas.addEventListener("pointerleave", () => setHover(null));
+    // Keyboard/touch fallback: tapping a stripe latches its explanation.
+    skelCanvas.addEventListener("click", (ev) => {
+      const hbox = hitTest(ev);
+      if (hbox) setHover(hbox.kind);
+    });
+
+    // The page theme toggle rewrites the CSS variables; canvases must repaint.
+    if (typeof MutationObserver !== "undefined") {
+      new MutationObserver(redraw).observe(document.documentElement,
+        { attributes: true, attributeFilter: ["data-theme"] });
+    }
+    if (window.matchMedia) {
+      const mq = window.matchMedia("(prefers-color-scheme:dark)");
+      if (mq.addEventListener) mq.addEventListener("change", redraw);
+    }
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(redraw).observe(root);
+    } else {
+      window.addEventListener("resize", redraw);
+    }
+
+    readout.innerHTML = IDLE_TEXT;
+    redraw();
+    return { redraw, setT: (t) => { state.t = t; range.value = String(Math.round(t * 1000)); redraw(); } };
+  }
+
+  const API = { mount };
+  if (typeof module !== "undefined" && module.exports) module.exports = API;
+  if (typeof window !== "undefined") window.PhotonnAnalogy = API;
+})();

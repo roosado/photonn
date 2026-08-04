@@ -41,23 +41,33 @@ def d2nn_bundle(include_asm: bool = True) -> str:
     parts.append(read_web_asset("d2nn_weights.js"))
     parts.append(read_web_asset("d2nn.js"))
     parts.append(read_web_asset("d2nn_demo.js"))
+    parts.append(read_web_asset("d2nn_stage.js"))
     return "\n".join(f"<script>\n{p}\n</script>" for p in parts)
 
 
-def d2nn_mount(container_id: str = "d2nn", **opts) -> str:
+def d2nn_mount(container_id: str = "d2nn", stage_id: str = None, **opts) -> str:
     """Return a ``<script>`` that mounts the widget into ``#container_id``.
 
     ``opts`` are forwarded to ``PhotonnD2NN.mount`` (currently just ``gallery``,
     the index of the digit selected on load).
+
+    With ``stage_id``, the 3D stage is mounted into that element and subscribed to
+    the classifier, so both always show the same digit -- the page has exactly one
+    digit source (the gallery and paint pad), never two out of sync.
     """
     cfg = json.dumps(opts)
-    return (
-        "<script>\n"
-        "  window.addEventListener('DOMContentLoaded', function () {\n"
-        f"    window.PhotonnD2NN.mount(document.getElementById('{container_id}'), {cfg});\n"
-        "  });\n"
-        "</script>"
-    )
+    lines = [
+        "<script>",
+        "  window.addEventListener('DOMContentLoaded', function () {",
+        f"    var demo = window.PhotonnD2NN.mount(document.getElementById('{container_id}'), {cfg});",
+    ]
+    if stage_id:
+        lines += [
+            f"    var stage = window.PhotonnD2NNStage.mount(document.getElementById('{stage_id}'));",
+            "    demo.subscribe(function (res, meta) { stage.setResult(res, meta); });",
+        ]
+    lines += ["  });", "</script>"]
+    return "\n".join(lines)
 
 
 _PAGE = """<!doctype html>
@@ -86,6 +96,7 @@ _PAGE = """<!doctype html>
   <p class="sub">A diffractive neural network trained in simulation, now running its forward
   pass in your browser. Light enters as a digit, diffracts through five phase masks, and
   lands on ten detectors. Nothing is precomputed and nothing is fetched.</p>
+  <div id="stage"></div>
   <div id="d2nn"></div>
   <p class="note">The network reaches <strong>0.7695</strong> on the MNIST test set, so roughly
   one digit in four is misread &mdash; the gallery includes examples it gets wrong. Hand-drawn
@@ -104,6 +115,7 @@ _PAGE = """<!doctype html>
 
 def build_html(**opts) -> str:
     """Return the full standalone demo HTML string."""
+    opts.setdefault("stage_id", "stage")
     return _PAGE.format(bundle=d2nn_bundle(), mount=d2nn_mount(**opts))
 
 

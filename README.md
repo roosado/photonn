@@ -43,6 +43,18 @@ reference logits from PyTorch and asserts **identical predictions** (max class-s
 plus a bilinear resize matching torch's `align_corners=False` convention to 1.2e-7. Accuracy is
 **0.7695**, so the shipped gallery deliberately includes digits the model gets wrong.
 
+Above the per-plane frames, the same page draws the **optical stack in 3D**
+([`apps/web/d2nn_stage.js`](apps/web/d2nn_stage.js)): entrance plane, five masks and detector plane
+as parallel panels along the optical axis, orbitable, with a sweep that walks one wavefront through
+and a toggle between the light arriving on each mask and the mask's own trained phase. An
+orthographic projection of a flat plane is affine, so each panel is one `setTransform` + `drawImage`
+— no WebGL, no library — and parallel non-intersecting panels make back-to-front painting exact. The
+haze between the panels is the field at **intermediate depths, computed not faked**: sub-stepping a
+hop is exact because `H(z₁)·H(z₂) = H(z₁+z₂)` and the band limit is inactive below
+`z_crit = 15.40 mm`, asserted in [`tests/test_propagate.py`](tests/test_propagate.py). No rays are
+drawn — scalar diffraction is not ray optics — and the slices are display-only: the cross-check
+asserts `classify()` logits stay **bit-identical** with slicing enabled.
+
 **Project explainer + live diffraction explorer (done).** A single self-contained explainer page
 tells the whole story — every phase, all figures, and the Phase-1 diffraction explorer embedded and
 running **live in the browser** — deployed to GitHub Pages by `python -m apps.build_site`, which
@@ -63,6 +75,17 @@ matches the D²NN (0.74 vs 0.77) — falling just short only because its N²/2-M
 aggressive input downsampling (the footprint ↔ input-dimensionality trade-off). Train/export with `python -m apps.train_mesh`; verify the
 decompositions and render the mesh topology with `python -m apps.mesh_toolkit`. The boson-sampling
 branch is deferred (open-decision #3).
+
+The same doc also answers **why the two are the same machine**: both are
+`[trainable phase] → [fixed mixing] → … → |E|²`, and they differ on one axis — reach per layer.
+Diffraction mixes **12.5 px** per hop but unsteerably; a coupler mixes exactly **1 mode** but
+individually. That comparison surfaced a result about the D²NN itself: six hops give **74.8 px** of
+reach against **74 px** the design needs, so it is fully connected **by 0.81 px (~1%)** — 33 µm of
+headroom on the 3 mm mask separation, where the mesh's 36 columns for 36 modes is the Clements bound
+and full connectivity is guaranteed by construction. An
+[interactive version](https://roosado.github.io/photonn/#phase3) sits in the Phase-3 section of the site
+(`apps/web/analogy.js`); every number in it is read from the trained models by
+`python -m apps.export_analogy_web` and re-derived in `tests/test_correspondence.py`.
 
 **Phase 4 error budget on the D²NN (done for the D²NN; MZI sources deferred).** Taking CLAUDE.md
 open-decision #2, the fabrication error budget is run against the trained D²NN before the MZI mesh
@@ -115,7 +138,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, and JS-cross-check tests pass (`66 passed`). The browser cross-checks
+Physics, layer, model, handoff, and JS-cross-check tests pass (`86 passed`). The browser cross-checks
 (`test_asm_crosscheck.py`, `test_d2nn_crosscheck.py`) require Node on `PATH`; they skip cleanly if
 Node is absent.
 
@@ -130,8 +153,8 @@ in [`docs/handoff_schema.md`](docs/handoff_schema.md); see `photonn/export.py` (
 
 ```
 photonn/        # Python design side (see CLAUDE.md for per-module responsibilities)
-apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier)
-apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_weights.js (trained classifier)
+apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier) · export_analogy_web.py, analogy_demo.py, analogy_figure.py (free-space↔chip correspondence)
+apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · analogy.js, analogy_geom.js (P3 correspondence)
 site/           # generated, self-contained, GitHub Pages ready: index.html (explainer) · classifier.html (live D²NN)
 tests/          # pytest suite
 docs/           # handoff schema + parameter-source ledger

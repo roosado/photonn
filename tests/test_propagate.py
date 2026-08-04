@@ -98,3 +98,53 @@ def test_check_sampling_flags_aliasing():
 def test_check_sampling_rejects_unknown_method():
     with pytest.raises(ValueError, match="Unknown method"):
         P.check_sampling(Field(np.ones((8, 8)), 1e-6, LAM), 0.1, "nonsense")
+
+
+def _substep(field, z, steps):
+    """Propagate ``z`` as ``steps`` equal sub-hops."""
+    out = field
+    for _ in range(steps):
+        out = P.angular_spectrum(out, z / steps)
+    return out
+
+
+def test_substep_propagation_equals_one_hop_below_z_crit():
+    """Splitting a hop is exact while the band limit is inactive.
+
+    ``H = exp(i 2pi z sqrt(...))`` composes as ``H(z1)*H(z2) = H(z1+z2)``, so the
+    only thing that could break sub-stepping is the *z-dependent* Matsushima band
+    limit -- and below ``z_crit`` it sits above Nyquist and multiplies by 1 either
+    way. This is what licenses the 3D stage (``apps/web/d2nn_stage.js``) to draw
+    the field between the mask planes as physics rather than as a gradient.
+    """
+    n, dx, lam = 128, 8e-6, 532e-9              # the Phase-2 operating point
+    z = 3e-3
+    z_crit = n * dx**2 / lam
+    assert z < z_crit
+
+    launched = V.gaussian_beam(n, dx, lam, 60e-6, z=0.0)
+    whole = P.angular_spectrum(launched, z)
+    for steps in (2, 4, 8):
+        split = _substep(launched, z, steps)
+        err = np.abs(split.data - whole.data).max()
+        assert err < 1e-12 * np.abs(whole.data).max(), (
+            f"{steps} sub-steps drift from one hop by {err:.2e}"
+        )
+
+
+def test_substep_propagation_diverges_above_z_crit():
+    """Past z_crit the band limit is active and z-dependent, so it does not compose.
+
+    Sub-stepping there keeps content a single long hop would have discarded, and
+    the two disagree measurably. Stated as a test so the exactness claim above is
+    known to be a property of the regime, not of the method.
+    """
+    n, dx, lam = 128, 8e-6, 532e-9
+    z_crit = n * dx**2 / lam
+    z = 12 * z_crit
+
+    launched = V.gaussian_beam(n, dx, lam, 20e-6, z=0.0)
+    whole = P.angular_spectrum(launched, z)
+    split = _substep(launched, z, 8)
+    rel = np.abs(split.data - whole.data).max() / np.abs(whole.data).max()
+    assert rel > 1e-3, f"expected sub-stepping to diverge above z_crit; got {rel:.2e}"

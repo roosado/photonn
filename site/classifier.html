@@ -1413,7 +1413,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
  * Three facts make it cheap and honest:
  *
  *  - An orthographic projection of a flat plane is *affine*, so one
- *    ctx.setTransform + drawImage renders a 128x128 plane as a correct
+ *    ctx.transform + drawImage renders a 128x128 plane as a correct
  *    parallelogram. No WebGL, no library.
  *  - The panels are parallel and never intersect, so back-to-front painting is
  *    exact occlusion -- no depth buffer.
@@ -1774,15 +1774,24 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       ];
     }
 
-    /** Draw an N x N bitmap as the plane at depth z, via one affine transform. */
+    /** Draw an N x N bitmap as the plane at depth z, via one affine transform.
+     *
+     * Uses ctx.transform (which *multiplies* onto the current matrix), never
+     * ctx.setTransform (which replaces it). draw() puts a devicePixelRatio scale
+     * on the context, and every other mark here -- plates, outlines, detector
+     * boxes, labels -- is a plain path drawn under it. Replacing the matrix would
+     * silently drop that scale for the light only, shrinking it by 1/dpr toward
+     * the canvas origin while the rig stayed put: invisible at dpr 1, obvious on
+     * any phone or scaled desktop.
+     */
     function drawPlane(ctx, L, bmp, z, alpha) {
       const o = project(L, 0, 0, z);
       const px = project(L, 1, 0, z);
       const py = project(L, 0, 1, z);
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.setTransform((px[0] - o[0]) / N, (px[1] - o[1]) / N,
-                       (py[0] - o[0]) / N, (py[1] - o[1]) / N, o[0], o[1]);
+      ctx.transform((px[0] - o[0]) / N, (px[1] - o[1]) / N,
+                    (py[0] - o[0]) / N, (py[1] - o[1]) / N, o[0], o[1]);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(bmp, 0, 0);
@@ -1913,7 +1922,6 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       // The wavefront itself, while sweeping.
       if (state.front < 1) outline(ctx, L, frontZ, p.warn, 2, 0.95);
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       updateFoot();
     }
 

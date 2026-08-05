@@ -138,7 +138,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, and JS-cross-check tests pass (`86 passed`). The browser cross-checks
+Physics, layer, model, handoff, and JS-cross-check tests pass (`87 passed`). The browser cross-checks
 (`test_asm_crosscheck.py`, `test_d2nn_crosscheck.py`) require Node on `PATH`; they skip cleanly if
 Node is absent.
 

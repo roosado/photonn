@@ -190,7 +190,7 @@ ceiling: one linear optical transform followed by `|·|²` detection.
 
 ## Verification
 
-- `pytest -q` — 86 passing, 0 skips. `tests/test_mzi.py` covers MZI unitarity,
+- `pytest -q` — 87 passing, 0 skips. `tests/test_mzi.py` covers MZI unitarity,
   Clements/Reck reconstruction, the SVD real-matrix layer, `mesh_forward` ==
   matrix multiply, and the torch mesh == NumPy replication.
 - `tests/test_correspondence.py` re-derives every number in the section above —

@@ -97,11 +97,16 @@ function results = run_error_budget(opts)
     % Loss cancels in the ideal readout; it only bites through the photon budget,
     % so it is swept at a low-power (shot-noise-limited) operating point.
     lossDb = [0 1 2 3 4 6 8 10];                 % dB per mask (insertion)
-    detLow = det0; detLow.input_power_w = 1e-13; % just above the shot-noise knee
+    % The operating point must sit just ABOVE the shot-noise knee measured by
+    % sweep 5, or the sweep starts below threshold and measures nothing. The knee
+    % moves with the model: it sat at 0.1 pW for the 12k/15-epoch masks, but the
+    % 60k/40-epoch masks hold to 1 pW and fail at 0.1 pW, so this is 1 pW. If the
+    % detector sweep's knee moves again, move this with it.
+    detLow = det0; detLow.input_power_w = 1e-12;
     cfgs = arrayfun(@(L) struct('loss_insertion_db', L, 'loss_propagation_db_per_cm', 0, ...
         'detector', detLow, 'subset', subset), lossDb, 'UniformOutput', false);
     acc = sweep(h, cfgs, nReal, 7000);
-    f = viz.tolerance_curve(lossDb, acc, 'insertion loss (dB/mask) @ 0.1 pW');
+    f = viz.tolerance_curve(lossDb, acc, 'insertion loss (dB/mask) @ 1 pW');
     saveFig(f, figDir, 'tolerance_loss.png');
     results.loss = pack(lossDb, acc, thresh);
 

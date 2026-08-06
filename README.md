@@ -41,13 +41,13 @@ not versioned). The JavaScript is held to the trained model:
 [`tests/test_d2nn_crosscheck.py`](tests/test_d2nn_crosscheck.py) runs it under Node against
 reference logits from PyTorch and asserts **identical predictions** (max class-score error 5.5e-7)
 plus a bilinear resize matching torch's `align_corners=False` convention to 1.2e-7. Accuracy is
-**0.7695**, so the shipped gallery deliberately includes digits the model gets wrong.
+**0.799**, so the shipped gallery deliberately includes digits the model gets wrong.
 
 Above the per-plane frames, the same page draws the **optical stack in 3D**
 ([`apps/web/d2nn_stage.js`](apps/web/d2nn_stage.js)): entrance plane, five masks and detector plane
 as parallel panels along the optical axis, orbitable, with a sweep that walks one wavefront through
 and a toggle between the light arriving on each mask and the mask's own trained phase. An
-orthographic projection of a flat plane is affine, so each panel is one `setTransform` + `drawImage`
+orthographic projection of a flat plane is affine, so each panel is one `ctx.transform` + `drawImage`
 — no WebGL, no library — and parallel non-intersecting panels make back-to-front painting exact. The
 haze between the panels is the field at **intermediate depths, computed not faked**: sub-stepping a
 hop is exact because `H(z₁)·H(z₂) = H(z₁+z₂)` and the band limit is inactive below
@@ -71,7 +71,7 @@ both reconstructing Haar-random unitaries to **~1e-15** — an SVD layer (U·Σ�
 matrices, and a 36-mode mesh classifier ([`MeshNetwork`](photonn/models.py)) trained on
 6×6-downsampled MNIST. The headline is a [direct comparison to the D²NN](docs/phase3_mesh.md): the
 mesh realises an *arbitrary* linear map with **~31× fewer parameters** (2 628 vs 81 920) and nearly
-matches the D²NN (0.74 vs 0.77) — falling just short only because its N²/2-MZI footprint forces
+matches the D²NN (0.74 vs 0.80) — falling just short only because its N²/2-MZI footprint forces
 aggressive input downsampling (the footprint ↔ input-dimensionality trade-off). Train/export with `python -m apps.train_mesh`; verify the
 decompositions and render the mesh topology with `python -m apps.mesh_toolkit`. The boson-sampling
 branch is deferred (open-decision #3).
@@ -89,7 +89,7 @@ and full connectivity is guaranteed by construction. An
 
 **Phase 4 error budget on the D²NN (done for the D²NN; MZI sources deferred).** Taking CLAUDE.md
 open-decision #2, the fabrication error budget is run against the trained D²NN before the MZI mesh
-is built. The MATLAB as-built side (`photonn-hw/`) reproduces the ideal **77% baseline exactly**
+is built. The MATLAB as-built side (`photonn-hw/`) reproduces the ideal **79.9% baseline exactly**
 through its own forward simulator ([`+model`](photonn-hw/+model)), then applies six error sources
 ([`+err`](photonn-hw/+err): per-pixel phase error, DAC quantization, wavelength drift, thermal
 crosstalk, optical loss, detector/shot noise), sweeps each into tolerance curves via Monte Carlo

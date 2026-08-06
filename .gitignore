@@ -16,6 +16,9 @@ venv/
 *.mat
 data/
 *.pt
+# ...and everything else that lands in exports/ (training + error-budget logs).
+# The numbers that matter are copied into docs/; the raw run output is not versioned.
+exports/
 
 # Generated build artifact for Artifact publishing (index.html is the Pages copy)
 site/_artifact_body.html

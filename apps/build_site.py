@@ -280,7 +280,7 @@ BODY = r"""
     This project trains such networks in an <b>ideal</b> simulation, then asks the only question that
     decides whether they could be built &mdash; <b>how much fabrication error they survive.</b></p>
     <div class="stat-strip">
-      <div class="stat"><span class="v">0.770</span><span class="l">diffractive net · MNIST test accuracy</span></div>
+      <div class="stat"><span class="v">0.799</span><span class="l">diffractive net · MNIST test accuracy</span></div>
       <div class="stat"><span class="v">31&times;</span><span class="l">fewer parameters in the interferometer mesh, at 0.736</span></div>
       <div class="stat"><span class="v">&lt;0.35<small> px</small></span><span class="l">crosstalk blur the design tolerates &mdash; the binding constraint</span></div>
     </div>
@@ -318,7 +318,7 @@ BODY = r"""
       into the input field&rsquo;s amplitude and phase, let it diffract through the stack, and read the
       class by integrating intensity over ten detector zones. The masks are trained by
       back-propagating through the propagator itself &mdash; the optics <em>is</em> the network.</p>
-      <p>It reaches <strong>0.770</strong> on MNIST (chance is 0.10) with 81,920 phase values.
+      <p>It reaches <strong>0.799</strong> on MNIST (chance is 0.10) with 81,920 phase values.
       The optical power budget is real: at 1&nbsp;mW for 1&nbsp;ms, <strong>2.68&times;10<sup>12</sup></strong>
       photons enter and <strong>58%</strong> land inside detector regions &mdash; so shot noise on the
       winning class is ~10<sup>&minus;6</sup>, negligible.</p>
@@ -329,7 +329,7 @@ BODY = r"""
       <a class="link" href="@@CLASSIFIER_HREF@@">classify a digit with light &rarr;</a></p>
     </div>
     <div class="stats col">
-      <div class="s"><div class="v">0.770</div><div class="l">test accuracy (chance 0.10)</div></div>
+      <div class="s"><div class="v">0.799</div><div class="l">test accuracy (chance 0.10)</div></div>
       <div class="s"><div class="v">5 masks</div><div class="l">81,920 trainable phases</div></div>
       <div class="s"><div class="v">532 nm</div><div class="l">N=128, dx=8&micro;m, 3&nbsp;mm gaps</div></div>
       <div class="s"><div class="v">58%</div><div class="l">of input photons captured</div></div>
@@ -353,14 +353,14 @@ BODY = r"""
       singular-value decomposition, <span class="q">U&middot;&Sigma;&middot;V&dagger;</span>. The
       decompositions reconstruct random unitaries to <strong>~10<sup>&minus;15</sup></strong>.</p>
       <p>Trained on the same task it scores <strong>0.736</strong> &mdash; just shy of the diffractive
-      net&rsquo;s 0.770, but with <strong>2,628 parameters against 81,920, about 31&times; fewer.</strong>
+      net&rsquo;s 0.799, but with <strong>2,628 parameters against 81,920, about 31&times; fewer.</strong>
       The gap traces to input downsampling (MNIST compressed to 6&times;6 = 36 modes), a
       footprint&ndash;versus&ndash;input&#8209;dimensionality trade, not a modelling failure. Several of
       its singular values exceed 1 &mdash; physically that needs gain, a documented finding.</p>
     </div>
 
     <div class="stats col">
-      <div class="s"><div class="v">0.736</div><div class="l">accuracy vs 0.770 (D&sup2;NN)</div></div>
+      <div class="s"><div class="v">0.736</div><div class="l">accuracy vs 0.799 (D&sup2;NN)</div></div>
       <div class="s"><div class="v">2,628</div><div class="l">parameters &middot; ~31&times; fewer</div></div>
       <div class="s"><div class="v">36 modes</div><div class="l">72 serial MZI layers</div></div>
       <div class="s"><div class="v">1e&minus;15</div><div class="l">Clements/Reck reconstruction error</div></div>
@@ -418,7 +418,7 @@ BODY = r"""
       model, which re-scores the exact same network under each fabrication imperfection &mdash; phase
       error, DAC quantisation, coupler imbalance, loss, wavelength drift, thermal crosstalk, detector
       noise &mdash; Monte Carlo over realisations, <strong>every magnitude traced to a published
-      measurement.</strong> With zero error injected it reproduces the ideal 0.7695 baseline exactly,
+      measurement.</strong> With zero error injected it reproduces the ideal 0.7990 baseline exactly,
       so any drop below is fabrication, nothing else.</p>
     </div>
     <div class="finding col reveal">
@@ -596,7 +596,7 @@ CLASSIFIER_BODY = r"""
       operator. That is the whole computation, and also its ceiling.</p>
     </div>
     <div class="stats col">
-      <div class="s"><div class="v">0.7695</div><div class="l">test accuracy (chance 0.10)</div></div>
+      <div class="s"><div class="v">0.799</div><div class="l">test accuracy (chance 0.10)</div></div>
       <div class="s"><div class="v">5 masks</div><div class="l">81,920 trained phases</div></div>
       <div class="s"><div class="v">6 hops</div><div class="l">3&nbsp;mm each, 532&nbsp;nm, N=128</div></div>
       <div class="s"><div class="v">&lt;10<sup>&minus;3</sup></div><div class="l">class-score agreement with PyTorch</div></div>
@@ -608,7 +608,7 @@ CLASSIFIER_BODY = r"""
       <div><p class="eyebrow">Read the failures, not just the wins</p>
       <h2>It is wrong about one digit in four</h2></div></div>
     <div class="prose col">
-      <p>The network scores <strong>0.7695</strong> on MNIST, so the gallery deliberately includes
+      <p>The network scores <strong>0.799</strong> on MNIST, so the gallery deliberately includes
       digits it <strong>gets wrong</strong> &mdash; hiding them would misrepresent the model. Watch the
       power share when it fails: a confident answer takes ~25&ndash;30% of the output power, a wrong one
       usually much less.</p>

@@ -98,7 +98,7 @@ _PAGE = """<!doctype html>
   lands on ten detectors. Nothing is precomputed and nothing is fetched.</p>
   <div id="stage"></div>
   <div id="d2nn"></div>
-  <p class="note">The network reaches <strong>0.7695</strong> on the MNIST test set, so roughly
+  <p class="note">The network reaches <strong>0.799</strong> on the MNIST test set, so roughly
   one digit in four is misread &mdash; the gallery includes examples it gets wrong. Hand-drawn
   digits are further out of distribution than MNIST test digits, so expect more errors there;
   that is a fair reading of the model, not a fault in the demo. The masks are the trained

@@ -163,13 +163,13 @@ real detector layout and the real Clements schedule.*
 | | **MZI mesh (36-mode SVD)** | **D²NN (Phase 2)** |
 |---|---|---|
 | Trainable parameters | **2 628** | 81 920 |
-| MNIST accuracy | **0.736** | 0.77 |
+| MNIST accuracy | **0.736** | 0.799 |
 | Depth | 72 MZI layers (serial) | 5 mask planes + 6 propagations |
 | Footprint | 1 260 MZIs, scales as N²/2 | 5 × 128² phase pixels |
 | Input it can ingest | 36 modes (must downsample to 6×6) | 28×28 embedded in a 128² field |
 | Transform | **arbitrary** linear map | linear map **constrained** to phase-masks + diffraction |
 
-The instructive result: the mesh **nearly matches** the D²NN — 0.736 vs 0.77 —
+The instructive result: the mesh **nearly matches** the D²NN — 0.736 vs 0.799 —
 with **~31× fewer parameters**, implementing an *arbitrary* linear map rather than
 a constrained one. It falls slightly short not because its transform is weaker (it
 is strictly more general), but because **input dimensionality is the bottleneck**.

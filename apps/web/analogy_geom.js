@@ -15,7 +15,7 @@
   "use strict";
   var G = {
     "d2nn": {
-      "accuracy": 0.7695,
+      "accuracy": 0.799,
       "detector_x": [
         21,
         106

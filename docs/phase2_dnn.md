@@ -124,9 +124,9 @@ from the exact SI constants `h`, `c`):
 |---|---|
 | Photon energy `hc/λ` | 3.73 × 10⁻¹⁹ J |
 | Photons delivered per inference `N_in` | 2.68 × 10¹² |
-| Fraction captured inside the 10 detectors | 58 % |
+| Fraction captured inside the 10 detectors | 60 % |
 | Photons per detector region (mean) | 1.6 × 10¹¹ |
-| Photons in the winning (predicted) detector (mean) | 4.9 × 10¹¹ |
+| Photons in the winning (predicted) detector (mean) | 5.3 × 10¹¹ |
 
 **Reading it for Phase 4.** With ~5 × 10¹¹ photons in the winning detector, the
 shot-noise relative fluctuation `1/√N ≈ 10⁻⁶` is negligible — at *this* operating
@@ -193,21 +193,37 @@ not a deep nonlinear network.
 Trained with `apps/train_d2nn.py` (grid 128, 5 masks, `both` encoding, seed
 `20260724`), Adam, cross-entropy over the detector logits:
 
-- Train/test subset: 12 000 / 2 000 MNIST, 15 epochs.
-- **Test accuracy: 0.770** (chance = 0.100).
+- Train/test split: the full **60 000** MNIST training images, 2 000 held-out
+  test images, 40 epochs.
+- **Test accuracy: 0.799** (chance = 0.100).
 - Trained parameters: 5 × 128² = 81 920 phase values (only the masks are
   trainable; propagation buffers and detector masks are constants).
 
-The learning curve is the linearity ceiling made visible: validation accuracy
-jumps to **0.62 after one epoch**, then **plateaus near 0.77 from epoch ~8**. The
-flattening is not an optimisation failure — it is the linear-transform + single
-`|·|²` structure hitting its representational limit (see the section above). More
-data/epochs/layers nudge the plateau up, but do not change its character.
+The learning curve is the linearity ceiling made visible. Validation accuracy
+reaches **0.750 after a single epoch**, crosses 0.79 by epoch 7, and then climbs
+only ~0.01 over the remaining 33 epochs, ending in a 0.796–0.805 band:
+
+| epoch | 1 | 2 | 4 | 8 | 16 | 24 | 32 | 40 |
+|---|---|---|---|---|---|---|---|---|
+| val | 0.750 | 0.767 | 0.776 | 0.793 | 0.793 | 0.802 | 0.799 | 0.799 |
+
+The decisive number is not the accuracy but the **train/validation gap: 0.798 vs
+0.799**. After 40 epochs on 60 000 samples, a model with 81 920 free parameters
+still cannot pull ahead on its own training set. It is not data-starved and it is
+not under-optimised — loss was still falling monotonically (1.6027 → 1.2725) while
+validation had stopped moving. That is the linear-transform + single `|·|²`
+structure hitting its representational limit, measured rather than asserted.
+
+**This supersedes an earlier, weaker run** (12 000 images, 15 epochs, 0.7695) that
+had not converged. Feeding it the full training set and 40 epochs was worth
+**+3.0 points** and cost nothing in parameters, geometry or inference time — but
+it bought a plateau, not a trend. Reaching materially higher needs a change to the
+optics (more masks, or wider inter-plane separation for more mixing per hop), not
+more training. The Phase-4 error budget was re-run against these masks and found
+the fabrication tolerances **unchanged** (see `tolerance_d2nn.md`).
 
 The exported handoff is `exports/d2nn_phase2.h5` (schema `0.1.0`, validated on
-write). A full-data run (`--subset-train 60000 --epochs 30`) trains in-scope on a
-laptop CPU and lifts accuracy further, but the ceiling in the linearity section
-still applies.
+write).
 
 ---
 
@@ -251,8 +267,8 @@ figure states that factor on its face.
 
 ```bash
 python -m apps.train_d2nn --quick          # ~15 s smoke config (grid 64)
-python -m apps.train_d2nn                   # deliverable config (grid 128)
-python -m apps.train_d2nn --subset-train 60000 --epochs 30   # full run
+python -m apps.train_d2nn                   # 12k subset, 15 epochs (fast, underfits)
+python -m apps.train_d2nn --subset-train 60000 --epochs 40   # deliverable (~4.5 h CPU)
 python -m apps.visualize_d2nn               # render trained masks + example
 python -m apps.d2nn_demo                    # standalone live classifier + 3D stage
 pytest -q tests/test_layers.py tests/test_models.py tests/test_detect.py tests/test_encode.py

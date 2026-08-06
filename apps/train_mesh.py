@@ -27,7 +27,7 @@ from photonn.train import encode_modes, evaluate, load_dataset, train
 _REPO = Path(__file__).resolve().parent.parent
 
 # D2NN reference (docs/phase2_dnn.md) for the comparison.
-_D2NN = {"params": 5 * 128 * 128, "acc": 0.77, "depth": "5 masks + 6 propagations",
+_D2NN = {"params": 5 * 128 * 128, "acc": 0.799, "depth": "5 masks + 6 propagations",
          "input": "28x28 in a 128x128 field", "footprint": "5 x 128^2 phase pixels"}
 
 

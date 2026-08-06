@@ -320,7 +320,7 @@ BODY = r"""
       back-propagating through the propagator itself &mdash; the optics <em>is</em> the network.</p>
       <p>It reaches <strong>0.799</strong> on MNIST (chance is 0.10) with 81,920 phase values.
       The optical power budget is real: at 1&nbsp;mW for 1&nbsp;ms, <strong>2.68&times;10<sup>12</sup></strong>
-      photons enter and <strong>58%</strong> land inside detector regions &mdash; so shot noise on the
+      photons enter and <strong>60%</strong> land inside detector regions &mdash; so shot noise on the
       winning class is ~10<sup>&minus;6</sup>, negligible.</p>
       <p>And its ceiling is honest: the whole stack, masks and all, is <strong>one linear operator
       followed by a single intensity readout.</strong> With no optical nonlinearity, expressivity is
@@ -332,7 +332,7 @@ BODY = r"""
       <div class="s"><div class="v">0.799</div><div class="l">test accuracy (chance 0.10)</div></div>
       <div class="s"><div class="v">5 masks</div><div class="l">81,920 trainable phases</div></div>
       <div class="s"><div class="v">532 nm</div><div class="l">N=128, dx=8&micro;m, 3&nbsp;mm gaps</div></div>
-      <div class="s"><div class="v">58%</div><div class="l">of input photons captured</div></div>
+      <div class="s"><div class="v">60%</div><div class="l">of input photons captured</div></div>
     </div>
     <figure class="plate reveal">
       <img src="@@FIG_phase2_masks@@" alt="Five trained phase masks and one input-to-output intensity example for the diffractive network" loading="lazy">

@@ -148,3 +148,61 @@ def test_substep_propagation_diverges_above_z_crit():
     split = _substep(launched, z, 8)
     rel = np.abs(split.data - whole.data).max() / np.abs(whole.data).max()
     assert rel > 1e-3, f"expected sub-stepping to diverge above z_crit; got {rel:.2e}"
+
+
+# -- wrap-around (finite window, not finite sampling) --------------------------
+def _centred_square(n, half):
+    data = np.zeros((n, n), dtype=complex)
+    c = n // 2
+    data[c - half:c + half, c - half:c + half] = 1.0
+    return data
+
+
+def test_wraparound_error_is_zero_without_propagation():
+    """z = 0 gives H = 1, so nothing can leave the window and wrap is identically 0."""
+    n, dx, lam = 64, 8e-6, 532e-9
+    f = Field(_centred_square(n, 12), dx, lam)
+    assert P.wraparound_error(f, 0.0) == pytest.approx(0.0, abs=1e-15)
+
+
+def test_wraparound_error_grows_with_distance():
+    """Monotone in z: the farther the field spreads, the more of it re-enters.
+
+    This is the property that makes the diagnostic usable as a ceiling on usable
+    separation -- and it is independent of ``check_sampling``, which reports the
+    whole range below as well sampled.
+    """
+    n, dx, lam = 128, 8e-6, 532e-9
+    f = Field(_centred_square(n, 16), dx, lam)
+    errs = [P.wraparound_error(f, z) for z in (1e-3, 2e-3, 3e-3, 5e-3, 8e-3)]
+
+    assert all(b > a for a, b in zip(errs, errs[1:])), f"not monotone: {errs}"
+    # ...while the sampling criterion passes throughout, which is the point.
+    assert all(P.check_sampling(f, z).ok for z in (1e-3, 8e-3))
+
+
+def test_wraparound_error_falls_as_the_guard_band_grows():
+    """Same z, same grid: a field confined nearer the centre wraps less."""
+    n, dx, lam, z = 128, 8e-6, 532e-9, 4e-3
+    wide = P.wraparound_error(Field(_centred_square(n, 40), dx, lam), z)
+    narrow = P.wraparound_error(Field(_centred_square(n, 8), dx, lam), z)
+    assert narrow < wide, f"narrow aperture wrapped more ({narrow:.2e} vs {wide:.2e})"
+
+
+def test_wraparound_error_estimate_is_stable_in_pad_factor():
+    """The padded reference must itself stop wrapping, or the number means nothing.
+
+    Pad x2 is the working default; it is only trustworthy because x3 and x4 agree
+    with it. Checked at the Phase-2 operating point.
+    """
+    n, dx, lam, z = 128, 8e-6, 532e-9, 3e-3
+    f = Field(_centred_square(n, 32), dx, lam)
+    e2, e3, e4 = (P.wraparound_error(f, z, pad_factor=pf) for pf in (2, 3, 4))
+
+    assert e3 == pytest.approx(e4, rel=0.05)
+    assert e2 == pytest.approx(e4, rel=0.25)
+
+
+def test_wraparound_error_rejects_pad_factor_below_two():
+    with pytest.raises(ValueError, match="pad_factor"):
+        P.wraparound_error(Field(_centred_square(64, 8), 8e-6, 532e-9), 1e-3, pad_factor=1)

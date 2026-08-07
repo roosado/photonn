@@ -226,3 +226,55 @@ def check_sampling(field: Field, z: float, method: str = "angular_spectrum") -> 
         return SamplingReport(ok=ok, method=method, messages=[msg])
 
     raise ValueError(f"Unknown method {method!r}; use 'angular_spectrum', 'fresnel', or 'fraunhofer'.")
+
+
+def wraparound_error(field: Field, z: float, *, pad_factor: int = 2) -> float:
+    """Relative error that circular FFT wrap-around adds to one propagation.
+
+    :func:`angular_spectrum` propagates on the field's own grid with a plain
+    ``fft2``, which is **periodic**: energy that diffracts past one edge reappears
+    on the opposite one, as if the aperture were tiled infinitely. This is a
+    different failure from the one :func:`check_sampling` reports -- that criterion
+    asks whether the transfer function is sampled finely enough (``|z| <= z_crit``)
+    and says nothing about whether the *window* is wide enough to contain the
+    spread. A field can pass ``check_sampling`` comfortably and still be wrapping.
+
+    Propagating the same field on a ``pad_factor * n`` grid of zeros and cropping
+    back to the centre gives the wrap-free reference -- the padding absorbs the
+    energy that would otherwise have re-entered. This returns
+
+        ||E_grid - E_padded|| / ||E_padded||
+
+    over the original window: ``0`` means the grid is wide enough at this ``z``,
+    and order ``1`` means the simulation describes a periodically tiled system
+    rather than free space.
+
+    Within ``|z| <= z_crit`` the Matsushima band limit is inactive on both grids
+    (padding lowers ``du``, which only relaxes it further) and both carry the full
+    Nyquist band ``1/(2*dx)`` set by the shared pitch, so the residual is
+    wrap alone. Beyond ``z_crit`` the two grids band-limit differently and the
+    number conflates wrap with that truncation; it is then an upper bound on wrap
+    rather than a measurement of it.
+
+    **Diagnostic only.** It deliberately does not change :func:`angular_spectrum`:
+    padding the propagator would move every already-published result that was
+    computed without it.
+    """
+    pad_factor = int(pad_factor)
+    if pad_factor < 2:
+        raise ValueError(f"pad_factor must be >= 2 to leave room for the spread; got {pad_factor!r}.")
+
+    n = field.n
+    m = pad_factor * n
+    lo = (m - n) // 2
+
+    padded = np.zeros((m, m), dtype=complex)
+    padded[lo:lo + n, lo:lo + n] = field.data
+
+    reference = angular_spectrum(Field(padded, field.dx, field.wavelength), z).data[lo:lo + n, lo:lo + n]
+    on_grid = angular_spectrum(field, z).data
+
+    denom = np.linalg.norm(reference)
+    if denom == 0.0:
+        return 0.0
+    return float(np.linalg.norm(on_grid - reference) / denom)

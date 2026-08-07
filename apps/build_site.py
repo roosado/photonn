@@ -27,6 +27,7 @@ from PIL import Image
 from apps.analogy_demo import analogy_bundle, analogy_mount
 from apps.d2nn_demo import d2nn_bundle, d2nn_mount
 from apps.diffraction_explorer import explorer_bundle, explorer_mount
+from apps.optics_demo import optics_bundle, optics_mount
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SITE = os.path.join(REPO, "site")
@@ -34,6 +35,7 @@ SITE = os.path.join(REPO, "site")
 # figure key -> path on disk
 FIGURES = {
     "phase2_masks": "docs/figures/phase2_masks.png",
+    "optics_sweep": "docs/figures/optics_sweep.png",
     "mesh_topology": "docs/figures/phase3_mesh_topology.png",
     "tol_phase": "photonn-hw/figures/tolerance_phase.png",
     "tol_quant": "photonn-hw/figures/tolerance_quant.png",
@@ -54,6 +56,9 @@ DEFAULT_OPT = {"fmt": "png", "max_w": 1500}
 # Every other figure is a small line plot and stays PNG at the default width.
 FIG_OPTS = {
     "phase2_masks": {"fmt": "jpeg", "max_w": 1400, "quality": 85},
+    # Six detector-plane colormap panels dominate this plate, so JPEG again; the
+    # line work above them stays legible at 1500 px.
+    "optics_sweep": {"fmt": "jpeg", "max_w": 1500, "quality": 88},
     "mesh_topology": {"fmt": "png", "max_w": 1300},
 }
 
@@ -340,6 +345,70 @@ BODY = r"""
       example: an input digit field diffracting to its detector plane (bottom). Each mask is a fabricated
       surface relief; training only ever adjusted these phase profiles.</figcaption>
     </figure>
+
+    <h3 class="sub-h">What actually sets the ceiling</h3>
+    <div class="prose col">
+      <p>That 0.799 is where <em>this</em> geometry saturates: after 40 epochs on 60,000 images the
+      model still cannot pull ahead on its own training set. It is tempting to read that as the
+      linearity ceiling &mdash; one linear operator, one intensity readout, nothing more to give.
+      <strong>That reading was wrong, and measuring it was worth doing.</strong></p>
+
+      <p>A diffractive layer mixes light sideways by a fixed amount:
+      <span class="q">reach = z&middot;&lambda;/(2&middot;dx&sup2;)</span>, about 12.5&nbsp;px per
+      3&nbsp;mm hop. Every input pixel has to be able to reach every detector &mdash; the worst case
+      here is <strong>74&nbsp;px</strong> &mdash; and below that bound the failure is not statistical
+      but <em>geometric</em>: part of the digit simply cannot influence part of the readout, whatever
+      the masks were trained to. Halve the gap to 1&nbsp;mm and accuracy collapses to
+      <strong>0.480</strong>. Drop the masks entirely and pure diffraction scores 0.124, barely above
+      chance, which is how we know the detector layout is not quietly doing the work.</p>
+
+      <p>But separation and depth turn out to spend the <strong>same budget</strong>. Wrap-around on a
+      finite grid depends only on <em>total</em> reach, not on how it is split &mdash; 2&nbsp;mm over
+      9 hops and 3&nbsp;mm over 6 hops are wrong by an identical 6.2&times;10<sup>&minus;4</sup>. So
+      the honest experiment holds total reach fixed and asks how best to spend it. Trading distance
+      for masks at constant reach, accuracy goes <strong>0.706 &rarr; 0.790 &rarr; 0.831 &rarr;
+      0.852</strong> as the stack deepens from 2 masks to 14.</p>
+
+      <div class="finding">
+        <p class="tag">Finding</p>
+        <p class="body"><strong>The plateau belonged to the geometry, not the architecture.</strong>
+        Fourteen masks reach <strong>0.852</strong> using a third of the data and under a third of the
+        epochs &mdash; and that run had not converged when it stopped. The optics <em>is</em> still one
+        linear operator; five masks just were not enough of one. In a diffractive network mask count is
+        parameter count, so this cannot separate &ldquo;depth helps&rdquo; from &ldquo;more parameters
+        help&rdquo;: what it shows is that at fixed reach and fixed training budget, more masks help
+        substantially.</p>
+      </div>
+
+      <p>The detector planes below make the mechanism visible. At 2 and 5 masks the light arrives as a
+      diffuse interference smear; at 9 and 14 it is gathered into discrete bright squares sitting on
+      the detector patches. Same reach, same physics &mdash; the extra masks buy the ability to
+      <em>route</em> light into the readout instead of merely scattering it there.</p>
+    </div>
+
+    <figure class="plate reveal">
+      <img src="@@FIG_optics_sweep@@" alt="Optics sweep: accuracy against diffractive reach, the reach-budget trade, and detector planes per configuration" loading="lazy">
+      <figcaption><span class="fign">Fig 2</span>Left: accuracy against total reach at the shipped
+      5 masks, with the 74&nbsp;px connectivity bound marked; ringed points are configurations whose
+      <em>simulation</em> is wrap-contaminated, not designs that lost fairly. Right: the same 125&nbsp;px
+      of reach spent on different numbers of masks. Below: the diffraction cone and the detector plane
+      for one fixed digit, worst to best. Ranking protocol (20k&times;12 epochs), so these are not
+      comparable to the 0.799 headline &mdash; the shipped geometry scores 0.771 under the same
+      protocol.</figcaption>
+    </figure>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="optics"></div></div>
+      <p class="cap">Live &mdash; drag the separation and watch the cone grow. The bound trips the
+      moment reach falls under 74&nbsp;px; the plotted accuracies are the measured runs.</p>
+    </div>
+
+    <div class="prose col">
+      <p>Nothing downstream has moved: the trained model, the browser classifier and the error budget
+      below all still describe the 5-mask, 3&nbsp;mm design. Promoting a deeper one is a separate
+      decision, and because separation is geometry it would re-derive the Phase-3 connectivity result
+      too.</p>
+    </div>
   </section>
 
   <section class="phase reveal" id="phase3">
@@ -367,7 +436,7 @@ BODY = r"""
     </div>
     <figure class="plate reveal">
       <img src="@@FIG_mesh_topology@@" alt="MZI mesh topology and the learned singular-value spectrum" loading="lazy">
-      <figcaption><span class="fign">Fig 2</span>Left: the rectangular MZI mesh topology. Right: the
+      <figcaption><span class="fign">Fig 3</span>Left: the rectangular MZI mesh topology. Right: the
       learned singular-value spectrum &mdash; effectively low-rank, only ~15&ndash;20 of 36 values carry
       weight, which is why so few parameters suffice.</figcaption>
     </figure>
@@ -433,17 +502,17 @@ BODY = r"""
       phase is confined against its neighbours.</p>
     </div>
     <div class="plate-grid reveal">
-      <figure class="plate"><img src="@@FIG_tol_crosstalk@@" alt="Accuracy vs thermal/pixel crosstalk" loading="lazy"><figcaption><span class="fign">Fig 3</span>Crosstalk &mdash; the binding constraint.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_phase@@" alt="Accuracy vs per-pixel phase error" loading="lazy"><figcaption><span class="fign">Fig 4</span>Per-pixel phase-setting error.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_detector@@" alt="Accuracy vs detector noise / input power" loading="lazy"><figcaption><span class="fign">Fig 5</span>Detector &amp; shot noise vs input power.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_loss@@" alt="Accuracy vs optical insertion loss" loading="lazy"><figcaption><span class="fign">Fig 6</span>Optical insertion loss.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_wavelength@@" alt="Accuracy vs wavelength drift" loading="lazy"><figcaption><span class="fign">Fig 7</span>Laser wavelength drift.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_quant@@" alt="Accuracy vs DAC bit resolution" loading="lazy"><figcaption><span class="fign">Fig 8</span>DAC / SLM bit resolution.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_confusion@@" alt="As-built confusion matrix at phase sigma 0.35 rad" loading="lazy"><figcaption><span class="fign">Fig 9</span>As-built confusion matrix at &sigma;=0.35&nbsp;rad.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_tol_crosstalk@@" alt="Accuracy vs thermal/pixel crosstalk" loading="lazy"><figcaption><span class="fign">Fig 4</span>Crosstalk &mdash; the binding constraint.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_tol_phase@@" alt="Accuracy vs per-pixel phase error" loading="lazy"><figcaption><span class="fign">Fig 5</span>Per-pixel phase-setting error.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_tol_detector@@" alt="Accuracy vs detector noise / input power" loading="lazy"><figcaption><span class="fign">Fig 6</span>Detector &amp; shot noise vs input power.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_tol_loss@@" alt="Accuracy vs optical insertion loss" loading="lazy"><figcaption><span class="fign">Fig 7</span>Optical insertion loss.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_tol_wavelength@@" alt="Accuracy vs wavelength drift" loading="lazy"><figcaption><span class="fign">Fig 8</span>Laser wavelength drift.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_tol_quant@@" alt="Accuracy vs DAC bit resolution" loading="lazy"><figcaption><span class="fign">Fig 9</span>DAC / SLM bit resolution.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_confusion@@" alt="As-built confusion matrix at phase sigma 0.35 rad" loading="lazy"><figcaption><span class="fign">Fig 10</span>As-built confusion matrix at &sigma;=0.35&nbsp;rad.</figcaption></figure>
     </div>
     <figure class="plate reveal">
       <img src="@@FIG_sensitivity@@" alt="Per-mask spatial sensitivity map" loading="lazy">
-      <figcaption><span class="fign">Fig 10</span>Spatial sensitivity &mdash; where on each mask a phase
+      <figcaption><span class="fign">Fig 11</span>Spatial sensitivity &mdash; where on each mask a phase
       error costs the most accuracy. Sensitivity is not uniform, which is what makes a per-pixel
       tolerance meaningful.</figcaption>
     </figure>
@@ -504,6 +573,8 @@ BODY = r"""
 @@EXPLORER_MOUNT@@
 @@ANALOGY_BUNDLE@@
 @@ANALOGY_MOUNT@@
+@@OPTICS_BUNDLE@@
+@@OPTICS_MOUNT@@
 """
 
 # Shared page chrome: the theme toggle (persisted) and the scroll-reveal observer.
@@ -685,6 +756,9 @@ def render():
     body = body.replace("@@ANALOGY_BUNDLE@@", analogy_bundle())
     # Open on the finished machines: the "0.8 px to spare" reading is the point.
     body = body.replace("@@ANALOGY_MOUNT@@", analogy_mount("analogy", t=1))
+    body = body.replace("@@OPTICS_BUNDLE@@", optics_bundle())
+    # Open at the shipped 3 mm, so the first thing shown is the design as built.
+    body = body.replace("@@OPTICS_MOUNT@@", optics_mount("optics", zMm=3))
 
     full = _document(body.replace("@@CLASSIFIER_HREF@@", CLASSIFIER_PAGE))
     artifact_body = ("<style>\n" + CSS + "\n</style>\n"

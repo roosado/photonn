@@ -199,9 +199,9 @@ Trained with `apps/train_d2nn.py` (grid 128, 5 masks, `both` encoding, seed
 - Trained parameters: 5 × 128² = 81 920 phase values (only the masks are
   trainable; propagation buffers and detector masks are constants).
 
-The learning curve is the linearity ceiling made visible. Validation accuracy
-reaches **0.750 after a single epoch**, crosses 0.79 by epoch 7, and then climbs
-only ~0.01 over the remaining 33 epochs, ending in a 0.796–0.805 band:
+Validation accuracy reaches **0.750 after a single epoch**, crosses 0.79 by epoch
+7, and then climbs only ~0.01 over the remaining 33 epochs, ending in a
+0.796–0.805 band:
 
 | epoch | 1 | 2 | 4 | 8 | 16 | 24 | 32 | 40 |
 |---|---|---|---|---|---|---|---|---|
@@ -211,19 +211,144 @@ The decisive number is not the accuracy but the **train/validation gap: 0.798 vs
 0.799**. After 40 epochs on 60 000 samples, a model with 81 920 free parameters
 still cannot pull ahead on its own training set. It is not data-starved and it is
 not under-optimised — loss was still falling monotonically (1.6027 → 1.2725) while
-validation had stopped moving. That is the linear-transform + single `|·|²`
-structure hitting its representational limit, measured rather than asserted.
+validation had stopped moving. **This geometry is saturated.**
+
+> **Correction (2026-08-06).** An earlier revision of this section read the
+> plateau as "the linear-transform + single `|·|²` structure hitting its
+> representational limit, measured rather than asserted." **That inference was
+> wrong.** The plateau is real, but it belongs to *this geometry* — 5 masks at
+> 3 mm — not to the architecture. The optics sweep below reaches **0.8518** with
+> more masks, using a third of the data and less than a third of the epochs. The
+> theory in the section above is unaffected: the stack really does collapse to one
+> linear operator, and that section already says extra layers "let `M` better
+> approximate a desired linear operator *under the physical constraint*". What was
+> unwarranted was concluding that five masks had already exhausted that
+> approximation. They had not, by at least eight points.
 
 **This supersedes an earlier, weaker run** (12 000 images, 15 epochs, 0.7695) that
 had not converged. Feeding it the full training set and 40 epochs was worth
-**+3.0 points** and cost nothing in parameters, geometry or inference time — but
-it bought a plateau, not a trend. Reaching materially higher needs a change to the
-optics (more masks, or wider inter-plane separation for more mixing per hop), not
-more training. The Phase-4 error budget was re-run against these masks and found
-the fabrication tolerances **unchanged** (see `tolerance_d2nn.md`).
+**+3.0 points** and cost nothing in parameters, geometry or inference time. The
+Phase-4 error budget was re-run against these masks and found the fabrication
+tolerances **unchanged** (see `tolerance_d2nn.md`).
 
 The exported handoff is `exports/d2nn_phase2.h5` (schema `0.1.0`, validated on
 write).
+
+---
+
+## What the optics can still buy
+
+Since the shipped geometry is saturated, the remaining levers are optical. There
+are exactly two — inter-plane separation `z` and mask count `L` — and
+`apps/sweep_optics.py` measures both. Everything electronic is held fixed
+(same encoding, learning rate, batch size, seed); only geometry moves.
+
+![Optics sweep](figures/optics_sweep.png)
+
+**Protocol.** Ranking runs use 20 000 training images for 12 epochs — deliberately
+shorter than the deliverable run, because the question is *which geometry*, not
+*what final accuracy*. **These numbers are not comparable to the 0.799 above**; the
+comparison point is the shipped geometry re-run under the same short protocol,
+which scores **0.7712**. Model selection never touches the frozen 2 000-image test
+set: `train.split_dataset` carves a disjoint 4 000-image validation set out of the
+training split, because that test set is exported in the handoff and every
+downstream accuracy is quoted from it.
+
+### The grid has an aperture, not just a sampling rate
+
+`check_sampling` asks whether the transfer function is sampled finely enough
+(`|z| ≤ z_crit = 15.40 mm`). It says nothing about whether the *window* is wide
+enough to hold the spread — and `propagate.angular_spectrum` uses a plain `fft2`,
+which is periodic, so energy leaving one edge reappears on the other.
+`propagate.wraparound_error` measures that directly, against a zero-padded
+reference:
+
+| z | total reach | 1 hop | over 6 hops | detector logits |
+|---|---|---|---|---|
+| 1 mm | 24.9 px | 4.1e-04 | 3.1e-03 | 6.3e-05 |
+| **3 mm** | 74.8 px | 1.3e-03 | **5.8e-02** | 6.2e-04 |
+| 5 mm | 124.7 px | 2.2e-03 | 1.5e-01 | 9.0e-03 |
+| 8 mm | 199.5 px | 4.6e-03 | 3.0e-01 | 4.2e-02 |
+| 12 mm | 299.3 px | 1.7e-02 | 4.8e-01 | 1.2e-01 |
+
+Three things follow. Wrap **compounds**: a negligible 0.13 % per hop is 5.8 % by
+the detector plane. The **logits survive far better than the field**, because the
+patches sit in the central 75 % while wrapped energy arrives at the edges — which
+is why the shipped result stands despite a few percent of field error. And wrap
+turns out to depend on **total reach alone**, not on how it is split: 2 mm × 9 hops
+and 3 mm × 6 hops both reach 74.8 px and both mis-state the logits by 6.18e-04, to
+three significant figures. Separation and depth therefore draw on **one shared
+reach budget** — about 150 px on a 128 grid at a 2 % logit-error cap, which
+`sweep_optics.py --max-wrap` enforces before spending compute on a configuration.
+
+### Separation: accuracy is bounded by what a detector can see
+
+| z | total reach | val acc | |
+|---|---|---|---|
+| — | 12.5 px | 0.1242 | pure diffraction, 0 trainable parameters |
+| 1 mm | 24.9 px | 0.4798 | under-connected |
+| 2 mm | 49.9 px | 0.7010 | under-connected |
+| 3 mm | 74.8 px | 0.7712 | shipped |
+| **5 mm** | 124.7 px | **0.7903** | best |
+| 8 mm | 199.5 px | 0.7867 | wrap-marginal |
+| 12 mm | 299.3 px | 0.7742 | wrap-marginal |
+
+Accuracy climbs steeply while reach is below the **74 px** worst-case requirement
+(`docs/phase3_mesh.md`) and flattens once it clears it. Below the bound the failure
+is not statistical but geometric: part of the input *cannot* influence part of the
+readout, whatever the masks are trained to. Past 5 mm the curve turns over — partly
+wrap, partly energy spreading beyond the detector patches, and this sweep does not
+separate the two. The zero-mask floor at **0.1242** against chance 0.100 confirms
+the readout geometry is not doing the classifying.
+
+### Depth: the same reach, spent differently
+
+Because reach is shared, "does depth help?" cannot be asked by adding masks at
+fixed `z` — that just spends more budget. Holding total reach at 124.7 px and
+varying the split asks it properly. Every row below has **identical reach and
+identical wrap error** (0.898 %); only the split differs.
+
+| split | masks | parameters | val acc |
+|---|---|---|---|
+| 10 mm × 3 hops | 2 | 32 768 | 0.7055 |
+| 5 mm × 6 hops | 5 | 81 920 | 0.7903 |
+| 3 mm × 10 hops | 9 | 147 456 | 0.8307 |
+| **2 mm × 15 hops** | **14** | **229 376** | **0.8518** |
+
+**Depth is the better use of the budget, by a wide margin** — +8.1 points over the
+shipped geometry under the same protocol, and reached with a third of the data and
+under a third of the epochs of the 0.799 run. The deepest configuration had **not
+converged** when it stopped (train 0.858 vs val 0.852, loss still falling), so
+0.8518 is a floor.
+
+The detector planes in the figure show the mechanism. At 2 and 5 masks the light
+arrives as a diffuse interference pattern smeared across the plane; at 9 and 14 it
+is gathered into discrete bright squares sitting on the detector patches. Identical
+reach, identical physics — the extra masks buy the ability to *route* light into
+the readout rather than merely scatter it there.
+
+**What this does and does not establish.** In a D²NN mask count *is* parameter
+count — 128² phases per mask — so `L` and parameter count cannot be varied
+independently, and no experiment on this architecture separates "depth helps" from
+"more parameters help". The defensible claim is the one measured: *at fixed
+diffractive reach and fixed training budget, more masks help substantially.* Each
+configuration is a single seed, so adjacent points are not separated by more than
+run-to-run noise; the ordering across the range is far larger than that.
+
+Nothing downstream has moved. `exports/d2nn_phase2.h5`, the browser bundle, the
+Phase-4 budget and every quoted 0.799 still describe the 5-mask, 3 mm design —
+promoting a new geometry is a separate decision, and because `z` is geometry it
+would also re-derive the Phase-3 correspondence results (`z_min` = 2.967 mm,
+"connected by 0.81 px").
+
+Reproduce with:
+
+```bash
+python -m apps.sweep_optics --geometry        # wrap table; gates the rest
+python -m apps.sweep_optics --arm z           # separation, ~35 min
+python -m apps.sweep_optics --arm iso         # the reach-budget trade, ~25 min
+python -m apps.sweep_report                   # figure + apps/web/optics_sweep.js
+```
 
 ---
 

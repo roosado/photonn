@@ -1,12 +1,14 @@
-"""Tests for input encoding (photonn/train.py).
+"""Tests for input encoding and dataset splitting (photonn/train.py).
 
-Only the pure encoding is exercised here; the MNIST download in ``load_dataset``
-is intentionally not part of the unit suite (no network in tests).
+Only pure, in-memory operations are exercised here; the MNIST download in
+``load_dataset`` is intentionally not part of the unit suite (no network in
+tests), so ``split_dataset`` is checked against a synthetic Dataset.
 """
+import numpy as np
 import pytest
 import torch
 
-from photonn.train import encode_input
+from photonn.train import Dataset, encode_input, split_dataset
 
 
 def test_encode_schemes_shape_dtype_and_unit_norm():
@@ -45,3 +47,49 @@ def test_encode_both_scheme_couples_amplitude_and_phase():
 def test_encode_rejects_unknown_scheme():
     with pytest.raises(ValueError):
         encode_input(torch.rand(1, 28, 28), scheme="hologram", n=32)
+
+
+# -- train/val splitting -------------------------------------------------------
+def _toy(n=200):
+    rng = np.random.default_rng(0)
+    return Dataset(images=rng.random((n, 28, 28), dtype=np.float32),
+                   labels=rng.integers(0, 10, size=n), name="mnist", split="train")
+
+
+def test_split_dataset_is_disjoint_and_covers_everything():
+    """The whole point: no sample may appear in both halves.
+
+    Two ``load_dataset(subset=...)`` calls would overlap heavily; this must not.
+    """
+    ds = _toy()
+    train, val = split_dataset(ds, n_val=50, seed=7)
+
+    assert len(train) == 150 and len(val) == 50
+    keys = lambda d: {tuple(img.ravel()[:4]) for img in d.images}
+    assert keys(train).isdisjoint(keys(val))
+    assert len(keys(train) | keys(val)) == len(ds)
+
+
+def test_split_dataset_is_deterministic_given_the_seed():
+    ds = _toy()
+    a, _ = split_dataset(ds, n_val=40, seed=3)
+    b, _ = split_dataset(ds, n_val=40, seed=3)
+    c, _ = split_dataset(ds, n_val=40, seed=4)
+
+    assert np.array_equal(a.images, b.images)
+    assert not np.array_equal(a.images, c.images)
+
+
+def test_split_dataset_keeps_images_and_labels_aligned():
+    """A permutation applied to one array and not the other would silently poison training."""
+    ds = _toy(60)
+    lookup = {tuple(img.ravel()[:4]): lab for img, lab in zip(ds.images, ds.labels)}
+    for part in split_dataset(ds, n_val=20, seed=1):
+        for img, lab in zip(part.images, part.labels):
+            assert lookup[tuple(img.ravel()[:4])] == lab
+
+
+@pytest.mark.parametrize("n_val", [0, 200, 500, -1])
+def test_split_dataset_rejects_degenerate_sizes(n_val):
+    with pytest.raises(ValueError, match="n_val"):
+        split_dataset(_toy(), n_val=n_val)

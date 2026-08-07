@@ -99,6 +99,33 @@ def load_dataset(name: str = "mnist", subset: int = None, *, split: str = "train
     return Dataset(images=images, labels=labels, name=name, split=split)
 
 
+def split_dataset(dataset: Dataset, n_val: int, *, seed: int = 0):
+    """Split ``dataset`` into disjoint ``(train, val)`` parts.
+
+    Draws **one** permutation and cuts it, so the two parts share no sample. This
+    is not the same as calling :func:`load_dataset` twice with different
+    ``subset`` sizes: that draws two independent ``rng.choice`` samples, which
+    overlap heavily, and the "validation" set would then be mostly training data.
+
+    Needed because model selection must not read the frozen test set. The test
+    split is exported in the handoff and reused by the MATLAB as-built model, so
+    ranking configurations against it would tune the design on the same 2 000
+    images every downstream accuracy number is later quoted from.
+    """
+    n_total = len(dataset)
+    if not 0 < n_val < n_total:
+        raise ValueError(f"n_val must be in (0, {n_total}); got {n_val!r}.")
+
+    idx = np.random.default_rng(seed).permutation(n_total)
+    val_idx, train_idx = idx[:n_val], idx[n_val:]
+
+    def _take(where):
+        return Dataset(images=dataset.images[where], labels=dataset.labels[where],
+                       name=dataset.name, split=f"{dataset.split}[{len(where)}]")
+
+    return _take(train_idx), _take(val_idx)
+
+
 # -- input encoding ------------------------------------------------------------
 def _embed(images, n, input_frac, device):
     """Resize each image into the central ``input_frac`` window of an n x n grid.

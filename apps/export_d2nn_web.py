@@ -122,7 +122,12 @@ def recover_mnist(hand):
 
 
 def load_model(hand):
-    """Rebuild the trained D2NN from the handoff geometry + the torch checkpoint."""
+    """Rebuild the trained D2NN from the handoff geometry + the torch checkpoint.
+
+    Returns the model and the checkpoint's ``history``, which is where the
+    training protocol in the bundle's ``provenance`` comes from -- the numbers
+    the run actually used, not a description of it written by hand.
+    """
     model = D2NN(
         n=hand["n"], n_layers=hand["n_layers"], dx=hand["dx"],
         wavelength=hand["wavelength"], separation=hand["separation"],
@@ -136,7 +141,35 @@ def load_model(hand):
     got = np.stack([m.phi.detach().numpy() for m in model.masks]).astype("f8")
     if not np.array_equal(got, hand["masks"]):
         raise RuntimeError("checkpoint phase masks differ from the handoff's phase_masks.")
-    return model
+    return model, ckpt.get("history", {})
+
+
+def provenance(history, accuracy, n_test):
+    """Describe where this model's number came from, for the widgets to print.
+
+    The comparison board renders its captions from this block rather than from
+    literals in JavaScript, so promoting a model is regenerating a bundle. Every
+    field is measured here: the accuracy is the run just scored above, and the
+    protocol is read off the checkpoint. A missing field is an error rather than
+    a default -- a plausible-looking wrong protocol is worse than a crash.
+    """
+    missing = [k for k in ("n_samples", "epochs", "seed") if k not in history]
+    if missing:
+        raise RuntimeError(
+            f"checkpoint history lacks {missing}; refusing to write a provenance block "
+            "with invented training parameters."
+        )
+    return {
+        "label": "Shipped",
+        "accuracy": float(accuracy),
+        "scored_on": f"the frozen {n_test:,}-image MNIST test set",
+        "shipped": True,
+        "protocol": {
+            "n_train": int(history["n_samples"]),
+            "epochs": int(history["epochs"]),
+            "seed": int(history["seed"]),
+        },
+    }
 
 
 @torch.no_grad()
@@ -172,7 +205,7 @@ def pick_gallery(labels, preds):
     return correct + picked
 
 
-def write_weights_js(hand, digits28, regions, gallery_idx, labels, path=WEIGHTS_JS):
+def write_weights_js(hand, digits28, regions, gallery_idx, labels, prov, path=WEIGHTS_JS):
     """Write the browser weight bundle."""
     # exp(i*phi) is invariant to a 2*pi wrap, so wrapping in float64 before the
     # float32 cast costs nothing and keeps the mantissa on the part that matters
@@ -194,6 +227,7 @@ def write_weights_js(hand, digits28, regions, gallery_idx, labels, path=WEIGHTS_
         "gallery_b64": _b64(gallery, "u1"),
         "gallery_labels": [int(labels[i]) for i in gallery_idx],
         "gallery_size": 28,
+        "provenance": prov,
     }
     body = ",\n    ".join(f'"{k}": {json.dumps(v)}' for k, v in payload.items())
     js = f"""/*
@@ -208,6 +242,9 @@ def write_weights_js(hand, digits28, regions, gallery_idx, labels, path=WEIGHTS_
  * gallery_b64 : {len(gallery_idx)} x 28 x 28 uint8 MNIST digits from the frozen test set.
  * regions     : ten [y0, y1, x0, x1] detector boxes, class order, from
  *               photonn.detect.default_regions.
+ * provenance  : where this model's number came from. The comparison widget
+ *               renders its captions from this, so no accuracy is written into
+ *               JavaScript and promoting a model is regenerating a bundle.
  * All lengths in metres.
  */
 (function () {{
@@ -273,16 +310,20 @@ def main():
           f"lambda={hand['wavelength']:g} m z={hand['separation']:g} m")
 
     digits28 = recover_mnist(hand)
-    model = load_model(hand)
+    model, history = load_model(hand)
     logits, preds = torch_logits(model, hand["canvases"], hand["phase_scale"])
     labels = hand["labels"]
     acc = float((preds == labels).mean())
     print(f"  torch accuracy on the frozen test set: {acc:.4f}")
 
+    prov = provenance(history, acc, len(labels))
+    print(f"  provenance: {prov['accuracy']} on {prov['scored_on']}, "
+          f"{prov['protocol']['n_train']} images x {prov['protocol']['epochs']} epochs")
+
     regions = default_regions(hand["n"], 10)
     gallery_idx = pick_gallery(labels, preds)
     n_wrong = sum(1 for i in gallery_idx if preds[i] != labels[i])
-    size = write_weights_js(hand, digits28, regions, gallery_idx, labels)
+    size = write_weights_js(hand, digits28, regions, gallery_idx, labels, prov)
     print(f"wrote {os.path.relpath(WEIGHTS_JS, _REPO)} ({size // 1024} KB, "
           f"{len(gallery_idx)} gallery digits, {n_wrong} of them misclassified)")
 

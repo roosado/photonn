@@ -25,6 +25,7 @@ import os
 from PIL import Image
 
 from apps.analogy_demo import analogy_bundle, analogy_mount
+from apps.compare_demo import compare_bundle, compare_mount
 from apps.d2nn_demo import d2nn_bundle, d2nn_mount
 from apps.diffraction_explorer import explorer_bundle, explorer_mount
 from apps.optics_demo import optics_bundle, optics_mount
@@ -765,6 +766,31 @@ OPTICS_BODY = r"""
       the detector patches</strong>. Same reach, same physics &mdash; the extra masks buy the ability to
       <em>route</em> light into the readout rather than merely scatter it there.</p>
     </div>
+
+    <h3 class="sub-h">See it for yourself</h3>
+    <div class="prose col">
+      <p>Both networks run here, live, on whichever digit you pick &mdash; or one you draw &mdash;
+      the shipped one and the 14-mask candidate, the same angular-spectrum physics as the Python
+      reference, cross-checked against PyTorch to better than 10<sup>&minus;3</sup>. The gallery is
+      the one the classifier page uses, deliberately stocked with <strong>six digits the shipped
+      network gets wrong</strong>. The candidate recovers three of them.</p>
+      <p>Both machines are fed by <em>one</em> input, so switching between them compares optics and
+      nothing else. Draw a digit and they follow the stroke together, a full forward pass each per
+      frame.</p>
+      <p>Watch the detector plane rather than the answer. The shipped network spreads light across
+      the whole plane and reads a weak maximum off it; the candidate puts more of the power inside
+      the boxes. That is the extra masks doing their work.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="compare"></div></div>
+      <p class="cap">Live &mdash; two trained models, 762&nbsp;KB of phases together. The candidate is
+      the <em>bigger</em> network at 229k phases against 82k, yet the smaller download (317 vs
+      444&nbsp;KB), because its phases are quantised to 8&nbsp;bits. That is not a shortcut: the
+      Phase-4 budget measures this design as holding accuracy down to <strong>3-bit</strong> phase
+      control, and 8&nbsp;bits is what a real SLM offers, so the quantised model is the more faithful
+      one. Requantising the shipped model the same way would take the pair under 430&nbsp;KB.</p>
+    </div>
   </section>
 
   <section class="phase reveal">
@@ -814,6 +840,8 @@ OPTICS_BODY = r"""
 @@PAGE_SCRIPT@@
 @@OPTICS_BUNDLE@@
 @@OPTICS_MOUNT@@
+@@COMPARE_BUNDLE@@
+@@COMPARE_MOUNT@@
 """
 
 HEAD_META = (
@@ -886,6 +914,9 @@ def render():
     opt = opt.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
     opt = opt.replace("@@OPTICS_BUNDLE@@", optics_bundle())
     opt = opt.replace("@@OPTICS_MOUNT@@", optics_mount("optics", zMm=3))
+    opt = opt.replace("@@COMPARE_BUNDLE@@", compare_bundle())
+    # Open on a digit the shipped model gets wrong and the candidate does not.
+    opt = opt.replace("@@COMPARE_MOUNT@@", compare_mount("compare", gallery=14))
     opt = opt.replace("@@CLASSIFIER_HREF@@", CLASSIFIER_PAGE)
     optics = _document(opt).replace(
         "<title>photonn &mdash; photonic neural networks &amp; fabrication tolerance</title>",

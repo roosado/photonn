@@ -110,8 +110,9 @@
     ],
     "gallery_size": 28,
     "provenance": {
+      "label": "Candidate",
       "config": "z2mm_L14",
-      "val_acc": 0.85175,
+      "accuracy": 0.85175,
       "protocol": {
         "epochs": 12,
         "n_train": 20000,
@@ -121,9 +122,10 @@
       },
       "reach_px_total": 124.6875,
       "n_params": 229376,
-      "scored_on": "held-out validation split carved from the MNIST train set",
+      "scored_on": "a held-out validation split carved from the MNIST train set",
       "not_scored_on": "the frozen 2000-image test set",
-      "shipped": false
+      "shipped": false,
+      "caveat": "a ranking run, never scored on the test set, and not converged"
     }
   };
   if (typeof module !== "undefined" && module.exports) module.exports = W;

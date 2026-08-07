@@ -1,25 +1,37 @@
 /*
- * d2nn_compare.js -- the same digit through two trained machines.
+ * d2nn_compare.js -- the same digit through several trained machines.
  *
  * The optics sweep found that a fixed reach budget spent on more masks beats the
- * same budget spent on distance. This runs both models on one digit so the
- * difference can be watched rather than read: pick a digit, and each column
- * shows that network's detector plane, where it thinks the light landed, and how
- * much of the output power it put in the winning box.
+ * same budget spent on distance. This runs the models on one digit so the
+ * difference can be watched rather than read: pick a digit or draw one, and each
+ * column shows that network's detector plane, where it thinks the light landed,
+ * and how much of the output power it put in the winning box.
  *
  * The interesting panel is the detector plane. The shipped 5-mask network throws
  * a diffuse interference pattern across the whole plane and reads a weak maximum
- * off it; the 14-mask candidate gathers light into the detector boxes themselves.
- * Same physics, same reach, more masks.
+ * off it; the 14-mask candidate gathers light into the detector boxes
+ * themselves. Same physics, same reach, more masks.
  *
- * Both networks are built by d2nn.js:buildNet from their own weight bundles, and
- * both are cross-checked against torch (< 1e-3 on logits). The candidate is NOT
- * a shipped model -- it comes from the ranking sweep, has never been scored on
- * the frozen test set, and had not converged. The widget prints that next to it
- * rather than leaving its number to be read as an accuracy.
+ * Two structural rules hold this widget together:
+ *
+ *   1. **One input, N models.** The gallery and the draw pad live in
+ *      digit_source.js, not here, so every column is fed the identical digit by
+ *      construction rather than by care.
+ *   2. **No model metadata in this file.** Every caption -- the column title,
+ *      the accuracy, what it was scored on, the unshipped caveat, even the
+ *      orange border -- is rendered from the bundle's own `provenance` block.
+ *      Promoting a model is regenerating a bundle; this widget does not change.
+ *      There is deliberately no accuracy literal anywhere below, and a test
+ *      enforces that.
+ *
+ * Models are built by d2nn.js:buildNet from their own weight bundles, and each
+ * is cross-checked against torch (< 1e-3 on logits) by tests/.
  *
  * Usage:  window.PhotonnD2NNCompare.mount(containerElement, opts)
- * opts (all optional): { gallery: <initial digit index> }
+ * opts (all optional):
+ *   models  -- array of weight bundles, in column order. Defaults to the shipped
+ *              bundle plus the sweep candidate.
+ *   gallery -- index of the digit selected on mount
  */
 (function () {
   "use strict";
@@ -27,6 +39,12 @@
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
     : (typeof require !== "undefined" ? require("./d2nn.js") : null);
+  const SOURCE = (typeof window !== "undefined" && window.PhotonnDigitSource)
+    ? window.PhotonnDigitSource
+    : (typeof require !== "undefined" ? require("./digit_source.js") : null);
+  const SHIPPED_W = (typeof window !== "undefined" && window.D2NN_WEIGHTS)
+    ? window.D2NN_WEIGHTS
+    : (typeof require !== "undefined" ? require("./d2nn_weights.js") : null);
   const SWEEP_W = (typeof window !== "undefined" && window.D2NN_SWEEP_WEIGHTS)
     ? window.D2NN_SWEEP_WEIGHTS
     : (typeof require !== "undefined" ? require("./d2nn_sweep_weights.js") : null);
@@ -45,12 +63,6 @@
 .dc-box h4{margin:0 0 3px;font-size:12px;color:var(--pe-muted);font-weight:600;
   text-transform:uppercase;letter-spacing:.04em;}
 .dc-box .sub{margin:0 0 12px;font-size:13px;color:var(--pe-muted);max-width:70ch;}
-.dc-strip{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 0;}
-.dc-strip canvas{width:44px;height:44px;border:1px solid var(--pe-border);border-radius:5px;
-  cursor:pointer;background:#000;transition:border-color .12s,transform .12s;}
-.dc-strip canvas:hover{border-color:var(--pe-accent);}
-.dc-strip canvas[aria-selected=true]{border-color:var(--pe-accent);border-width:2px;
-  transform:translateY(-2px);}
 .dc-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;}
 .dc-col{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
   padding:13px 15px;display:flex;flex-direction:column;gap:9px;}
@@ -69,7 +81,7 @@
 .dc-note{font-size:11.5px;color:var(--pe-muted);border-top:1px solid var(--pe-border);
   padding-top:9px;margin:0;}
 .dc-note b{color:var(--pe-warn);}
-.dc-truth{font-size:13px;color:var(--pe-muted);margin:10px 0 0;}
+.dc-truth{font-size:13px;color:var(--pe-muted);margin:12px 0 0;}
 .dc-truth b{color:var(--pe-fg);}
 `;
 
@@ -79,19 +91,6 @@
     el.id = STYLE_ID;
     el.textContent = CSS;
     document.head.appendChild(el);
-  }
-
-  /** Draw a 28x28 digit into a small canvas. */
-  function drawDigit(canvas, digit, size) {
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    const im = ctx.createImageData(size, size);
-    for (let i = 0; i < size * size; i++) {
-      const v = Math.max(0, Math.min(1, digit[i])) * 255;
-      im.data[i * 4] = v; im.data[i * 4 + 1] = v; im.data[i * 4 + 2] = v;
-      im.data[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(im, 0, 0);
   }
 
   /**
@@ -131,45 +130,96 @@
     }
   }
 
+  // ------------------------------------------------------------- provenance
+  // Everything below turns a bundle's provenance block into text. Nothing here
+  // knows which model it is describing, and no number is written down.
+
+  const fmtAcc = (x) => Number(x).toFixed(4);
+  const fmtInt = (x) => Number(x).toLocaleString();
+
+  /** "60,000 images, 40 epochs", or null if the bundle did not record a protocol. */
+  function protocolPhrase(prov) {
+    const p = prov.protocol;
+    if (!p || p.n_train == null || p.epochs == null) return null;
+    return `${fmtInt(p.n_train)} images, ${p.epochs} epochs`;
+  }
+
+  /** "5 masks · 3 mm gaps · 82k phases" -- read off the weights, not the prose. */
+  function geomLine(net) {
+    const w = net.weights;
+    return `${w.n_layers} masks · ${(w.separation * 1e3).toFixed(0)} mm gaps · `
+      + `${(w.n_layers * net.N * net.N / 1000).toFixed(0)}k phases`;
+  }
+
+  /**
+   * The caption under a column's verdict.
+   *
+   * A model a visitor can operate invites its number being read as an accuracy,
+   * so an unshipped model states what its number is not. `reference` is the
+   * shipped model in the same board, if there is one -- that is where "not
+   * comparable to X" gets X, rather than from a literal.
+   */
+  function noteFor(prov, reference) {
+    if (!prov || prov.accuracy == null) return "";
+    const run = protocolPhrase(prov);
+    const on = prov.scored_on ? ` on ${prov.scored_on}` : "";
+
+    if (prov.shipped === false) {
+      let s = `<b>Not shipped.</b> ${fmtAcc(prov.accuracy)}${on}`;
+      if (run) s += ` (${run})`;
+      if (prov.caveat) s += ` &mdash; ${prov.caveat}`;
+      s += ".";
+      if (reference && reference.accuracy != null) {
+        s += ` Not comparable to ${fmtAcc(reference.accuracy)}.`;
+      }
+      return s;
+    }
+    let s = `Accuracy <b style="color:inherit">${fmtAcc(prov.accuracy)}</b>${on}`;
+    if (run) s += ` (${run})`;
+    return s + ".";
+  }
+
   function mount(container, opts) {
     opts = opts || {};
-    if (!NET || !SWEEP_W) throw new Error("d2nn_compare.js needs d2nn.js and d2nn_sweep_weights.js");
+    if (!NET || !SOURCE) {
+      throw new Error("d2nn_compare.js needs d2nn.js and digit_source.js");
+    }
     injectStyle();
 
-    const shipped = NET;
-    const candidate = NET.buildNet(SWEEP_W);
-    const prov = SWEEP_W.provenance || {};
+    const bundles = opts.models || [SHIPPED_W, SWEEP_W];
+    if (!bundles.length || bundles.some((w) => !w)) {
+      throw new Error("d2nn_compare.js needs at least one weights bundle");
+    }
 
-    const models = [
-      { net: shipped, cls: "ship", name: "Shipped",
-        geom: `${shipped.weights.n_layers} masks · `
-            + `${(shipped.weights.separation * 1e3).toFixed(0)} mm gaps · `
-            + `${(shipped.weights.n_layers * shipped.N * shipped.N / 1000).toFixed(0)}k phases`,
-        note: "Test accuracy <b style=\"color:inherit\">0.799</b> on the frozen 2,000-digit test set." },
-      { net: candidate, cls: "cand", name: "Candidate",
-        geom: `${candidate.weights.n_layers} masks · `
-            + `${(candidate.weights.separation * 1e3).toFixed(0)} mm gaps · `
-            + `${(candidate.weights.n_layers * candidate.N * candidate.N / 1000).toFixed(0)}k phases`,
-        note: `<b>Not shipped.</b> ${(prov.val_acc || 0).toFixed(4)} on a held-out validation `
-            + `split after ${prov.protocol ? prov.protocol.epochs : "?"} epochs on `
-            + `${prov.protocol ? prov.protocol.n_train.toLocaleString() : "?"} images &mdash; a ranking `
-            + `run, never scored on the test set, and not converged. Not comparable to 0.799.` },
-    ];
+    const models = bundles.map((W, i) => {
+      // The default export is already built around the shipped bundle; reusing
+      // it saves rebuilding a megabyte of precomputed cos/sin for no reason.
+      const net = (W === NET.weights) ? NET : NET.buildNet(W);
+      const prov = W.provenance || {};
+      return {
+        net, prov,
+        name: prov.label || `Model ${i + 1}`,
+        cls: prov.shipped === false ? "cand" : "ship",
+      };
+    });
+    // "Not comparable to X" needs an X: the shipped model on this board, if any.
+    const reference = (models.find((m) => m.prov.shipped) || {}).prov || null;
+    const lead = models[0].net;
 
     const root = document.createElement("div");
-    root.className = "dc-root";
+    root.className = "pe-root dc-root";
     root.innerHTML = `
       <div class="dc-box">
         <h4>Pick a digit</h4>
-        <p class="sub">Sixteen from the frozen MNIST test set. Six of them the shipped
-        network gets <em>wrong</em> &mdash; those are the interesting ones.</p>
-        <div class="dc-strip"></div>
+        <p class="sub">${lead.nGallery} from the frozen MNIST test set, deliberately stocked
+        with ones the shipped network gets <em>wrong</em> &mdash; those are the interesting
+        ones. Or draw your own and watch both machines follow the stroke.</p>
+        <div class="dc-source"></div>
         <p class="dc-truth"></p>
       </div>
       <div class="dc-cols"></div>`;
     container.appendChild(root);
 
-    const strip = root.querySelector(".dc-strip");
     const truth = root.querySelector(".dc-truth");
     const cols = root.querySelector(".dc-cols");
 
@@ -177,52 +227,52 @@
       const el = document.createElement("div");
       el.className = "dc-col " + m.cls;
       el.innerHTML = `
-        <div><span class="name">${m.name}</span><br><span class="geom">${m.geom}</span></div>
+        <div><span class="name">${m.name}</span><br><span class="geom">${geomLine(m.net)}</span></div>
         <canvas class="plane"></canvas>
         <div class="dc-verdict"><span class="big"></span><span class="share"></span></div>
-        <p class="dc-note">${m.note}</p>`;
+        <p class="dc-note">${noteFor(m.prov, m.prov === reference ? null : reference)}</p>`;
       cols.appendChild(el);
       m.el = el;
+      m.plane = el.querySelector("canvas.plane");
+      m.big = el.querySelector(".big");
+      m.share = el.querySelector(".share");
     }
 
-    let selected = Math.min(opts.gallery || 0, shipped.nGallery - 1);
-
-    function render() {
-      const digit = shipped.galleryDigit(selected);
-      const label = shipped.galleryLabel(selected);
-      truth.innerHTML = `True label: <b>${label}</b>`;
+    /** Run one digit through every column. `label` is null for a drawing. */
+    function render(digit, meta) {
+      const label = meta ? meta.label : null;
+      truth.innerHTML = label == null
+        ? "Your drawing &mdash; no ground truth to score against."
+        : `True label: <b>${label}</b>`;
 
       for (const m of models) {
         const res = m.net.classify(digit);
-        drawPlane(m.el.querySelector("canvas.plane"), m.net, res);
-        const big = m.el.querySelector(".big");
-        big.textContent = res.pred;
-        big.className = "big " + (res.pred === label ? "ok" : "bad");
-        m.el.querySelector(".share").textContent =
+        drawPlane(m.plane, m.net, res);
+        m.big.textContent = res.pred;
+        m.big.className = "big " + (label == null ? "" : (res.pred === label ? "ok" : "bad"));
+        m.share.textContent =
           `${(res.fractions[res.pred] * 100).toFixed(1)}% of output power`
-          + (res.pred === label ? "" : ` — true ${label} got ${(res.fractions[label] * 100).toFixed(1)}%`);
+          + (label == null || res.pred === label
+            ? ""
+            : ` — true ${label} got ${(res.fractions[label] * 100).toFixed(1)}%`);
       }
     }
 
-    for (let k = 0; k < shipped.nGallery; k++) {
-      const c = document.createElement("canvas");
-      c.title = "MNIST test digit, true label " + shipped.galleryLabel(k);
-      drawDigit(c, shipped.galleryDigit(k), shipped.DIGIT);
-      c.addEventListener("click", () => {
-        selected = k;
-        for (const other of strip.children) other.setAttribute("aria-selected", "false");
-        c.setAttribute("aria-selected", "true");
-        render();
-      });
-      c.setAttribute("aria-selected", String(k === selected));
-      strip.appendChild(c);
-    }
+    const source = SOURCE.mount(root.querySelector(".dc-source"), {
+      net: lead,
+      gallery: opts.gallery,
+      hint: "Drawn digits are re-centred and scaled the way MNIST was built, then sent "
+        + "through both machines.",
+    });
+    source.subscribe(render);
 
-    render();
-    return { render };
+    return { render: () => { const c = source.current(); if (c) render(c.digit, c.meta); }, source };
   }
 
-  const API = { mount };
+  // noteFor and geomLine are exported so the "captions come from provenance,
+  // never from a literal" rule can be tested without a DOM -- there is no test
+  // runner with jsdom here, and that rule is the point of the widget.
+  const API = { mount, noteFor, geomLine, protocolPhrase };
   if (typeof window !== "undefined") window.PhotonnD2NNCompare = API;
   if (typeof module !== "undefined") module.exports = API;
 })();

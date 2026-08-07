@@ -5,6 +5,9 @@ Mirrors :mod:`apps.d2nn_demo`, but carries *two* trained networks: the shipped
 8-bit (see :mod:`apps.export_sweep_web`), so the pair costs less than the shipped
 model alone did as float32.
 
+Both are fed by one ``digit_source.js`` -- the gallery and draw pad are a
+separate widget precisely so the models cannot be shown different inputs.
+
 Run ``python -m apps.compare_demo`` to write ``compare_demo.html`` next to this
 file -- a standalone page carrying just the comparison.
 """
@@ -23,6 +26,7 @@ def compare_bundle() -> str:
         read_web_asset("d2nn_weights.js"),
         read_web_asset("d2nn_sweep_weights.js"),
         read_web_asset("d2nn.js"),
+        read_web_asset("digit_source.js"),
         read_web_asset("d2nn_compare.js"),
     ]
     return "\n".join(f"<script>\n{p}\n</script>" for p in parts)

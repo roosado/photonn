@@ -109,15 +109,20 @@ def main():
         "gallery_b64": shipped["gallery_b64"],
         "gallery_labels": shipped["gallery_labels"],
         "gallery_size": shipped["gallery_size"],
+        # Same shape as the shipped bundle's block (apps/export_d2nn_web.py:
+        # provenance), so d2nn_compare.js renders both columns' captions through
+        # one code path and neither model's number lives in JavaScript.
         "provenance": {
+            "label": "Candidate",
             "config": args.config,
-            "val_acc": run["val_acc"],
+            "accuracy": float(run["val_acc"]),
             "protocol": run["protocol"],
             "reach_px_total": run["reach_px_total"],
             "n_params": run["n_params"],
-            "scored_on": "held-out validation split carved from the MNIST train set",
+            "scored_on": "a held-out validation split carved from the MNIST train set",
             "not_scored_on": "the frozen 2000-image test set",
             "shipped": False,
+            "caveat": "a ranking run, never scored on the test set, and not converged",
         },
     }
 

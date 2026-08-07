@@ -116,6 +116,7 @@ def test_candidate_is_labelled_unshipped(bundle):
     prov = bundle.get("provenance", {})
     assert prov.get("shipped") is False
     assert "not_scored_on" in prov and "test set" in prov["not_scored_on"]
+    assert prov["caveat"], "an unshipped model must say why its number is not a headline"
     assert prov["protocol"]["n_train"] < 60000, "provenance claims the full training set"
 
 

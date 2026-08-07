@@ -769,11 +769,14 @@ OPTICS_BODY = r"""
 
     <h3 class="sub-h">See it for yourself</h3>
     <div class="prose col">
-      <p>Both networks run here, live, on whichever digit you pick &mdash; the shipped one and the
-      14-mask candidate, the same angular-spectrum physics as the Python reference, cross-checked
-      against PyTorch to better than 10<sup>&minus;3</sup>. The gallery is the one the classifier
-      page uses, deliberately stocked with <strong>six digits the shipped network gets wrong</strong>.
-      The candidate recovers three of them.</p>
+      <p>Both networks run here, live, on whichever digit you pick &mdash; or one you draw &mdash;
+      the shipped one and the 14-mask candidate, the same angular-spectrum physics as the Python
+      reference, cross-checked against PyTorch to better than 10<sup>&minus;3</sup>. The gallery is
+      the one the classifier page uses, deliberately stocked with <strong>six digits the shipped
+      network gets wrong</strong>. The candidate recovers three of them.</p>
+      <p>Both machines are fed by <em>one</em> input, so switching between them compares optics and
+      nothing else. Draw a digit and they follow the stroke together, a full forward pass each per
+      frame.</p>
       <p>Watch the detector plane rather than the answer. The shipped network spreads light across
       the whole plane and reads a weak maximum off it; the candidate puts more of the power inside
       the boxes. That is the extra masks doing their work.</p>

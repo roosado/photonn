@@ -89,8 +89,89 @@ curves, a confusion matrix, and a spatial sensitivity map.
    to five times more data might have carried finer, more brittle structure. They
    did not.
 
+   > **Retracted as a general claim, 2026-08-08.** It holds for *more training*
+   > and does not generalise to *more optics*. A 56-mask candidate scoring 0.9040
+   > is measurably more fragile on three of six sources — see
+   > [A deeper network is a more fragile one](#a-deeper-network-is-a-more-fragile-one)
+   > below. The distinction is that the 12k → 60k retrain changed only the fitting,
+   > not the geometry; depth changes the geometry.
+
 **Ranking (most to least binding): crosstalk ≫ phase error > detector power ≈
 loss (coupled) ≫ wavelength ≈ quantization.** Unchanged from the 12k model.
+
+## A deeper network is a more fragile one
+
+*Measured 2026-08-08 against an unshipped candidate; nothing below describes the
+shipped design.* The optics sweep found that spending a fixed diffractive reach
+budget on more masks buys a great deal of accuracy (`phase2_dnn.md`), and a
+**56-mask, 0.5263 mm** network trained on the full 60 000 for 25 epochs reaches
+**0.9040** on the frozen test set against the shipped 5-mask model's 0.7990. The
+budget was re-run against it — via `run_error_budget(opts)` with `opts.handoffPath`,
+so the shipped handoff was never touched — to ask what that accuracy costs.
+
+Every edge re-measured against the candidate's own stricter bar (0.8588):
+
+| Source | Shipped, 5 masks | Candidate, 56 masks | Change |
+|---|---|---|---|
+| **Thermal / pixel crosstalk** | holds 0.25 px, fails 0.5 | holds **0.25 px**, fails 0.5 | unchanged — still binding |
+| Per-pixel phase error | holds 0.3 rad, fails 0.5 | holds **0.15 rad**, fails 0.2 | **2× tighter** |
+| DAC / SLM resolution | holds 3 bits, fails 2 | holds **4 bits**, fails 3 | **1 bit tighter** |
+| Optical loss @ knee | holds 1 dB/mask (5 dB total) | holds **0.214 dB/mask** (12 dB total) | **4.7× tighter per mask** |
+| Detector / shot noise | holds 1 pW, fails 0.1 pW | holds **0.1 pW**, fails 0.01 pW | 10× looser |
+| Wavelength drift | holds 10 nm, fails 20 | holds **20 nm**, fails 30 | 2× looser |
+
+**+10.5 points of accuracy costs 2× phase precision, one more DAC bit and 4.7×
+tighter per-element loss.** That is the trade this project exists to quantify, and
+it is a more useful result than a clean win would have been.
+
+Three readings worth separating:
+
+1. **The binding constraint does not move.** Crosstalk fails at the same 0.25 px
+   edge, and a standard LCoS fringing field (~1 px) destroys either design. Depth
+   neither helps nor hurts the thing that already made this unbuildable on an SLM.
+
+2. **The two sources that loosened both follow from photon capture.** The deep
+   stack routes **79.1 %** of input photons into the detector boxes against ~60 %
+   for the shipped design — the same "route rather than scatter" mechanism the
+   accuracy gain comes from. Better SNR at the readout drops the shot-noise knee a
+   decade and buys wavelength margin. The design became more robust exactly where
+   it already passed by nine orders of magnitude.
+
+3. **Loss points opposite ways in its two units, and the per-element one governs.**
+   In total the candidate tolerates *more* attenuation — 12 dB against 5 dB, again
+   from the lower knee — but that larger budget is divided among 11× more elements,
+   so the per-mask requirement tightens to 0.214 dB. A datasheet quotes per element,
+   and 0.214 dB/mask sits at the optimistic end of the 0.2–1 dB realistic range in
+   [`parameter_sources.md`](parameter_sources.md). Loss moves from comfortable to
+   marginal.
+
+**Required precision for the candidate**, to hold ≥ 0.8588: crosstalk ≤ 0.25 px,
+phase ≤ 0.15 rad (λ/42), ≥ 4-bit phase control, ≤ 0.214 dB per mask if operating at
+the shot-noise knee, ≥ 0.1 pW × 1 ms, wavelength ≤ 20 nm.
+
+*Not modelled:* `z` falls from 3 mm to 0.53 mm, so a ±10 µm plane-spacing error
+goes from 0.33 % to 1.9 % of the gap, and past ~40 masks the stack is better
+described as a volume element than as discrete plates. The budget covers device
+errors only and has nothing on geometry, so alignment and calibration — still
+queued as error sources — plausibly bind this design before anything above does.
+**This is flagged, not measured.**
+
+### Two methodological corrections this run forced
+
+- **The loss sweep must scale its range with depth.** It swept 0–10 dB *per mask*,
+  a range calibrated for 5 masks. At 56 masks the first non-zero point is 56 dB
+  total — a factor of 400 000 in power — so every point sat far below the
+  shot-noise knee and read chance. It now spans a fixed 0–30 dB of **total** loss
+  and divides by mask count, which is meaningful at any depth. The earlier reading
+  of "1 dB/mask" for the candidate was an artifact and is not quoted anywhere.
+- **The operating point stayed at 1 pW, and that took checking.** The knee moved
+  down to 0.1 pW, and the note in `run_error_budget.m` said to follow it. Following
+  it would have been wrong: at 0.1 pW the zero-loss baseline is already 0.8851
+  against a 0.8588 bar, so the sweep would measure the knee rather than the loss.
+- **The sensitivity map now costs `nMasks × gBlocks²` evaluations** — 36 on the
+  shipped design, 2016 at 56 masks, about four hours and ~80 % of the total run.
+  `opts.skipSensitivity` reuses a saved map, which is correct exactly when the
+  masks are unchanged and only a sweep is being re-measured.
 
 ## Required precision per component
 

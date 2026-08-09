@@ -308,18 +308,29 @@ fixed `z` — that just spends more budget. Holding total reach at 124.7 px and
 varying the split asks it properly. Every row below has **identical reach and
 identical wrap error** (0.898 %); only the split differs.
 
-| split | masks | parameters | val acc |
-|---|---|---|---|
-| 10 mm × 3 hops | 2 | 32 768 | 0.7055 |
-| 5 mm × 6 hops | 5 | 81 920 | 0.7903 |
-| 3 mm × 10 hops | 9 | 147 456 | 0.8307 |
-| **2 mm × 15 hops** | **14** | **229 376** | **0.8518** |
+| split | masks | parameters | px per hop | val acc |
+|---|---|---|---|---|
+| 10 mm × 3 hops | 2 | 32 768 | 41.6 | 0.7055 |
+| 5 mm × 6 hops | 5 | 81 920 | 20.8 | 0.7903 |
+| 3 mm × 10 hops | 9 | 147 456 | 12.5 | 0.8307 |
+| 2 mm × 15 hops | 14 | 229 376 | 8.31 | 0.8518 |
+| 1.43 mm × 21 hops | 20 | 327 680 | 5.94 | 0.8688 |
+| 1.03 mm × 29 hops | 28 | 458 752 | 4.30 | 0.8778 |
+| 0.73 mm × 41 hops | 40 | 655 360 | 3.04 | 0.8838 |
+| **0.53 mm × 57 hops** | **56** | **917 504** | **2.19** | **0.8885** |
+| 0.37 mm × 81 hops | 80 | 1 310 720 | 1.54 | 0.8912 |
 
-**Depth is the better use of the budget, by a wide margin** — +8.1 points over the
+**Depth is the better use of the budget, by a wide margin** — +11.7 points over the
 shipped geometry under the same protocol, and reached with a third of the data and
-under a third of the epochs of the 0.799 run. The deepest configuration had **not
-converged** when it stopped (train 0.858 vs val 0.852, loss still falling), so
-0.8518 is a floor.
+under a third of the epochs of the 0.799 run.
+
+**The curve never turns over.** It was extended to L=80 (2026-08-08) specifically to
+find where depth stops paying, and it does not: masks keep buying accuracy even when
+consecutive planes see only **1.54 px** of diffraction between them. The obvious
+prediction — that a stack with too little spreading between planes collapses toward a
+single mask, since composing phase masks with no diffraction in between is one mask —
+is simply wrong at every depth tested. Gains decelerate faster than logarithmically
+and the curve is flattening toward roughly 0.89–0.90, but nothing breaks.
 
 The detector planes in the figure show the mechanism. At 2 and 5 masks the light
 arrives as a diffuse interference pattern smeared across the plane; at 9 and 14 it
@@ -327,13 +338,78 @@ is gathered into discrete bright squares sitting on the detector patches. Identi
 reach, identical physics — the extra masks buy the ability to *route* light into
 the readout rather than merely scatter it there.
 
-**What this does and does not establish.** In a D²NN mask count *is* parameter
-count — 128² phases per mask — so `L` and parameter count cannot be varied
-independently, and no experiment on this architecture separates "depth helps" from
-"more parameters help". The defensible claim is the one measured: *at fixed
-diffractive reach and fixed training budget, more masks help substantially.* Each
-configuration is a single seed, so adjacent points are not separated by more than
+### Depth, not parameters — and not resolution
+
+In a D²NN mask count *is* parameter count (128² phases per mask), so within the table
+above `L` and parameter count cannot be varied independently. This document previously
+concluded that **no** experiment on this architecture could separate "depth helps" from
+"more parameters help". *(Corrected 2026-08-08.)* One can: change the **grid**, which
+multiplies parameters per mask without adding any masks.
+
+Re-running the same iso-reach arm at 256² — the identical optical design at twice the
+scale, same requirement ratio, `z` doubled at every depth — gives two pairs carrying
+*exactly* equal phase counts:
+
+| parameters | 128², deep | 256², shallow | depth wins by |
+|---|---|---|---|
+| 917 504 | **56 masks → 0.8885** | 14 masks → 0.8560 | **+0.0325** |
+| 1 310 720 | **80 masks → 0.8912** | 20 masks → 0.8698 | **+0.0214** |
+
+**At equal parameter count, depth beats resolution decisively.** Parameter count is not
+what drives the curve; mask count is.
+
+The grid itself buys almost nothing: at matched `L`, 256² gains +0.0042, +0.0010 and
++0.0012 over 128² for four times the parameters and **4.8× the training time**. That is
+worth stating because the wrap budget genuinely does improve — it scales as *n²* while
+the reach a design requires scales only as *n*, so relative headroom doubles from 2.09×
+to 4.23×. The headroom was simply never the binding constraint: at iso-reach the wrap
+error is *identical* at every depth (0.898 % at 128², 0.059 % at 256²), because holding
+total reach fixed means adding masks costs no budget at all.
+
+Each configuration is a single seed, so adjacent points are not separated by more than
 run-to-run noise; the ordering across the range is far larger than that.
+
+### Trained at the deliverable budget: 0.9040
+
+*Unshipped candidate, 2026-08-08.* The 56-mask configuration was retrained at the
+full budget — 60 000 images, 25 epochs, everything electronic held at shipped
+values (same encoding, learning rate, batch size, seed) — and scores **0.9040 on
+the frozen 2 000-image test set**, against the shipped design's 0.7990. That is the
+first legitimate test number for this geometry; the sweep deliberately never
+touched the frozen set.
+
+**25 epochs rather than 40, on evidence.** The shipped model's validation is flat
+from epoch 10 and scores an identical 0.7990 at epoch 25 and at epoch 40, so the
+shorter protocol is like-for-like in outcome even though it differs in nominal
+epochs. The last epoch is taken rather than the best: `train_d2nn` validates on the
+frozen test set, so selecting an epoch by it would be selecting on the test set.
+Validation touched 0.915 during the run and ended at 0.904 — 0.9040 is the honest
+unselected number.
+
+**Photon capture rose from ~60 % to 79.1 %** of input photons landing inside the ten
+detector boxes, with the detector geometry unchanged. This is the "route rather
+than scatter" mechanism made quantitative, and it is *not* the readout-headroom
+figure the detector study warned about: the boxes did not grow, so nothing is being
+double-counted. It also cascades into the error budget, where it moves the
+shot-noise knee a decade — see [`tolerance_d2nn.md`](tolerance_d2nn.md).
+
+MATLAB's independent as-built forward model reproduces **0.9040 exactly** with zero
+error injected, at 57 hops. That correctness anchor has held through every change
+in the project.
+
+### The deep regime stops being a stack of plates
+
+`z` falls from 3 mm to 0.53 mm at 56 masks and 0.37 mm at 80 — comparable to the
+thickness of the plates themselves. Past roughly 40 masks this is better described as a
+**volume diffractive element** than as a stack of discrete phase screens.
+
+That is a physical-plausibility limit rather than an accuracy one, and for a
+fabrication-tolerance study it is the important one: a ±10 µm plane-spacing error is
+0.33 % of `z` at the shipped 3 mm and **2.7 %** at 0.37 mm. The Phase-4 budget covers
+device errors only and has nothing on geometry, so the alignment and calibration sources
+it defers become the binding constraint exactly where accuracy is best. **This is
+flagged, not modelled** — quantifying it needs the plane-spacing error source that is
+still queued.
 
 Nothing downstream has moved. `exports/d2nn_phase2.h5`, the browser bundle, the
 Phase-4 budget and every quoted 0.799 still describe the 5-mask, 3 mm design —
@@ -347,8 +423,15 @@ Reproduce with:
 python -m apps.sweep_optics --geometry        # wrap table; gates the rest
 python -m apps.sweep_optics --arm z           # separation, ~35 min
 python -m apps.sweep_optics --arm iso         # the reach-budget trade, ~25 min
+python -m apps.sweep_optics --arm iso --iso-layers 40,56,80          # ~2.2 h
+python -m apps.sweep_optics --arm iso --grid 256 --iso-reach 249.375 \
+    --iso-layers 14,20,28                                            # ~5.1 h
 python -m apps.sweep_report                   # figure + apps/web/optics_sweep.js
 ```
+
+`--geometry --grid N` prints the wrap table at any field size, with the reach each
+design *requires* beside the reach it has — the two scale differently, so comparing a
+larger grid's budget against the 128² requirement overstates the headroom by 2×.
 
 ---
 

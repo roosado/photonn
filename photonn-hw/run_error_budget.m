@@ -11,6 +11,10 @@ function results = run_error_budget(opts)
 %     .quick       - true for a fast reduced run (default false)
 %     .nReal       - Monte Carlo realizations for stochastic sources
 %     .subsetN     - test-subset size for the sweeps (speed)
+%     .skipSensitivity - reuse the saved sensitivity map instead of recomputing
+%                    it (it costs nMasks x gBlocks^2 evaluations and dominates
+%                    the run on a deep stack); valid only when the masks are
+%                    unchanged and a sweep is being re-measured
 %     .figDir      - output directory for figures
 %
 %   This is the command-line deliverable; no App Designer GUI is required. Every
@@ -26,6 +30,7 @@ function results = run_error_budget(opts)
     subsetN = getdef(opts, 'subsetN', 800);
     gBlocks = getdef(opts, 'gBlocks', 6);
     sensN   = getdef(opts, 'sensN', 300);
+    skipSens = getdef(opts, 'skipSensitivity', false);
     figDir  = getdef(opts, 'figDir', fullfile(here, 'figures'));
     if quick, nReal = 4; subsetN = 400; gBlocks = 4; sensN = 200; end
     if ~exist(figDir, 'dir'), mkdir(figDir); end
@@ -96,19 +101,34 @@ function results = run_error_budget(opts)
     % ---------------- 6. optical loss at the shot-noise operating point ---
     % Loss cancels in the ideal readout; it only bites through the photon budget,
     % so it is swept at a low-power (shot-noise-limited) operating point.
-    lossDb = [0 1 2 3 4 6 8 10];                 % dB per mask (insertion)
+    % Loss is *specified* per mask, because that is what a component datasheet
+    % states -- but what bites is the TOTAL through the stack, nMasks x per-mask.
+    % A range fixed in per-mask units therefore stops measuring anything as soon
+    % as the stack gets deep: the old [0 1 2 ... 10] dB/mask range began at 1 dB,
+    % which on the 56-mask design is 56 dB total (a factor of 400 000 in power),
+    % so every non-zero point sat far below the shot-noise knee and read chance.
+    % Span a fixed 0-30 dB of TOTAL loss instead, meaningful at any depth.
+    nMasks = double(h.geometry.n_layers);
+    lossTotalDb = [0 1 2 3 5 8 12 20 30];
+    lossDb = lossTotalDb / nMasks;               % dB per mask (insertion)
     % The operating point must sit just ABOVE the shot-noise knee measured by
     % sweep 5, or the sweep starts below threshold and measures nothing. The knee
-    % moves with the model: it sat at 0.1 pW for the 12k/15-epoch masks, but the
-    % 60k/40-epoch masks hold to 1 pW and fail at 0.1 pW, so this is 1 pW. If the
-    % detector sweep's knee moves again, move this with it.
+    % moves with the model: 0.1 pW for the 12k/15-epoch masks, 1 pW for the
+    % 60k/40-epoch 5-mask masks. The 56-mask design captures 79 % of the input
+    % photons against ~60 %, which moves its knee back down to 0.1 pW -- but at
+    % 0.1 pW the zero-loss baseline is already 0.8851 against a 0.8588 bar, so the
+    % sweep would measure the knee rather than the loss. 1 pW remains correct.
+    % If the detector sweep's knee moves again, re-check this.
     detLow = det0; detLow.input_power_w = 1e-12;
     cfgs = arrayfun(@(L) struct('loss_insertion_db', L, 'loss_propagation_db_per_cm', 0, ...
         'detector', detLow, 'subset', subset), lossDb, 'UniformOutput', false);
     acc = sweep(h, cfgs, nReal, 7000);
-    f = viz.tolerance_curve(lossDb, acc, 'insertion loss (dB/mask) @ 1 pW');
+    f = viz.tolerance_curve(lossDb, acc, ...
+        sprintf('insertion loss (dB/mask, x%d masks) @ 1 pW', nMasks));
     saveFig(f, figDir, 'tolerance_loss.png');
     results.loss = pack(lossDb, acc, thresh);
+    results.loss.totalDb = lossTotalDb;
+    results.loss.nMasks = nMasks;
 
     % ---------------- confusion matrix at a representative degradation ----
     cfgC = struct('phase_sigma_rad', 0.35);
@@ -120,12 +140,24 @@ function results = run_error_budget(opts)
     results.confusion.config = cfgC; results.confusion.accuracy = oC.accuracy;
 
     % ---------------- spatial sensitivity map ----------------------------
-    sens = sensitivityMap(h, subset(1:min(sensN, numel(subset))), gBlocks, 0.5, lambda0);
-    f = viz.sensitivity_map(permute(sens, [2 1 3]), 'D2NN phase masks');
-    saveFig(f, figDir, 'sensitivity_map.png');
-    results.sensitivity = sens;
+    % Cost is nMasks x gBlocks^2 evaluations, so it scales with depth in a way
+    % the sweeps above do not: 36 of them on the shipped 5-mask design, but 2016
+    % on the 56-mask one -- about four hours, dwarfing every sweep. skipSensitivity
+    % carries the previous map forward, which is correct exactly when the masks
+    % have not changed and only a sweep is being re-measured.
+    outMat = fullfile(figDir, 'error_budget_results.mat');
+    if skipSens && exist(outMat, 'file')
+        prev = load(outMat, 'results');
+        results.sensitivity = prev.results.sensitivity;
+        fprintf('sensitivity map: carried forward (skipSensitivity)\n');
+    else
+        sens = sensitivityMap(h, subset(1:min(sensN, numel(subset))), gBlocks, 0.5, lambda0);
+        f = viz.sensitivity_map(permute(sens, [2 1 3]), 'D2NN phase masks');
+        saveFig(f, figDir, 'sensitivity_map.png');
+        results.sensitivity = sens;
+    end
 
-    save(fullfile(figDir, 'error_budget_results.mat'), 'results');
+    save(outMat, 'results');
     printSummary(results);
     fprintf('\nfigures + results saved to %s\n', figDir);
 end

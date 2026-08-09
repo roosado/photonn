@@ -1,11 +1,11 @@
 /*
  * d2nn_stage.js -- the diffractive stack in three dimensions.
  *
- * The filmstrip beside this widget is accurate but flat: five squares in a row,
- * asking you to imagine they are the same light further along. This draws the
- * machine instead -- the entrance plane, the five phase masks and the detector
- * plane as parallel panels receding along the optical axis, each carrying the
- * light actually computed on it, so the geometry reads at a glance.
+ * The filmstrip beside this widget is accurate but flat: a row of squares asking
+ * you to imagine they are the same light further along. This draws the machine
+ * instead -- the entrance plane, the phase masks and the detector plane as
+ * parallel panels receding along the optical axis, each carrying the light
+ * actually computed on it, so the geometry reads at a glance.
  *
  * Three facts make it cheap and honest:
  *
@@ -21,13 +21,31 @@
  * lines from digit to detector would misrepresent the physics this project is
  * about. Travel is conveyed by real slices and by the sweep, not by fiction.
  *
- * The stack is 18 mm long across a 1.02 mm aperture -- about 18:1 -- so drawn to
- * scale it is an unreadable needle. The depth axis is compressed, and the figure
- * says so on its face.
+ * The stack is far longer than it is wide -- 18 mm across a 1.02 mm aperture for
+ * the shipped design, 30 mm for a 56-mask one -- so drawn to scale it is an
+ * unreadable needle. The depth axis is compressed, and the figure says so on its
+ * face.
+ *
+ * Three things scale with depth, and all three are derived from the bundle rather
+ * than assumed, because a 56-mask network is not a 5-mask one drawn eleven times:
+ *
+ *  - **How many masks are drawn.** Fifty-six panels at 0.53 mm spacing are
+ *    fifty-six near-identical pictures. Above MAX_MASK_PANELS the stack is
+ *    sampled, and every label then names its *true* index ("mask 23 of 56") so
+ *    the sampling can never be mistaken for the whole stack.
+ *  - **How finely a hop is sub-stepped.** Sub-stepping shows travel only if the
+ *    light actually spreads within a hop; at 2.19 px per hop it does not, so
+ *    subSteps falls to 1. See defaultSubSteps.
+ *  - **Whether it follows the pen.** A deep stack re-renders on a button press
+ *    instead of on every stroke, so frame rate stops mattering. See MODE.
  *
  * Usage:  var stage = window.PhotonnD2NNStage.mount(container, opts);
- *         stage.setResult(res, {trueLabel: 7});   // res from PhotonnD2NN_Net
- * opts (all optional): { theta, phi, beam, subSteps }  -- degrees, degrees, bool, int
+ *         stage.setResult(res, {trueLabel: 7});   // res from a d2nn.js network
+ * opts (all optional):
+ *   net       -- the network to draw (from d2nn.js:buildNet). Defaults to the
+ *                shipped one, so one page can hold a stage per model.
+ *   mode      -- "live" | "manual". Default: derived from depth.
+ *   theta, phi, beam, subSteps -- degrees, degrees, bool, int (all overrides).
  *
  * Depends on window.PhotonnD2NN_Net (d2nn.js). Pure rendering: no physics of its
  * own beyond calling sliceForward, no network, no libraries.
@@ -78,6 +96,63 @@
   // (labels, outlines, captions) follows the theme.
   const PLATE_INK = "#0b1018";
   const PLATE_ALPHA = 0.78;
+
+  //: Most mask panels drawn. Beyond this the stack is sampled -- six planes
+  //: spread through a deep stack tell the same story as fifty-six, and are the
+  //: only version that is legible. The shipped 5-mask model is under the limit,
+  //: so it is drawn whole exactly as before.
+  const MAX_MASK_PANELS = 6;
+
+  //: Sub-hop slices are only worth computing if the light visibly spreads across
+  //: one. This is a *legibility* threshold, not a physical bound: sliceForward is
+  //: exact at any subSteps (z stays well under z_crit), but below a few pixels of
+  //: spreading consecutive slices are the same picture, so the extra propagations
+  //: buy nothing. At the shipped 12.47 px per hop this yields the historical 4.
+  const MIN_SLICE_REACH_PX = 3;
+  const MAX_SUB_STEPS = 4;
+
+  //: Depth at which the stage stops following the pen. Below it a re-render is
+  //: comfortably inside a frame budget; above it, chasing every pointer move
+  //: makes the whole page feel broken for a picture nobody reads mid-stroke.
+  const LIVE_MAX_LAYERS = 8;
+
+  /**
+   * Diffractive reach of one hop, in pixels: z*lambda / (2*dx^2).
+   *
+   * The same closed form as photonn.propagate.diffraction_reach_px, which is what
+   * the optics page plots and what the Phase-3 correspondence figure is built on.
+   */
+  function reachPerHopPx(W) {
+    return W.separation * W.wavelength / (2 * W.dx * W.dx);
+  }
+
+  /** Sub-hops per hop for this geometry: 4 for the shipped stack, 1 for a deep one. */
+  function defaultSubSteps(W) {
+    const s = Math.floor(reachPerHopPx(W) / MIN_SLICE_REACH_PX);
+    return Math.max(1, Math.min(MAX_SUB_STEPS, s));
+  }
+
+  /**
+   * Which mask indices to draw, always including the first and the last.
+   *
+   * Returns every index when the stack is short enough, which is what keeps the
+   * shipped model's figure byte-for-byte what it was. Evenly spread otherwise,
+   * de-duplicated, so `n` is an upper bound rather than a promise.
+   */
+  function sampleMaskIndices(nLayers, maxPanels) {
+    const m = Math.max(1, maxPanels == null ? MAX_MASK_PANELS : maxPanels);
+    if (nLayers <= m) {
+      const all = [];
+      for (let i = 0; i < nLayers; i++) all.push(i);
+      return all;
+    }
+    const out = [];
+    for (let i = 0; i < m; i++) {
+      const k = Math.round(i * (nLayers - 1) / (m - 1));
+      if (out[out.length - 1] !== k) out.push(k);
+    }
+    return out;
+  }
 
   const STYLE_ID = "ds-style";
   const CSS = `
@@ -199,25 +274,36 @@
     opts = opts || {};
     injectStyle();
 
-    const W = NET.weights;
-    const N = NET.N;
+    // The network being drawn. Defaulting to the module's shipped one keeps every
+    // existing caller working; passing opts.net is what lets one page carry a
+    // stage for the shipped model and another for a candidate.
+    const MODEL = opts.net || NET;
+    const W = MODEL.weights;
+    const N = MODEL.N;
     const HOPS = W.n_layers + 1;
-    const TOTAL_Z = HOPS * W.separation;              // 18 mm
+    const TOTAL_Z = HOPS * W.separation;              // 18 mm shipped, 30 mm at 56 masks
     const APERTURE = N * W.dx;                        // 1.024 mm
     // The drawn stack is DEPTH_SPAN half-apertures long; anything else would be
-    // an 18:1 needle. Report the factor rather than let the reader assume scale.
+    // a needle. Report the factor rather than let the reader assume scale.
     const COMPRESSION = (TOTAL_Z / APERTURE) / (DEPTH_SPAN / 2);
+
+    //: True mask indices drawn, and whether that is all of them. Everything the
+    //: figure says about "which mask is this" is derived from these two.
+    const MASK_IDX = sampleMaskIndices(W.n_layers, opts.maxMaskPanels);
+    const SAMPLED = MASK_IDX.length < W.n_layers;
+    const MODE = opts.mode || (W.n_layers <= LIVE_MAX_LAYERS ? "live" : "manual");
 
     const state = {
       theta: (opts.theta == null ? 34 : opts.theta) * Math.PI / 180,
       phi: (opts.phi == null ? 19 : opts.phi) * Math.PI / 180,
       view: "light",                 // "light" | "phase"
       beam: opts.beam !== false,
-      subSteps: opts.subSteps || 4,
+      subSteps: opts.subSteps || defaultSubSteps(W),
       sweep: null,                   // null, or {start} while playing
       front: 1,                      // wavefront position, 0..1 of the axis
-      res: null,
+      res: null,                     // what is currently drawn
       meta: null,
+      pending: null,                 // in manual mode: arrived but not yet drawn
       bitmaps: null,                 // {panels, phases, slices}
       sliceTimer: 0,
       drag: null,
@@ -239,6 +325,11 @@
     const btnBeam = el("button", "ds-btn", "Beam between masks");
     const btnSweep = el("button", "ds-btn", "▶ Sweep");
     bar.appendChild(btnBeam); bar.appendChild(btnSweep);
+
+    // Manual mode only: the stage stops chasing the pen and re-renders here.
+    const btnRefresh = el("button", "ds-btn ds-refresh", "⟳ Refresh");
+    if (MODE === "manual") bar.appendChild(btnRefresh);
+
     bar.appendChild(el("div", "ds-spacer"));
     const btnReset = el("button", "ds-btn", "Reset view");
     bar.appendChild(btnReset);
@@ -269,9 +360,13 @@
         z: 0, kind: "input", label: "input",
         bmp: renderBitmap(res.canvas, N, LUT_I, 0.7, false),
       });
-      for (let L = 0; L < W.n_layers; L++) {
+      for (const L of MASK_IDX) {
+        // The label carries the *true* index, and says what it is out of as soon
+        // as any mask has been left out -- a visitor must never read six panels
+        // as six masks, or panel 3 as the third plate in the machine.
         panels.push({
-          z: (L + 1) * W.separation, kind: "mask", index: L, label: "mask " + (L + 1),
+          z: (L + 1) * W.separation, kind: "mask", index: L,
+          label: SAMPLED ? `mask ${L + 1} of ${W.n_layers}` : "mask " + (L + 1),
           bmp: renderBitmap(res.planes[L], N, LUT_I, GAMMA, false),
         });
       }
@@ -282,17 +377,16 @@
       return panels;
     }
 
+    /** Phase plates for the drawn masks only, keyed by true mask index. */
     function buildPhaseBitmaps() {
-      const out = [];
-      for (let L = 0; L < W.n_layers; L++) {
-        out.push(renderBitmap(NET.maskPhase(L), N, LUT_P, 1, true));
-      }
+      const out = new Map();
+      for (const L of MASK_IDX) out.set(L, renderBitmap(MODEL.maskPhase(L), N, LUT_P, 1, true));
       return out;
     }
 
     function buildSliceBitmaps(res) {
-      const f = NET.encodeInput(res.canvas);
-      const slices = NET.sliceForward(f[0], f[1], state.subSteps);
+      const f = MODEL.encodeInput(res.canvas);
+      const slices = MODEL.sliceForward(f[0], f[1], state.subSteps);
       const out = [];
       for (const s of slices) {
         // Skip the depths a panel already occupies -- those are drawn opaque.
@@ -321,9 +415,11 @@
       }, 180);
     }
 
-    function setResult(res, meta) {
+    /** Render whatever is currently held, rebuilding the bitmaps for it. */
+    function render(res, meta) {
       state.res = res;
       state.meta = meta || null;
+      state.pending = null;
       state.bitmaps = {
         panels: buildPanelBitmaps(res),
         phases: state.bitmaps ? state.bitmaps.phases : buildPhaseBitmaps(),
@@ -331,6 +427,35 @@
       };
       requestSlices();
       draw();
+      updateRefresh();
+    }
+
+    /**
+     * A new result arrived from the classifier.
+     *
+     * In live mode this draws it, as it always has. In manual mode it is *held*:
+     * a deep stack costs too much to rebuild on every pointer move, and a picture
+     * nobody can read mid-stroke is not worth a stuttering page. The first result
+     * still draws immediately -- there is nothing to be stale against yet, and an
+     * empty stage would just look broken.
+     */
+    function setResult(res, meta) {
+      if (MODE === "live" || !state.res) {
+        render(res, meta);
+        return;
+      }
+      state.pending = { res, meta: meta || null };
+      updateRefresh();
+      draw();
+    }
+
+    /** Reflect whether what is drawn is still the current digit. */
+    function updateRefresh() {
+      if (MODE !== "manual") return;
+      const stale = !!state.pending;
+      btnRefresh.setAttribute("aria-pressed", String(stale));
+      btnRefresh.disabled = !stale;
+      btnRefresh.textContent = stale ? "⟳ Refresh" : "⟳ Up to date";
     }
 
     // ----------------------------------------------------------------- geometry
@@ -477,7 +602,7 @@
       // *transmissive* -- light from plane k really does carry on through plate
       // k+1, so a plate must not darken the field behind it.
       const phaseOf = (pan) => (state.view === "phase" && pan.kind === "mask")
-        ? bm.phases[pan.index] : null;
+        ? bm.phases.get(pan.index) : null;
 
       for (const pan of bm.panels) {
         const alpha = reached(pan.z) ? 1 : 0.2;
@@ -518,6 +643,24 @@
 
       // The wavefront itself, while sweeping.
       if (state.front < 1) outline(ctx, L, frontZ, p.warn, 2, 0.95);
+
+      // Held-back digit: say so on the picture, not only on the button. Someone
+      // who has drawn something and sees an unchanged stack needs to know it is
+      // waiting rather than broken.
+      if (state.pending) {
+        const msg = "Showing the previous digit — press Refresh";
+        ctx.save();
+        ctx.font = "600 11.5px ui-monospace, SFMono-Regular, Menlo, monospace";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "top";
+        ctx.strokeStyle = p.panel;
+        ctx.lineWidth = 3;
+        ctx.lineJoin = "round";
+        ctx.strokeText(msg, w - 10, 8);
+        ctx.fillStyle = p.warn;
+        ctx.fillText(msg, w - 10, 8);
+        ctx.restore();
+      }
 
       updateFoot();
     }
@@ -581,7 +724,13 @@
       const showing = state.view === "phase"
         ? "masks show their trained phase (cyclic colour); the other planes show light"
         : "each plane shows the intensity arriving on it, square-root stretched";
-      footL.innerHTML = showing;
+      // Sampling is stated in the running text as well as on every label: the
+      // labels are only readable at some orbit angles, and this claim has to
+      // survive the figure being screenshotted.
+      footL.innerHTML = SAMPLED
+        ? `${showing} &mdash; <b>${MASK_IDX.length} of ${W.n_layers} masks drawn</b>, `
+          + "spread through the stack"
+        : showing;
       const pred = state.res ? state.res.pred : null;
       footR.innerHTML =
         `<b>${(TOTAL_Z * 1e3).toFixed(0)} mm</b> of optics across a `
@@ -641,6 +790,11 @@
       sweepRaf = requestAnimationFrame(stepSweep);
     });
 
+    btnRefresh.addEventListener("click", () => {
+      if (!state.pending) return;
+      render(state.pending.res, state.pending.meta);
+    });
+
     btnReset.addEventListener("click", () => {
       state.theta = 34 * Math.PI / 180;
       state.phi = 19 * Math.PI / 180;
@@ -679,15 +833,24 @@
 
     setView("light");
     btnBeam.setAttribute("aria-pressed", String(state.beam));
+    updateRefresh();
     draw();
 
     const api = { setResult, redraw: requestDraw, state,
+                  // Geometry decisions, exposed so tests can assert them without a
+                  // DOM and a page can print "6 of 56" without recomputing it.
+                  model: MODEL, mode: MODE, maskIndices: MASK_IDX, sampled: SAMPLED,
+                  refresh: () => { if (state.pending) render(state.pending.res, state.pending.meta); },
                   setFront: (t) => { state.front = t; draw(); } };
     container.__photonnStage = api;   // handle for page scripts and browser tests
     return api;
   }
 
-  const API = { mount, basis };
+  // sampleMaskIndices/defaultSubSteps/reachPerHopPx are exported so the rules that
+  // make a deep stack legible can be tested without a DOM -- there is no jsdom
+  // here, and "the labels name the real mask" is the claim that matters most.
+  const API = { mount, basis, sampleMaskIndices, defaultSubSteps, reachPerHopPx,
+                MAX_MASK_PANELS, LIVE_MAX_LAYERS };
   if (typeof module !== "undefined" && module.exports) module.exports = API;
   if (typeof window !== "undefined") window.PhotonnD2NNStage = API;
 })();

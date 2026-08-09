@@ -33,7 +33,7 @@ import pytest
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(HERE, "..", "apps", "web")
 
-BUNDLES = ["d2nn_weights.js", "d2nn_sweep_weights.js"]
+BUNDLES = ["d2nn_weights.js", "d2nn_sweep_weights.js", "d2nn_deep_weights.js"]
 WIDGETS = ["d2nn_compare.js", "digit_source.js"]
 
 #: Fields d2nn_compare.js reads off every model it draws a column for.
@@ -142,6 +142,32 @@ def test_candidate_caption_refuses_to_be_read_as_a_test_accuracy():
     # The headline it must not be confused with is named, and comes from the
     # shipped bundle rather than from a literal in the widget.
     assert f"Not comparable to {shipped['accuracy']:.4f}" in note
+
+
+@needs_node
+def test_the_deep_candidate_is_not_disclaimed_out_of_its_own_comparison():
+    """Unshipped does not mean incomparable, and the caption must tell them apart.
+
+    The 56-mask model was scored on the same frozen test set, at the same
+    training budget, as the shipped one -- so ``Not comparable to 0.7990`` beside
+    it would be false, and would disclaim away the single honest comparison the
+    board is built to show. The distinguishing fact lives in the bundles (a
+    ranking run declares ``not_scored_on``; this one does not), never in the
+    widget.
+    """
+    shipped = read_bundle("d2nn_weights.js")["provenance"]
+    deep = read_bundle("d2nn_deep_weights.js")["provenance"]
+    ranked = read_bundle("d2nn_sweep_weights.js")["provenance"]
+    note, = captions([{"prov": deep, "reference": shipped}])
+
+    assert "Not shipped" in note, "an unshipped model still says so"
+    assert f"{deep['accuracy']:.4f}" in note
+    assert deep["caveat"] in note
+    assert "Not comparable" not in note
+    assert f"{shipped['accuracy']:.4f}" in note, "the number it *is* comparable to is named"
+    # And the ranking candidate on the same board still is disclaimed.
+    ranked_note, = captions([{"prov": ranked, "reference": shipped}])
+    assert f"Not comparable to {shipped['accuracy']:.4f}" in ranked_note
 
 
 @needs_node

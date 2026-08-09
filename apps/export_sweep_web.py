@@ -24,13 +24,12 @@ both models are shown the *same* digits and the comparison is a comparison.
 from __future__ import annotations
 
 import argparse
-import base64
 import json
-import re
 from pathlib import Path
 
 import numpy as np
 
+from apps.web_bundle import encode_masks, read_bundle
 from photonn.detect import default_regions
 from photonn.propagate import diffraction_reach_px
 
@@ -54,25 +53,6 @@ def parse_args():
                    help="sweep config tag, e.g. z2mm_L14 (masks_<tag>.npy)")
     p.add_argument("--out", default=str(OUT_JS))
     return p.parse_args()
-
-
-def shipped_bundle(path=SHIPPED_JS) -> dict:
-    """Parse the committed bundle -- same trick as apps/analogy_figure.load_geom."""
-    text = Path(path).read_text(encoding="utf-8")
-    body = re.search(r"var W = (\{.*?\});\n", text, re.S)
-    if body is None:
-        raise SystemExit(f"{path} does not look like a generated d2nn_weights bundle.")
-    return json.loads(body.group(1))
-
-
-def quantise_phase(masks: np.ndarray) -> tuple[str, float]:
-    """Wrap to [-pi, pi) and encode as uint8 codes; return (base64, max error)."""
-    wrapped = (masks + np.pi) % (2 * np.pi) - np.pi
-    step = 2 * np.pi / 256
-    codes = np.rint((wrapped + np.pi) / step).astype(np.int64)
-    codes = np.clip(codes, 0, 255).astype(np.uint8)
-    recovered = codes.astype(np.float64) * step - np.pi
-    return base64.b64encode(codes.tobytes()).decode("ascii"), float(np.abs(recovered - wrapped).max())
 
 
 def check_layout(regions, grid, shipped) -> None:
@@ -134,8 +114,8 @@ def main():
     if masks.shape != (n_layers, grid, grid):
         raise SystemExit(f"masks {masks.shape} do not match n_layers={n_layers}, n={grid}.")
 
-    masks_b64, max_err = quantise_phase(masks)
-    shipped = shipped_bundle()
+    masks_b64, max_err = encode_masks(masks, bits=8)
+    shipped = read_bundle(SHIPPED_JS)
     regions = [[r.y0, r.y1, r.x0, r.x1] for r in default_regions(grid, 10)]
     check_layout(regions, grid, shipped)
 

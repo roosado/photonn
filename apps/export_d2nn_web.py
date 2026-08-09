@@ -1,20 +1,38 @@
-"""Export the trained D2NN for the browser demo, plus its cross-check fixture.
+"""Export a trained D2NN for the browser demo, plus its cross-check fixture.
 
-Bridges the trained model to ``apps/web/d2nn.js``. Reads the Phase-2 handoff
-(``exports/d2nn_phase2.h5``) and the torch checkpoint, and writes:
+Bridges a trained model to ``apps/web/d2nn.js``. Reads a Phase-2 handoff and its
+torch checkpoint, and writes:
 
-- ``apps/web/d2nn_weights.js`` -- the browser bundle: phase masks (base64
-  float32), geometry, operating point, detector regions, and a small gallery of
-  frozen test digits. **This file is committed**: ``*.h5`` and ``*.pt`` are
-  gitignored, so it is the only in-repo copy of the trained model and the only
-  way ``apps.build_site`` can rebuild the page from a fresh clone.
+- a **weight bundle** (by default ``apps/web/d2nn_weights.js``): phase masks,
+  geometry, operating point, detector regions, a small gallery of frozen test
+  digits, and a ``provenance`` block. **These files are committed**: ``*.h5`` and
+  ``*.pt`` are gitignored, so a bundle is the only in-repo copy of a trained
+  model and the only way ``apps.build_site`` can rebuild a page from a fresh
+  clone.
 - ``tests/fixtures/d2nn_reference.json`` -- the authoritative torch logits for a
-  frozen set of digits, consumed by ``tests/test_d2nn_crosscheck.py``.
+  frozen set of digits, consumed by ``tests/test_d2nn_crosscheck.py``. Written
+  only for the shipped bundle; a candidate is cross-checked against torch from
+  its own committed bundle instead (``tests/test_deep_model.py``), which needs no
+  gitignored file.
 
 Every value comes from the handoff file; nothing about the operating point is
 hardcoded here. Run from the repo root in the project venv::
 
+    # the shipped 5-mask model, float32, with its fixture
     python -m apps.export_d2nn_web
+
+    # the unshipped 56-mask candidate, 8-bit, on the shipped model's gallery
+    python -m apps.export_d2nn_web \\
+        --h5 exports/sweep/d2nn_L56_60k_e25.h5 \\
+        --pt exports/sweep/d2nn_L56_60k_e25.pt \\
+        --out apps/web/d2nn_deep_weights.js \\
+        --bits 8 --unshipped --label "56 masks" \\
+        --gallery-from apps/web/d2nn_weights.js \\
+        --caveat "not promoted -- it needs 2x tighter phase control to build"
+
+At float32 a 56-mask bundle is ~4.9 MB of base64; at 8 bits it is ~1.2 MB, which
+is why a deep model is exported quantised. See :mod:`apps.web_bundle` for why
+that is the more faithful model rather than a shortcut.
 
 The frozen ``/test_set`` is stored at grid resolution (the 128x128 embedded
 canvas), not as 28x28 digits, so the gallery re-derives the original MNIST
@@ -24,14 +42,16 @@ otherwise silently ship a gallery whose labels no longer match the frozen set.
 """
 from __future__ import annotations
 
-import base64
+import argparse
 import json
 import os
+import textwrap
 
 import h5py
 import numpy as np
 import torch
 
+from apps.web_bundle import b64, encode_masks, js_global, read_bundle
 from photonn.detect import default_regions
 from photonn.models import D2NN
 from photonn.train import embed_input, load_dataset
@@ -53,14 +73,43 @@ N_RESIZE_CASES = 4
 N_VERIFY_CANVAS = 256
 
 
-def _b64(arr: np.ndarray, dtype: str) -> str:
-    """Base64 of ``arr`` as little-endian ``dtype`` (decoded by a typed array in JS)."""
-    return base64.b64encode(np.ascontiguousarray(arr, dtype=dtype).tobytes()).decode("ascii")
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(description="Export a trained D2NN for the browser.")
+    p.add_argument("--h5", default=H5_PATH, help="Phase-2 handoff to export (default: the shipped one)")
+    p.add_argument("--pt", default=PT_PATH, help="torch checkpoint matching --h5")
+    p.add_argument("--out", default=WEIGHTS_JS, help="weight bundle to write")
+    p.add_argument("--bits", type=int, default=32, choices=(8, 32),
+                   help="phase encoding: 32 = float32 radians, 8 = uint8 codes (default: 32)")
+    p.add_argument("--fixture", default=None,
+                   help="path for the torch cross-check fixture. Default: the shipped "
+                        "fixture when writing the shipped bundle, none otherwise.")
+    p.add_argument("--gallery-from", default=None, metavar="BUNDLE",
+                   help="copy the gallery from an existing bundle instead of picking one. "
+                        "Required for any model meant to be compared against another: two "
+                        "models shown different digits are not a comparison.")
+    p.add_argument("--label", default="Shipped", help="column title in the comparison widget")
+    p.add_argument("--unshipped", action="store_true",
+                   help="mark the bundle as not the shipped model, so every caption says so")
+    p.add_argument("--caveat", default=None,
+                   help="why this model's number is not the headline; required with --unshipped")
+    args = p.parse_args(argv)
+
+    if args.unshipped and not args.caveat:
+        p.error("--unshipped needs --caveat: a model a visitor can operate invites its "
+                "number being quoted, so it has to state what it is not.")
+    if args.fixture is None and os.path.abspath(args.out) == os.path.abspath(WEIGHTS_JS):
+        args.fixture = FIXTURE_JSON
+    return args
 
 
-def load_handoff():
+def _rel(path: str) -> str:
+    """Repo-relative, forward-slashed -- these go into generated file headers."""
+    return os.path.relpath(os.path.abspath(path), _REPO).replace(os.sep, "/")
+
+
+def load_handoff(h5_path=H5_PATH):
     """Read geometry, operating point, masks and the frozen test set from the h5."""
-    with h5py.File(H5_PATH, "r") as f:
+    with h5py.File(h5_path, "r") as f:
         geo, op = dict(f["geometry"].attrs), dict(f["operating_point"].attrs)
         seps = f["geometry"]["layer_separations_m"][...]
         masks = f["parameters/phase_masks"][...]
@@ -121,7 +170,7 @@ def recover_mnist(hand):
     return ds.images
 
 
-def load_model(hand):
+def load_model(hand, pt_path=PT_PATH):
     """Rebuild the trained D2NN from the handoff geometry + the torch checkpoint.
 
     Returns the model and the checkpoint's ``history``, which is where the
@@ -133,7 +182,7 @@ def load_model(hand):
         wavelength=hand["wavelength"], separation=hand["separation"],
         readout_gain=hand["readout_gain"],
     )
-    ckpt = torch.load(PT_PATH, map_location="cpu", weights_only=False)
+    ckpt = torch.load(pt_path, map_location="cpu", weights_only=False)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()
 
@@ -144,7 +193,7 @@ def load_model(hand):
     return model, ckpt.get("history", {})
 
 
-def provenance(history, accuracy, n_test):
+def provenance(history, accuracy, n_test, label="Shipped", shipped=True, caveat=None):
     """Describe where this model's number came from, for the widgets to print.
 
     The comparison board renders its captions from this block rather than from
@@ -152,6 +201,10 @@ def provenance(history, accuracy, n_test):
     field is measured here: the accuracy is the run just scored above, and the
     protocol is read off the checkpoint. A missing field is an error rather than
     a default -- a plausible-looking wrong protocol is worse than a crash.
+
+    ``scored_on`` is written the same way for every model this exporter touches,
+    which is what lets the widget tell "unshipped and measured differently" from
+    "unshipped but measured identically" without being told which is which.
     """
     missing = [k for k in ("n_samples", "epochs", "seed") if k not in history]
     if missing:
@@ -159,17 +212,20 @@ def provenance(history, accuracy, n_test):
             f"checkpoint history lacks {missing}; refusing to write a provenance block "
             "with invented training parameters."
         )
-    return {
-        "label": "Shipped",
+    prov = {
+        "label": label,
         "accuracy": float(accuracy),
         "scored_on": f"the frozen {n_test:,}-image MNIST test set",
-        "shipped": True,
+        "shipped": shipped,
         "protocol": {
             "n_train": int(history["n_samples"]),
             "epochs": int(history["epochs"]),
             "seed": int(history["seed"]),
         },
     }
+    if caveat:
+        prov["caveat"] = caveat
+    return prov
 
 
 @torch.no_grad()
@@ -205,14 +261,83 @@ def pick_gallery(labels, preds):
     return correct + picked
 
 
-def write_weights_js(hand, digits28, regions, gallery_idx, labels, prov, path=WEIGHTS_JS):
-    """Write the browser weight bundle."""
-    # exp(i*phi) is invariant to a 2*pi wrap, so wrapping in float64 before the
-    # float32 cast costs nothing and keeps the mantissa on the part that matters
-    # (the raw parameters range over about +-9.2 rad).
-    wrapped = (hand["masks"] + np.pi) % (2 * np.pi) - np.pi
-    gallery = np.round(digits28[gallery_idx] * 255.0).astype(np.uint8)
+def gallery_payload(digits28, labels, preds, source=None):
+    """The gallery fields of a bundle, either picked here or copied from another.
 
+    A second model must be shown the *same* digits as the one it is compared
+    against, or the board is two demos side by side rather than a comparison --
+    and the shipped gallery is deliberately stocked with digits the shipped model
+    gets wrong, which is exactly what makes the contrast visible. Copying is
+    therefore the right default for any candidate, and it is a flag rather than a
+    guess.
+    """
+    if source is not None:
+        other = read_bundle(source)
+        return {k: other[k] for k in ("gallery_b64", "gallery_labels", "gallery_size")}, None
+
+    idx = pick_gallery(labels, preds)
+    return {
+        "gallery_b64": b64(np.round(digits28[idx] * 255.0).astype(np.uint8), "u1"),
+        "gallery_labels": [int(labels[i]) for i in idx],
+        "gallery_size": 28,
+    }, idx
+
+
+def bundle_header(out_path, h5_path, hand, bits, n_gallery, prov, max_err, copied_from):
+    """The comment block at the top of a generated bundle."""
+    name = os.path.basename(out_path)
+    what = ("the trained Phase-2 diffractive network" if prov["shipped"]
+            else "a *candidate* diffractive network")
+
+    if bits == 8:
+        masks_line = (
+            f" * masks_b64   : {hand['n_layers']} x {hand['n']} x {hand['n']} uint8 phase codes "
+            f"(masks_bits: 8), decoded as\n"
+            f" *               code * 2pi/256 - pi radians and applied as E * exp(i * phi).\n"
+            f" *               Max encoding error {max_err:.4f} rad; the Phase-4 budget holds this\n"
+            f" *               design to 3-bit phase control, so 8 bits is free -- and is what an\n"
+            f" *               SLM offers.\n")
+    else:
+        masks_line = (
+            f" * masks_b64   : {hand['n_layers']} x {hand['n']} x {hand['n']} float32 phase "
+            f"(radians, wrapped to [-pi, pi)),\n"
+            f" *               little-endian, applied as E * exp(i * phi).\n")
+
+    gallery_line = f" * gallery_b64 : {n_gallery} x 28 x 28 uint8 MNIST digits from the frozen test set.\n"
+    if copied_from:
+        gallery_line += (f" *               Copied from {_rel(copied_from)} so both models are shown\n"
+                         f" *               the same digits and the comparison is a comparison.\n")
+
+    unshipped = ""
+    if not prov["shipped"]:
+        said = (f"NOT SHIPPED. {prov['accuracy']:.4f} on {prov['scored_on']} "
+                f"({prov['protocol']['n_train']:,} images, {prov['protocol']['epochs']} epochs) "
+                f"-- {prov['caveat']}. It is here to be compared against, not quoted.")
+        unshipped = " *\n" + "".join(f" * {line}\n" for line in textwrap.wrap(said, 74))
+
+    return (
+        f"/*\n"
+        f" * {name} -- {what}, for the browser.\n"
+        f" *\n"
+        f" * GENERATED by apps/export_d2nn_web.py from {_rel(h5_path)} -- do not edit\n"
+        f" * by hand; re-run the exporter instead. This file is committed because the h5 and\n"
+        f" * pt exports are gitignored, so it is the repo's only copy of the trained model.\n"
+        f"{unshipped}"
+        f" *\n"
+        f"{masks_line}"
+        f"{gallery_line}"
+        f" * regions     : ten [y0, y1, x0, x1] detector boxes, class order, from\n"
+        f" *               photonn.detect.default_regions.\n"
+        f" * provenance  : where this model's number came from. The comparison widget\n"
+        f" *               renders its captions from this, so no accuracy is written into\n"
+        f" *               JavaScript and promoting a model is regenerating a bundle.\n"
+        f" * All lengths in metres.\n"
+        f" */\n"
+    )
+
+
+def write_weights_js(hand, regions, gallery, prov, masks_b64, bits, path, header):
+    """Write the browser weight bundle."""
     payload = {
         "n": hand["n"],
         "dx": hand["dx"],
@@ -223,37 +348,21 @@ def write_weights_js(hand, digits28, regions, gallery_idx, labels, prov, path=WE
         "phase_scale": hand["phase_scale"],
         "input_frac": hand["input_frac"],
         "regions": [[r.y0, r.y1, r.x0, r.x1] for r in regions],
-        "masks_b64": _b64(wrapped, "<f4"),
-        "gallery_b64": _b64(gallery, "u1"),
-        "gallery_labels": [int(labels[i]) for i in gallery_idx],
-        "gallery_size": 28,
-        "provenance": prov,
     }
+    if bits == 8:
+        payload["masks_bits"] = 8
+    payload["masks_b64"] = masks_b64
+    payload.update(gallery)
+    payload["provenance"] = prov
+
     body = ",\n    ".join(f'"{k}": {json.dumps(v)}' for k, v in payload.items())
-    js = f"""/*
- * d2nn_weights.js -- the trained Phase-2 diffractive network, for the browser.
- *
- * GENERATED by apps/export_d2nn_web.py from exports/d2nn_phase2.h5 -- do not edit
- * by hand; re-run the exporter instead. This file is committed because the h5 and
- * pt exports are gitignored, so it is the repo's only copy of the trained model.
- *
- * masks_b64   : {hand['n_layers']} x {hand['n']} x {hand['n']} float32 phase (radians, wrapped to [-pi, pi)),
- *               little-endian, applied as E * exp(i * phi).
- * gallery_b64 : {len(gallery_idx)} x 28 x 28 uint8 MNIST digits from the frozen test set.
- * regions     : ten [y0, y1, x0, x1] detector boxes, class order, from
- *               photonn.detect.default_regions.
- * provenance  : where this model's number came from. The comparison widget
- *               renders its captions from this, so no accuracy is written into
- *               JavaScript and promoting a model is regenerating a bundle.
- * All lengths in metres.
- */
-(function () {{
+    js = f"""{header}(function () {{
   "use strict";
   var W = {{
     {body}
   }};
   if (typeof module !== "undefined" && module.exports) module.exports = W;
-  if (typeof window !== "undefined") window.D2NN_WEIGHTS = W;
+  if (typeof window !== "undefined") window.{js_global(path)} = W;
 }})();
 """
     with open(path, "w", encoding="utf-8") as fh:
@@ -303,33 +412,47 @@ def write_fixture(hand, digits28, canvases, logits, preds, labels, path=FIXTURE_
     return os.path.getsize(path)
 
 
-def main():
-    print(f"reading {os.path.relpath(H5_PATH, _REPO)}")
-    hand = load_handoff()
+def main(argv=None):
+    args = parse_args(argv)
+
+    print(f"reading {_rel(args.h5)}")
+    hand = load_handoff(args.h5)
     print(f"  n={hand['n']} layers={hand['n_layers']} dx={hand['dx']:g} m "
           f"lambda={hand['wavelength']:g} m z={hand['separation']:g} m")
 
     digits28 = recover_mnist(hand)
-    model, history = load_model(hand)
+    model, history = load_model(hand, args.pt)
     logits, preds = torch_logits(model, hand["canvases"], hand["phase_scale"])
     labels = hand["labels"]
     acc = float((preds == labels).mean())
     print(f"  torch accuracy on the frozen test set: {acc:.4f}")
 
-    prov = provenance(history, acc, len(labels))
+    prov = provenance(history, acc, len(labels), label=args.label,
+                      shipped=not args.unshipped, caveat=args.caveat)
     print(f"  provenance: {prov['accuracy']} on {prov['scored_on']}, "
           f"{prov['protocol']['n_train']} images x {prov['protocol']['epochs']} epochs")
 
     regions = default_regions(hand["n"], 10)
-    gallery_idx = pick_gallery(labels, preds)
-    n_wrong = sum(1 for i in gallery_idx if preds[i] != labels[i])
-    size = write_weights_js(hand, digits28, regions, gallery_idx, labels, prov)
-    print(f"wrote {os.path.relpath(WEIGHTS_JS, _REPO)} ({size // 1024} KB, "
-          f"{len(gallery_idx)} gallery digits, {n_wrong} of them misclassified)")
+    gallery, gallery_idx = gallery_payload(digits28, labels, preds, args.gallery_from)
+    n_gallery = len(gallery["gallery_labels"])
+    masks_b64, max_err = encode_masks(hand["masks"], args.bits)
+    header = bundle_header(args.out, args.h5, hand, args.bits, n_gallery, prov,
+                           max_err=max_err, copied_from=args.gallery_from)
+    size = write_weights_js(hand, regions, gallery, prov, masks_b64, args.bits, args.out, header)
 
-    size = write_fixture(hand, digits28, hand["canvases"], logits, preds, labels)
-    print(f"wrote {os.path.relpath(FIXTURE_JSON, _REPO)} ({size // 1024} KB, "
-          f"{N_FIXTURE} cases, {N_RESIZE_CASES} resize cases)")
+    detail = f"{n_gallery} gallery digits"
+    if gallery_idx is not None:
+        detail += f", {sum(1 for i in gallery_idx if preds[i] != labels[i])} of them misclassified"
+    else:
+        detail += f" copied from {_rel(args.gallery_from)}"
+    if args.bits == 8:
+        detail += f", 8-bit phase (max error {max_err:.4f} rad)"
+    print(f"wrote {_rel(args.out)} ({size // 1024} KB, {detail})")
+
+    if args.fixture:
+        size = write_fixture(hand, digits28, hand["canvases"], logits, preds, labels, args.fixture)
+        print(f"wrote {_rel(args.fixture)} ({size // 1024} KB, "
+              f"{N_FIXTURE} cases, {N_RESIZE_CASES} resize cases)")
 
 
 if __name__ == "__main__":

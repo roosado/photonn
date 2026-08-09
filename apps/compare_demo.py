@@ -1,11 +1,18 @@
-"""Inline the two-model comparison widget for embedding.
+"""Inline the multi-model comparison widget for embedding.
 
-Mirrors :mod:`apps.d2nn_demo`, but carries *two* trained networks: the shipped
-5-mask model and the sweep's 14-mask candidate. The candidate's phases are
-8-bit (see :mod:`apps.export_sweep_web`), so the pair costs less than the shipped
-model alone did as float32.
+Mirrors :mod:`apps.d2nn_demo`, but carries *several* trained networks at once:
+by default the shipped 5-mask model and the 56-mask candidate from the optics
+sweep's deliverable retrain. The candidate's phases are 8-bit (see
+:mod:`apps.web_bundle`), which is what keeps a network with eleven times the
+parameters to under three times the download.
 
-Both are fed by one ``digit_source.js`` -- the gallery and draw pad are a
+Which bundles a board carries is a page-level choice, so it is a parameter here
+rather than a fact baked into the widget: ``models`` names keys of
+:data:`BUNDLES`, and both the inlined ``<script>`` tags and the mount call are
+built from that one list. A board can be given two models or four without
+either file knowing anything about them.
+
+All of them are fed by one ``digit_source.js`` -- the gallery and draw pad are a
 separate widget precisely so the models cannot be shown different inputs.
 
 Run ``python -m apps.compare_demo`` to write ``compare_demo.html`` next to this
@@ -18,13 +25,33 @@ import os
 
 from apps.diffraction_explorer import read_web_asset
 
+#: Weight bundles a board can carry: key -> (web asset, the window global it sets).
+#: The globals are derived from the filenames by ``apps.web_bundle.js_global``.
+BUNDLES = {
+    "shipped": ("d2nn_weights.js", "D2NN_WEIGHTS"),
+    "sweep": ("d2nn_sweep_weights.js", "D2NN_SWEEP_WEIGHTS"),
+    "deep": ("d2nn_deep_weights.js", "D2NN_DEEP_WEIGHTS"),
+}
 
-def compare_bundle() -> str:
-    """Return ``<script>`` tags with both models, the engine and the widget inlined."""
-    parts = [
-        read_web_asset("asm.js"),
-        read_web_asset("d2nn_weights.js"),
-        read_web_asset("d2nn_sweep_weights.js"),
+#: The shipped model against the deepest trained one -- the sharpest contrast the
+#: sweep supports, and the only pair whose two accuracies were measured the same
+#: way. The 14-mask ``sweep`` bundle stays available for a fuller three-column
+#: telling of the sweep itself.
+DEFAULT_MODELS = ("shipped", "deep")
+
+
+def _assets(models):
+    for key in models:
+        if key not in BUNDLES:
+            raise KeyError(f"unknown model {key!r}; known: {sorted(BUNDLES)}")
+        yield BUNDLES[key]
+
+
+def compare_bundle(models=DEFAULT_MODELS) -> str:
+    """Return ``<script>`` tags with the chosen models, the engine and the widget."""
+    parts = [read_web_asset("asm.js")]
+    parts += [read_web_asset(asset) for asset, _ in _assets(models)]
+    parts += [
         read_web_asset("d2nn.js"),
         read_web_asset("digit_source.js"),
         read_web_asset("d2nn_compare.js"),
@@ -32,13 +59,21 @@ def compare_bundle() -> str:
     return "\n".join(f"<script>\n{p}\n</script>" for p in parts)
 
 
-def compare_mount(container_id: str = "compare", **opts) -> str:
-    """Return a ``<script>`` that mounts the widget into ``#container_id``."""
-    cfg = json.dumps(opts)
+def compare_mount(container_id: str = "compare", models=DEFAULT_MODELS, **opts) -> str:
+    """Return a ``<script>`` that mounts the widget into ``#container_id``.
+
+    ``models`` becomes a JavaScript array of the bundle globals, which is why it
+    is spliced in rather than passed through ``json.dumps`` -- the widget wants
+    the objects themselves, in column order.
+    """
+    globals_js = ", ".join(f"window.{g}" for _, g in _assets(models))
+    cfg = ", ".join([f"models: [{globals_js}]"]
+                    + [f"{k}: {json.dumps(v)}" for k, v in opts.items()])
     return (
         "<script>\n"
         "  window.addEventListener('DOMContentLoaded', function () {\n"
-        f"    window.PhotonnD2NNCompare.mount(document.getElementById('{container_id}'), {cfg});\n"
+        f"    window.PhotonnD2NNCompare.mount(document.getElementById('{container_id}'), "
+        f"{{{cfg}}});\n"
         "  });\n"
         "</script>"
     )
@@ -75,8 +110,9 @@ _PAGE = """<!doctype html>
 """
 
 
-def build_html(**opts) -> str:
-    return _PAGE.format(bundle=compare_bundle(), mount=compare_mount(**opts))
+def build_html(models=DEFAULT_MODELS, **opts) -> str:
+    return _PAGE.format(bundle=compare_bundle(models),
+                        mount=compare_mount(models=models, **opts))
 
 
 def save_demo(path: str = None, **opts) -> str:

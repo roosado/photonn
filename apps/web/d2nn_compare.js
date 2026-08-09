@@ -9,8 +9,8 @@
  *
  * The interesting panel is the detector plane. The shipped 5-mask network throws
  * a diffuse interference pattern across the whole plane and reads a weak maximum
- * off it; the 14-mask candidate gathers light into the detector boxes
- * themselves. Same physics, same reach, more masks.
+ * off it; a deeper candidate gathers light into the detector boxes themselves.
+ * Same physics, same reach, more masks.
  *
  * Two structural rules hold this widget together:
  *
@@ -30,7 +30,7 @@
  * Usage:  window.PhotonnD2NNCompare.mount(containerElement, opts)
  * opts (all optional):
  *   models  -- array of weight bundles, in column order. Defaults to the shipped
- *              bundle plus the sweep candidate.
+ *              bundle plus the deep candidate.
  *   gallery -- index of the digit selected on mount
  */
 (function () {
@@ -45,9 +45,9 @@
   const SHIPPED_W = (typeof window !== "undefined" && window.D2NN_WEIGHTS)
     ? window.D2NN_WEIGHTS
     : (typeof require !== "undefined" ? require("./d2nn_weights.js") : null);
-  const SWEEP_W = (typeof window !== "undefined" && window.D2NN_SWEEP_WEIGHTS)
-    ? window.D2NN_SWEEP_WEIGHTS
-    : (typeof require !== "undefined" ? require("./d2nn_sweep_weights.js") : null);
+  const DEEP_W = (typeof window !== "undefined" && window.D2NN_DEEP_WEIGHTS)
+    ? window.D2NN_DEEP_WEIGHTS
+    : (typeof require !== "undefined" ? require("./d2nn_deep_weights.js") : null);
 
   const STYLE_ID = "dc-style";
   const CSS = `
@@ -144,10 +144,23 @@
     return `${fmtInt(p.n_train)} images, ${p.epochs} epochs`;
   }
 
+  /**
+   * A gap in mm, at whatever precision keeps it a number.
+   *
+   * Deep stacks spend their reach budget on masks rather than distance, so the
+   * gap can be well under a millimetre -- 0.5263 mm rounds to "1 mm" at zero
+   * decimals, which is both wrong and the opposite of the point being made.
+   */
+  function fmtGap(metres) {
+    const mm = metres * 1e3;
+    if (mm < 1) return mm.toFixed(2);
+    return mm.toFixed(Number.isInteger(mm) ? 0 : 1);
+  }
+
   /** "5 masks · 3 mm gaps · 82k phases" -- read off the weights, not the prose. */
   function geomLine(net) {
     const w = net.weights;
-    return `${w.n_layers} masks · ${(w.separation * 1e3).toFixed(0)} mm gaps · `
+    return `${w.n_layers} masks · ${fmtGap(w.separation)} mm gaps · `
       + `${(w.n_layers * net.N * net.N / 1000).toFixed(0)}k phases`;
   }
 
@@ -156,9 +169,22 @@
    *
    * A model a visitor can operate invites its number being read as an accuracy,
    * so an unshipped model states what its number is not. `reference` is the
-   * shipped model in the same board, if there is one -- that is where "not
-   * comparable to X" gets X, rather than from a literal.
+   * shipped model in the same board, if there is one -- that is where the number
+   * it is or is not comparable to comes from, rather than from a literal.
+   *
+   * Whether the two numbers *are* comparable is a property of the bundles, not
+   * of shipping: a sweep candidate ranked on a validation split is not
+   * comparable to the headline, while a candidate scored on the same frozen test
+   * set under the same protocol is exactly comparable and saying otherwise would
+   * throw away the comparison the board exists to make. The rule is that the
+   * measurements match and neither bundle declares itself measured elsewhere.
    */
+  function comparable(prov, reference) {
+    return !!(reference && reference.accuracy != null
+      && !prov.not_scored_on && !reference.not_scored_on
+      && prov.scored_on && prov.scored_on === reference.scored_on);
+  }
+
   function noteFor(prov, reference) {
     if (!prov || prov.accuracy == null) return "";
     const run = protocolPhrase(prov);
@@ -169,7 +195,9 @@
       if (run) s += ` (${run})`;
       if (prov.caveat) s += ` &mdash; ${prov.caveat}`;
       s += ".";
-      if (reference && reference.accuracy != null) {
+      if (comparable(prov, reference)) {
+        s += ` Same measurement as the shipped ${fmtAcc(reference.accuracy)}.`;
+      } else if (reference && reference.accuracy != null) {
         s += ` Not comparable to ${fmtAcc(reference.accuracy)}.`;
       }
       return s;
@@ -186,7 +214,7 @@
     }
     injectStyle();
 
-    const bundles = opts.models || [SHIPPED_W, SWEEP_W];
+    const bundles = opts.models || [SHIPPED_W, DEEP_W];
     if (!bundles.length || bundles.some((w) => !w)) {
       throw new Error("d2nn_compare.js needs at least one weights bundle");
     }
@@ -272,7 +300,7 @@
   // noteFor and geomLine are exported so the "captions come from provenance,
   // never from a literal" rule can be tested without a DOM -- there is no test
   // runner with jsdom here, and that rule is the point of the widget.
-  const API = { mount, noteFor, geomLine, protocolPhrase };
+  const API = { mount, noteFor, geomLine, protocolPhrase, comparable };
   if (typeof window !== "undefined") window.PhotonnD2NNCompare = API;
   if (typeof module !== "undefined") module.exports = API;
 })();

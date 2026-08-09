@@ -697,8 +697,8 @@ OPTICS_BODY = r"""
     are</b>. This page is the running record of measuring them. <b>Nothing here is shipped yet.</b></p>
     <div class="stat-strip">
       <div class="stat"><span class="v">0.771</span><span class="l">shipped geometry, ranking protocol</span></div>
-      <div class="stat"><span class="v">0.852</span><span class="l">best measured &mdash; 14 masks, same reach</span></div>
-      <div class="stat"><span class="v">+8.1<small> pts</small></span><span class="l">from geometry alone, no extra training</span></div>
+      <div class="stat"><span class="v">0.852</span><span class="l">14 masks, same reach budget</span></div>
+      <div class="stat"><span class="v">0.904</span><span class="l">56 masks, full budget, frozen test set</span></div>
     </div>
   </section>
 
@@ -769,27 +769,35 @@ OPTICS_BODY = r"""
 
     <h3 class="sub-h">See it for yourself</h3>
     <div class="prose col">
-      <p>Both networks run here, live, on whichever digit you pick &mdash; or one you draw &mdash;
-      the shipped one and the 14-mask candidate, the same angular-spectrum physics as the Python
-      reference, cross-checked against PyTorch to better than 10<sup>&minus;3</sup>. The gallery is
-      the one the classifier page uses, deliberately stocked with <strong>six digits the shipped
-      network gets wrong</strong>. The candidate recovers three of them.</p>
-      <p>Both machines are fed by <em>one</em> input, so switching between them compares optics and
-      nothing else. Draw a digit and they follow the stroke together, a full forward pass each per
-      frame.</p>
-      <p>Watch the detector plane rather than the answer. The shipped network spreads light across
-      the whole plane and reads a weak maximum off it; the candidate puts more of the power inside
-      the boxes. That is the extra masks doing their work.</p>
+      <p>Since more masks keep paying, the deepest configuration worth the compute was trained
+      properly rather than ranked: <strong>56 masks</strong> at 0.53&nbsp;mm gaps, the full 60,000
+      images, then scored once on the same frozen test set the shipped model is quoted from. It
+      reaches <strong>0.9040</strong> against <strong>0.7990</strong>. Both machines run here, live,
+      on whichever digit you pick &mdash; or one you draw &mdash; the same angular-spectrum physics
+      as the Python reference, cross-checked against PyTorch to better than
+      10<sup>&minus;3</sup>.</p>
+      <p>The gallery is the one the classifier page uses, deliberately stocked with <strong>six
+      digits the shipped network gets wrong</strong>. The deep network recovers three of them and
+      breaks none of the ten the shipped one already had. The three it still misses, it misses
+      <em>the same way</em> &mdash; same wrong class, both machines, which is a hint that those
+      digits are hard for the optics rather than for this particular set of masks.</p>
+      <p>Both are fed by <em>one</em> input, so the columns compare optics and nothing else. Watch
+      the detector plane rather than the answer: the shipped network spreads light across the whole
+      plane and reads a weak maximum off it, while the deep stack lands it inside the boxes. That is
+      the difference between about 60% and <strong>79%</strong> of the input photons reaching a
+      detector, and it is the same routing mechanism the accuracy gain comes from.</p>
     </div>
 
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="compare"></div></div>
-      <p class="cap">Live &mdash; two trained models, 762&nbsp;KB of phases together. The candidate is
-      the <em>bigger</em> network at 229k phases against 82k, yet the smaller download (317 vs
-      444&nbsp;KB), because its phases are quantised to 8&nbsp;bits. That is not a shortcut: the
+      <p class="cap">Live &mdash; two trained models, 1.6&nbsp;MB of phases together. The candidate
+      carries <strong>eleven times</strong> the parameters (918k against 82k) for under three times
+      the download, because its phases are quantised to 8&nbsp;bits. That is not a shortcut: the
       Phase-4 budget measures this design as holding accuracy down to <strong>3-bit</strong> phase
       control, and 8&nbsp;bits is what a real SLM offers, so the quantised model is the more faithful
-      one. Requantising the shipped model the same way would take the pair under 430&nbsp;KB.</p>
+      one. A forward pass costs roughly 17&nbsp;ms and 130&nbsp;ms respectively, so a drawn stroke
+      updates both columns at around <strong>7&nbsp;frames per second</strong> &mdash; the deep
+      machine is 56 diffraction steps of arithmetic, in a browser tab.</p>
     </div>
   </section>
 
@@ -798,24 +806,34 @@ OPTICS_BODY = r"""
       <div><p class="eyebrow">What this does not show</p>
       <h2>Reading it honestly</h2></div></div>
     <div class="prose col">
-      <p>These accuracies come from a deliberately <strong>short ranking protocol</strong> &mdash;
-      20,000 images for 12 epochs &mdash; because the question is which geometry, not what final
-      accuracy. They are <strong>not comparable to the 0.799 headline</strong>, which is a
+      <p>The <em>sweep</em> accuracies come from a deliberately <strong>short ranking protocol</strong>
+      &mdash; 20,000 images for 12 epochs &mdash; because the question there is which geometry, not
+      what final accuracy. They are <strong>not comparable to the 0.799 headline</strong>, which is a
       60,000-image, 40-epoch run. The fair comparison is the shipped geometry under the same short
-      protocol: <strong>0.771</strong>.</p>
+      protocol: <strong>0.771</strong>. The 56-mask model in the board above is the exception: it was
+      trained at the full budget and scored on the frozen test set, so its <strong>0.9040</strong> and
+      the headline <strong>0.7990</strong> are the same measurement.</p>
       <p>In a diffractive network <strong>mask count is parameter count</strong> &mdash; 128&sup2;
-      phases per mask &mdash; so nothing here separates &ldquo;depth helps&rdquo; from &ldquo;more
-      parameters help&rdquo;. The measured claim is narrower: at fixed reach and fixed training budget,
-      more masks help substantially. Each configuration is one seed; the ordering across the range far
-      exceeds run-to-run noise, adjacent points do not.</p>
-      <p>Model selection never touched the frozen test set &mdash; that set is exported to the MATLAB
+      phases per mask &mdash; so the sweep on its own cannot separate &ldquo;depth helps&rdquo; from
+      &ldquo;more parameters help&rdquo;. Two parameter-matched pairs settle it: 56 masks on a 128&sup2;
+      grid and 14 on a 256&sup2; one both carry 917,504 phases and score <strong>0.889 against
+      0.856</strong>; the 80/20 pair, both at 1,310,720 phases, gives 0.891 against 0.870. At equal
+      parameter count, <strong>depth wins</strong>. Each configuration is one seed; the ordering
+      across the range far exceeds run-to-run noise, adjacent points do not.</p>
+      <p>Ranking never touched the frozen test set &mdash; that set is exported to the MATLAB
       as-built model and every downstream number is quoted from it, so a disjoint validation split was
-      carved out of the training data instead.</p>
-      <p><strong>Nothing here is shipped.</strong> The trained model, the
-      <a class="link" href="@@CLASSIFIER_HREF@@">browser classifier &rarr;</a> and the
-      <a class="link" href="./">error budget &rarr;</a> all still describe the 5-mask, 3&nbsp;mm design.
-      Promoting a deeper one means a full retrain, a fresh error budget, and re-deriving the Phase-3
-      connectivity result &mdash; because separation is geometry.</p>
+      carved out of the training data instead. It was used once, at the end, to score the single
+      configuration that had already won.</p>
+      <p><strong>Nothing here is shipped, and the deep model is not simply better.</strong> The
+      trained model, the <a class="link" href="@@CLASSIFIER_HREF@@">browser classifier &rarr;</a> and
+      the <a class="link" href="./">error budget &rarr;</a> all still describe the 5-mask, 3&nbsp;mm
+      design. Running the full Phase-4 budget against the 56-mask candidate prices the +10.5 points:
+      <strong>2&times; tighter per-pixel phase</strong> (0.3 &rarr; 0.15&nbsp;rad), <strong>one more
+      DAC bit</strong>, and <strong>4.7&times; tighter loss per mask</strong>. Detector power and
+      wavelength margin loosen, for the same photon-capture reason the accuracy rose &mdash; but
+      thermal crosstalk, the source that already made this unbuildable on a real SLM, does not move at
+      all. Depth adds a second binding constraint without relieving the first, and that trade, rather
+      than the accuracy, is the result.</p>
     </div>
   </section>
 

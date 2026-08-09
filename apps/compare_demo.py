@@ -47,8 +47,12 @@ def _assets(models):
         yield BUNDLES[key]
 
 
-def compare_bundle(models=DEFAULT_MODELS) -> str:
-    """Return ``<script>`` tags with the chosen models, the engine and the widget."""
+def compare_bundle(models=DEFAULT_MODELS, stage: bool = False) -> str:
+    """Return ``<script>`` tags with the chosen models, the engine and the widget.
+
+    ``stage`` additionally inlines the 3D optical stage, for a board that draws
+    one of its columns as a machine rather than only as a detector plane.
+    """
     parts = [read_web_asset("asm.js")]
     parts += [read_web_asset(asset) for asset, _ in _assets(models)]
     parts += [
@@ -56,27 +60,46 @@ def compare_bundle(models=DEFAULT_MODELS) -> str:
         read_web_asset("digit_source.js"),
         read_web_asset("d2nn_compare.js"),
     ]
+    if stage:
+        parts.append(read_web_asset("d2nn_stage.js"))
     return "\n".join(f"<script>\n{p}\n</script>" for p in parts)
 
 
-def compare_mount(container_id: str = "compare", models=DEFAULT_MODELS, **opts) -> str:
+def compare_mount(container_id: str = "compare", models=DEFAULT_MODELS,
+                  stage_id: str = None, stage_model: str = None, **opts) -> str:
     """Return a ``<script>`` that mounts the widget into ``#container_id``.
 
     ``models`` becomes a JavaScript array of the bundle globals, which is why it
     is spliced in rather than passed through ``json.dumps`` -- the widget wants
     the objects themselves, in column order.
+
+    With ``stage_id``, the 3D stage is mounted there for the ``stage_model``
+    column and fed **the digit** rather than a finished result: the stage decides
+    for itself whether to run the forward pass now or on a Refresh press, which
+    for a deep network is the difference between a smooth page and a stuttering
+    one. Its network comes off the board, so it is built once.
     """
-    globals_js = ", ".join(f"window.{g}" for _, g in _assets(models))
+    keys = list(models)
+    globals_js = ", ".join(f"window.{g}" for _, g in _assets(keys))
     cfg = ", ".join([f"models: [{globals_js}]"]
                     + [f"{k}: {json.dumps(v)}" for k, v in opts.items()])
-    return (
-        "<script>\n"
-        "  window.addEventListener('DOMContentLoaded', function () {\n"
-        f"    window.PhotonnD2NNCompare.mount(document.getElementById('{container_id}'), "
-        f"{{{cfg}}});\n"
-        "  });\n"
-        "</script>"
-    )
+
+    lines = ["<script>",
+             "  window.addEventListener('DOMContentLoaded', function () {",
+             f"    var board = window.PhotonnD2NNCompare.mount("
+             f"document.getElementById('{container_id}'), {{{cfg}}});"]
+    if stage_id:
+        if stage_model not in keys:
+            raise KeyError(f"stage_model {stage_model!r} is not one of the board's models {keys}")
+        idx = keys.index(stage_model)
+        lines += [
+            f"    var stage = window.PhotonnD2NNStage.mount("
+            f"document.getElementById('{stage_id}'), "
+            f"{{net: board.models[{idx}].net}});",
+            "    board.source.subscribe(function (digit, meta) { stage.setDigit(digit, meta); });",
+        ]
+    lines += ["  });", "</script>"]
+    return "\n".join(lines)
 
 
 _PAGE = """<!doctype html>
@@ -111,7 +134,7 @@ _PAGE = """<!doctype html>
 
 
 def build_html(models=DEFAULT_MODELS, **opts) -> str:
-    return _PAGE.format(bundle=compare_bundle(models),
+    return _PAGE.format(bundle=compare_bundle(models, stage=bool(opts.get("stage_id"))),
                         mount=compare_mount(models=models, **opts))
 
 

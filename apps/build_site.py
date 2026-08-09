@@ -799,6 +799,32 @@ OPTICS_BODY = r"""
       updates both columns at around <strong>7&nbsp;frames per second</strong> &mdash; the deep
       machine is 56 diffraction steps of arithmetic, in a browser tab.</p>
     </div>
+
+    <h3 class="sub-h">What 56 masks actually looks like</h3>
+    <div class="prose col">
+      <p>The detector plane says the deep network is better; it does not say what it <em>is</em>.
+      Here it is as a machine &mdash; the entrance plane, the phase plates and the detector plane
+      drawn along the optical axis, each carrying the light computed on it. Drag to orbit.</p>
+      <p>Two things about this figure are honest rather than convenient. It draws
+      <strong>6 of the 56 masks</strong>, spread through the stack and each labelled with its real
+      index, because fifty-six plates at 0.53&nbsp;mm spacing are fifty-six near-identical
+      pictures. And it does not follow your pen: a redraw is a full pass through
+      <strong>57 hops</strong>, so it waits for <span class="q">Refresh</span> rather than making
+      the whole page stutter for a picture nobody reads mid-stroke.</p>
+      <p>The proportions are the point. The shipped design is 18&nbsp;mm of optics across a
+      1.02&nbsp;mm aperture; this one is <strong>30&nbsp;mm across the same aperture</strong>, a
+      29:1 needle that has to be compressed almost tenfold just to fit on a screen. Past about
+      forty plates at this spacing, calling it a stack of discrete masks is already a stretch
+      &mdash; it is closer to a volume of glass, which is a different thing to fabricate and one
+      the <a class="link" href="./">error budget &rarr;</a> does not yet model.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="stage3d"></div></div>
+      <p class="cap">Live &mdash; the 56-mask candidate, fed the same digit as the board above.
+      Sampled planes, manual refresh; the haze between plates is the field at intermediate depths,
+      which is exact here rather than a gradient.</p>
+    </div>
   </section>
 
   <section class="phase reveal">
@@ -932,9 +958,12 @@ def render():
     opt = opt.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
     opt = opt.replace("@@OPTICS_BUNDLE@@", optics_bundle())
     opt = opt.replace("@@OPTICS_MOUNT@@", optics_mount("optics", zMm=3))
-    opt = opt.replace("@@COMPARE_BUNDLE@@", compare_bundle())
+    opt = opt.replace("@@COMPARE_BUNDLE@@", compare_bundle(stage=True))
     # Open on a digit the shipped model gets wrong and the candidate does not.
-    opt = opt.replace("@@COMPARE_MOUNT@@", compare_mount("compare", gallery=14))
+    # The stage draws the deep column as a machine; it is fed the same digit the
+    # board is, and decides for itself when to run the forward pass.
+    opt = opt.replace("@@COMPARE_MOUNT@@", compare_mount(
+        "compare", gallery=14, stage_id="stage3d", stage_model="deep"))
     opt = opt.replace("@@CLASSIFIER_HREF@@", CLASSIFIER_PAGE)
     optics = _document(opt).replace(
         "<title>photonn &mdash; photonic neural networks &amp; fabrication tolerance</title>",

@@ -41,6 +41,9 @@
  *
  * Usage:  var stage = window.PhotonnD2NNStage.mount(container, opts);
  *         stage.setResult(res, {trueLabel: 7});   // res from a d2nn.js network
+ *         stage.setDigit(img28, meta);            // or hand it the digit instead,
+ *                                                 // which lets a deep stack defer
+ *                                                 // the forward pass as well
  * opts (all optional):
  *   net       -- the network to draw (from d2nn.js:buildNet). Defaults to the
  *                shipped one, so one page can hold a stage per model.
@@ -154,7 +157,13 @@
     return out;
   }
 
-  const STYLE_ID = "ds-style";
+  // Unique across apps/web/*.js. It was "ds-style", which digit_source.js also
+  // claims -- injectStyle() bails when the id is already there, so whichever
+  // widget mounted second silently ran with no CSS of its own. That cost nothing
+  // visible until a page carried both: on the optics page the stage lost, and its
+  // toolbar unwrapped and its canvas collapsed to the 300px default. Guarded by
+  // tests/test_web_style_ids.py.
+  const STYLE_ID = "d2nn-stage-style";
   const CSS = `
 .ds-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
   --pe-accent:#3b6ea5;--pe-ok:#3f8f4e;--pe-warn:#c14a3d;
@@ -384,14 +393,23 @@
       return out;
     }
 
-    function buildSliceBitmaps(res) {
+    function buildSliceBitmaps(res, panels) {
+      const S = Math.max(1, state.subSteps);
+      const dz = W.separation / S;
       const f = MODEL.encodeInput(res.canvas);
-      const slices = MODEL.sliceForward(f[0], f[1], state.subSteps);
+      const slices = MODEL.sliceForward(f[0], f[1], S);
+
+      // Skip only the depths a *drawn panel* already occupies -- those are drawn
+      // opaque. The test used to be "does a mask sit here", which was the same
+      // thing while every mask got a panel. Once the stack is sampled they part
+      // company, and at subSteps=1 they part company completely: every slice
+      // lands on some mask, so that test discarded the entire beam and left the
+      // fifty undrawn plates as empty space. The light between the six panels is
+      // the most honest thing in the figure -- it is where the other fifty are.
+      const drawn = new Set(panels.map((p) => Math.round(p.z / dz)));
       const out = [];
       for (const s of slices) {
-        // Skip the depths a panel already occupies -- those are drawn opaque.
-        const onPanel = Math.abs(s.z / W.separation - Math.round(s.z / W.separation)) < 1e-9;
-        if (onPanel) continue;
+        if (drawn.has(Math.round(s.z / dz))) continue;
         out.push({ z: s.z, bmp: renderBitmap(s.I, N, LUT_I, GAMMA, false) });
       }
       return out;
@@ -410,7 +428,7 @@
       state.sliceTimer = setTimeout(() => {
         state.sliceTimer = 0;
         if (!state.res || !state.beam) return;
-        state.bitmaps.slices = buildSliceBitmaps(state.res);
+        state.bitmaps.slices = buildSliceBitmaps(state.res, state.bitmaps.panels);
         draw();
       }, 180);
     }
@@ -444,9 +462,35 @@
         render(res, meta);
         return;
       }
-      state.pending = { res, meta: meta || null };
+      state.pending = { res: res, meta: meta || null };
       updateRefresh();
       draw();
+    }
+
+    /**
+     * Take a raw digit instead of a finished result, and classify it here.
+     *
+     * This is the form a deep stage wants. `setResult` obliges the caller to have
+     * already run the forward pass, which for a 56-mask network is ~130 ms thrown
+     * away on every pointer move that manual mode then declines to draw. Holding
+     * the *digit* defers the physics as well as the drawing, so drawing beside a
+     * deep stage costs nothing until Refresh is pressed.
+     */
+    function setDigit(img28, meta) {
+      if (MODE === "live" || !state.res) {
+        render(MODEL.classify(img28), meta);
+        return;
+      }
+      state.pending = { digit: img28, meta: meta || null };
+      updateRefresh();
+      draw();
+    }
+
+    /** Draw whatever is held, running the forward pass now if it was deferred. */
+    function commitPending() {
+      const p = state.pending;
+      if (!p) return;
+      render(p.res || MODEL.classify(p.digit), p.meta);
     }
 
     /** Reflect whether what is drawn is still the current digit. */
@@ -639,7 +683,8 @@
 
       // Labels last: a nearer plate would otherwise paint over the label of the
       // plate behind it, and a legend you cannot read is worse than a wrong depth.
-      for (const pan of bm.panels) drawLabel(ctx, L, pan, reached(pan.z) ? 1 : 0.4, p);
+      const placed = [];
+      for (const pan of bm.panels) drawLabel(ctx, L, pan, reached(pan.z) ? 1 : 0.4, p, placed);
 
       // The wavefront itself, while sweeping.
       if (state.front < 1) outline(ctx, L, frontZ, p.warn, 2, 0.95);
@@ -694,19 +739,35 @@
       ctx.restore();
     }
 
-    function drawLabel(ctx, L, pan, alpha, p) {
+    function drawLabel(ctx, L, pan, alpha, p, placed) {
       // Centred just above each plane's own top edge, so a label is unambiguously
       // attached to its plate at any orbit angle. The planes' cascade staggers the
-      // labels for free.
-      const mid = project(L, 0.5, 0, pan.z);
+      // labels for free -- while the planes are far apart.
+      //
+      // On a deep stack they are not. At 0.53 mm gaps the first mask sits 1.7% of
+      // the way along the axis, so "mask 1 of 56" lands on top of "input", and the
+      // last one lands on "detectors". So each label is lifted until it clears the
+      // ones already drawn: the cascade direction is preserved, nothing is
+      // dropped, and no label is ever moved off its own plate.
       const top = project(L, 0.5, 0, pan.z);
       const bottom = project(L, 0.5, 1, pan.z);
       const uy = [bottom[0] - top[0], bottom[1] - top[1]];
-      const x = mid[0] - uy[0] * 0.035, y = mid[1] - uy[1] * 0.035;
+      let x = top[0] - uy[0] * 0.035, y = top[1] - uy[1] * 0.035;
+
       ctx.save();
-      ctx.globalAlpha = alpha;
       ctx.font = (pan.kind === "detector" ? "600 " : "")
         + "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      const halfW = ctx.measureText(pan.label).width / 2 + 3;
+      const H = 13;
+      for (let guard = 0; guard < 40; guard++) {
+        const hit = placed.find((q) => Math.abs(q.x - x) < q.halfW + halfW
+                                    && Math.abs(q.y - y) < H);
+        if (!hit) break;
+        y = hit.y - H;
+      }
+      placed.push({ x, y, halfW });
+
+      ctx.globalAlpha = alpha;
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
       // A label can land on a dark plate or on the light card behind it depending
@@ -790,10 +851,7 @@
       sweepRaf = requestAnimationFrame(stepSweep);
     });
 
-    btnRefresh.addEventListener("click", () => {
-      if (!state.pending) return;
-      render(state.pending.res, state.pending.meta);
-    });
+    btnRefresh.addEventListener("click", commitPending);
 
     btnReset.addEventListener("click", () => {
       state.theta = 34 * Math.PI / 180;
@@ -836,11 +894,11 @@
     updateRefresh();
     draw();
 
-    const api = { setResult, redraw: requestDraw, state,
+    const api = { setResult, setDigit, redraw: requestDraw, state,
                   // Geometry decisions, exposed so tests can assert them without a
                   // DOM and a page can print "6 of 56" without recomputing it.
                   model: MODEL, mode: MODE, maskIndices: MASK_IDX, sampled: SAMPLED,
-                  refresh: () => { if (state.pending) render(state.pending.res, state.pending.meta); },
+                  refresh: commitPending,
                   setFront: (t) => { state.front = t; draw(); } };
     container.__photonnStage = api;   // handle for page scripts and browser tests
     return api;

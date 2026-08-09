@@ -294,7 +294,14 @@
     });
     source.subscribe(render);
 
-    return { render: () => { const c = source.current(); if (c) render(c.digit, c.meta); }, source };
+    // `models` is exposed so a page can hang something else off a column's network
+    // -- the 3D stage on the optics page draws the deep model from here rather
+    // than calling buildNet again, which would duplicate ~15 MB of precomputed
+    // cos/sin for a network already built two lines above.
+    return {
+      render: () => { const c = source.current(); if (c) render(c.digit, c.meta); },
+      source, models,
+    };
   }
 
   // noteFor and geomLine are exported so the "captions come from provenance,

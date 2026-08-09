@@ -775,12 +775,24 @@
  *   thumb    -- gallery thumbnail size in CSS px (default 44)
  *   mode     -- "gallery" (default) or "draw"
  *   hint     -- text under the pad; pass "" to suppress it
- * handle: { subscribe(fn), current(), setMode(mode), clear(), destroy() }
+ *   settleMs -- while drawing, wait this long after the last pointer move
+ *               before emitting (default 0: emit every frame, as before)
+ * handle: { subscribe(fn), onPending(fn), current(), pending(), setMode(mode),
+ *           setSettle(ms), clear(), destroy() }
  *
  * Subscribers are called as fn(digit28, meta) where meta is
  * {mode, index, label} -- label is null while drawing, because a drawing has
  * no ground truth. A late subscriber is replayed the current digit
  * immediately, so mount order does not matter.
+ *
+ * **Emission cadence is the consumers' problem to declare, and this is where it
+ * is solved.** Moves are coalesced to one per animation frame, which is enough
+ * while a consumer classifies inside a frame budget. It is not enough for a deep
+ * network: two models at ~17 ms and ~129 ms block the main thread for ~146 ms
+ * per frame, and since the pad's ink cannot be *painted* until the thread
+ * yields, the stroke arrives in 146 ms jumps and the pad feels broken. With
+ * `settleMs` set, nothing is emitted while the pen is moving; one emission
+ * follows the pause. Consumers that are cheap pass nothing and are unaffected.
  *
  * The extraction is deliberately a *move*, not a rewrite: the pad geometry,
  * the stroke width and the MNIST normalisation are all load-bearing and were
@@ -859,7 +871,11 @@
       drawing: false,
     };
     const subscribers = [];
+    const pendingSubs = [];
     let last = null;
+    let settleMs = Math.max(0, opts.settleMs || 0);
+    let settleTimer = 0;
+    let pending = false;
 
     // `pe-root` lets a host page retheme the widget through its own tokens
     // (build_site.py maps --pe-* onto the site palette); the defaults above
@@ -919,7 +935,21 @@
     clearPad();
 
     // -------------------------------------------------------------- emission
-    /** Read the current input and hand the normalised digit to every subscriber. */
+    function sameDigit(a, b) {
+      if (!a || !b || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    /** Read the current input and hand the normalised digit to every subscriber.
+     *
+     * An emission that carries the same digit as the last one is dropped. That is
+     * not a micro-optimisation here: pointerup re-emits after the final
+     * pointermove already did, and a settle timer that fires while the pen rests
+     * mid-stroke is followed by another emission on lift. Each duplicate costs a
+     * consumer a full forward pass -- ~146 ms on the comparison board -- for a
+     * result identical to the one already on screen.
+     */
     function emit() {
       let digit, label = null, index = null;
       if (state.mode === "gallery") {
@@ -932,7 +962,12 @@
         for (let i = 0; i < PAD * PAD; i++) gray[i] = px[i * 4] / 255;
         digit = net.normalizeDrawn(gray, PAD);
       }
-      last = { digit, meta: { mode: state.mode, index, label } };
+      const meta = { mode: state.mode, index, label };
+      const unchanged = last && last.meta.mode === meta.mode
+        && last.meta.index === meta.index && sameDigit(last.digit, digit);
+
+      last = { digit, meta };
+      if (unchanged) return;
       for (let i = 0; i < subscribers.length; i++) subscribers[i](last.digit, last.meta);
     }
 
@@ -946,6 +981,36 @@
       requestAnimationFrame(() => { scheduled = false; emit(); });
     }
 
+    /** True while a stroke is being drawn and its emission is still waiting. */
+    function setPending(v) {
+      if (v === pending) return;
+      pending = v;
+      for (let i = 0; i < pendingSubs.length; i++) pendingSubs[i](pending);
+    }
+
+    /** Restart the settle wait: emit once the pen has been still for settleMs. */
+    function requestSettledEmit() {
+      if (settleTimer) clearTimeout(settleTimer);
+      setPending(true);
+      settleTimer = setTimeout(() => {
+        settleTimer = 0;
+        setPending(false);
+        requestEmit();
+      }, settleMs);
+    }
+
+    /** Cancel any pending settle. Used when the stroke ends: a lift is a pause. */
+    function cancelSettle() {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = 0;
+      setPending(false);
+    }
+
+    function inputChanged() {
+      if (settleMs > 0 && state.drawing) requestSettledEmit();
+      else requestEmit();
+    }
+
     /** Register a consumer. Replays the current digit, so mount order is free. */
     function subscribe(fn) {
       subscribers.push(fn);
@@ -954,6 +1019,28 @@
         const i = subscribers.indexOf(fn);
         if (i >= 0) subscribers.splice(i, 1);
       };
+    }
+
+    /** Register a listener for "a stroke is waiting to be classified". */
+    function onPending(fn) {
+      pendingSubs.push(fn);
+      fn(pending);
+      return () => {
+        const i = pendingSubs.indexOf(fn);
+        if (i >= 0) pendingSubs.splice(i, 1);
+      };
+    }
+
+    /**
+     * Change the settle delay after mount.
+     *
+     * A consumer cannot know what it costs until it has run once, so the board
+     * measures itself and calls this rather than the delay being guessed from a
+     * model's size here. Dropping to 0 releases anything already waiting.
+     */
+    function setSettle(ms) {
+      settleMs = Math.max(0, ms || 0);
+      if (settleMs === 0 && settleTimer) { cancelSettle(); requestEmit(); }
     }
 
     // ---------------------------------------------------------------- events
@@ -977,7 +1064,7 @@
 
     btnGallery.addEventListener("click", () => setMode("gallery"));
     btnDraw.addEventListener("click", () => setMode("draw"));
-    clearBtn.addEventListener("click", () => { clearPad(); requestEmit(); });
+    clearBtn.addEventListener("click", () => { clearPad(); cancelSettle(); requestEmit(); });
 
     function padPos(ev) {
       const r = pad.getBoundingClientRect();
@@ -1001,17 +1088,19 @@
       padCtx.beginPath();
       padCtx.moveTo(p[0], p[1]);
       strokeTo(p[0], p[1]);
-      requestEmit();
+      inputChanged();
       ev.preventDefault();
     });
     pad.addEventListener("pointermove", (ev) => {
       if (!state.drawing) return;
       const p = padPos(ev);
       strokeTo(p[0], p[1]);
-      requestEmit();
+      inputChanged();
       ev.preventDefault();
     });
-    const endStroke = () => { state.drawing = false; requestEmit(); };
+    // Lifting the pen is the clearest pause there is, so it pre-empts the timer
+    // rather than waiting out another settleMs.
+    const endStroke = () => { state.drawing = false; cancelSettle(); requestEmit(); };
     pad.addEventListener("pointerup", endStroke);
     pad.addEventListener("pointercancel", endStroke);
     pad.addEventListener("pointerleave", () => { if (state.drawing) state.drawing = false; });
@@ -1025,10 +1114,18 @@
 
     return {
       subscribe,
+      onPending,
       current: () => last,
+      pending: () => pending,
       setMode,
-      clear: () => { clearPad(); requestEmit(); },
-      destroy: () => { subscribers.length = 0; root.remove(); },
+      setSettle,
+      clear: () => { clearPad(); cancelSettle(); requestEmit(); },
+      destroy: () => {
+        cancelSettle();
+        subscribers.length = 0;
+        pendingSubs.length = 0;
+        root.remove();
+      },
     };
   }
 
@@ -1058,6 +1155,12 @@
  *   1. **One input, N models.** The gallery and the draw pad live in
  *      digit_source.js, not here, so every column is fed the identical digit by
  *      construction rather than by care.
+ *   1a. **The input decides its own cadence.** A board with a deep column cannot
+ *      classify inside a frame, so following a stroke live would block the main
+ *      thread and make the pad itself unusable. The board measures what it costs
+ *      and tells digit_source.js to hold emissions until the pen pauses; the
+ *      columns dim while that is true. Nothing here picks a delay from a mask
+ *      count -- it is measured, so it adapts to the machine.
  *   2. **No model metadata in this file.** Every caption -- the column title,
  *      the accuracy, what it was scored on, the unshipped caveat, even the
  *      orange border -- is rendered from the bundle's own `provenance` block.
@@ -1089,6 +1192,19 @@
   const DEEP_W = (typeof window !== "undefined" && window.D2NN_DEEP_WEIGHTS)
     ? window.D2NN_DEEP_WEIGHTS
     : (typeof require !== "undefined" ? require("./d2nn_deep_weights.js") : null);
+
+  //: One animation frame. A board that cannot classify every model inside one
+  //: cannot follow a stroke, however the emission is scheduled -- so this is the
+  //: line between "update live" and "update when the pen pauses".
+  const FRAME_MS = 16.7;
+  //: Hysteresis around it, so a board sitting near the budget does not flip mode
+  //: between strokes. Enter settle mode above ENTER, leave below LEAVE.
+  const SETTLE_ENTER_MS = 20;
+  const SETTLE_LEAVE_MS = 10;
+  //: How long the pen must be still before an expensive board classifies. Short
+  //: enough not to read as waiting, long enough to swallow a whole stroke: moves
+  //: during a stroke are milliseconds apart, so this only ever fires on a pause.
+  const SETTLE_MS = 250;
 
   const STYLE_ID = "dc-style";
   const CSS = `
@@ -1124,6 +1240,11 @@
 .dc-note b{color:var(--pe-warn);}
 .dc-truth{font-size:13px;color:var(--pe-muted);margin:12px 0 0;}
 .dc-truth b{color:var(--pe-fg);}
+.dc-wait{font-size:12px;color:var(--dc-cand);margin:6px 0 0;min-height:1.2em;
+  opacity:0;transition:opacity .12s;}
+.dc-root.waiting .dc-wait{opacity:1;}
+.dc-root.waiting .dc-col .big{opacity:.4;}
+.dc-col .big{transition:opacity .12s;}
 `;
 
   function injectStyle() {
@@ -1285,6 +1406,7 @@
         ones. Or draw your own and watch both machines follow the stroke.</p>
         <div class="dc-source"></div>
         <p class="dc-truth"></p>
+        <p class="dc-wait">Still drawing &mdash; the machines run when you pause.</p>
       </div>
       <div class="dc-cols"></div>`;
     container.appendChild(root);
@@ -1307,8 +1429,28 @@
       m.share = el.querySelector(".share");
     }
 
+    /**
+     * How long a full board render costs, smoothed over renders.
+     *
+     * The board cannot know this before it has run: it depends on the models on
+     * it and on the machine it is running on, and a 56-mask column costs roughly
+     * eight times a 5-mask one on the same laptop. So it is measured here rather
+     * than guessed from mask counts, and the digit source is told what to do with
+     * it. An exponential average rides out one slow frame; the hysteresis keeps a
+     * board near the budget from flipping mode between strokes.
+     */
+    let source = null;
+    let cost = null;
+    function updateCadence(elapsed) {
+      cost = cost == null ? elapsed : cost * 0.7 + elapsed * 0.3;
+      if (!source) return;
+      if (cost > SETTLE_ENTER_MS) source.setSettle(SETTLE_MS);
+      else if (cost < SETTLE_LEAVE_MS) source.setSettle(0);
+    }
+
     /** Run one digit through every column. `label` is null for a drawing. */
     function render(digit, meta) {
+      const t0 = (typeof performance !== "undefined") ? performance.now() : 0;
       const label = meta ? meta.label : null;
       truth.innerHTML = label == null
         ? "Your drawing &mdash; no ground truth to score against."
@@ -1325,24 +1467,35 @@
             ? ""
             : ` — true ${label} got ${(res.fractions[label] * 100).toFixed(1)}%`);
       }
+      if (t0) updateCadence(performance.now() - t0);
     }
 
-    const source = SOURCE.mount(root.querySelector(".dc-source"), {
+    source = SOURCE.mount(root.querySelector(".dc-source"), {
       net: lead,
       gallery: opts.gallery,
+      // Start expensive boards in settle mode rather than discovering it on the
+      // first laggy stroke: the mount render below measures the real cost and
+      // corrects this either way, within one emission.
+      settleMs: models.length > 1 ? SETTLE_MS : 0,
       hint: "Drawn digits are re-centred and scaled the way MNIST was built, then sent "
         + "through both machines.",
     });
     source.subscribe(render);
+    // The columns go dim and the board says so while a stroke is still being
+    // drawn, because two frozen digits with no explanation read as a hang.
+    source.onPending((p) => root.classList.toggle("waiting", p));
 
     // `models` is exposed so a page can hang something else off a column's network
     // -- the 3D stage on the optics page draws the deep model from here rather
     // than calling buildNet again, which would duplicate ~15 MB of precomputed
     // cos/sin for a network already built two lines above.
-    return {
+    const api = {
       render: () => { const c = source.current(); if (c) render(c.digit, c.meta); },
       source, models,
+      cost: () => cost,
     };
+    container.__photonnCompare = api;   // handle for page scripts and browser tests
+    return api;
   }
 
   // noteFor and geomLine are exported so the "captions come from provenance,

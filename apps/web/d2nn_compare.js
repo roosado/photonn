@@ -17,6 +17,12 @@
  *   1. **One input, N models.** The gallery and the draw pad live in
  *      digit_source.js, not here, so every column is fed the identical digit by
  *      construction rather than by care.
+ *   1a. **The input decides its own cadence.** A board with a deep column cannot
+ *      classify inside a frame, so following a stroke live would block the main
+ *      thread and make the pad itself unusable. The board measures what it costs
+ *      and tells digit_source.js to hold emissions until the pen pauses; the
+ *      columns dim while that is true. Nothing here picks a delay from a mask
+ *      count -- it is measured, so it adapts to the machine.
  *   2. **No model metadata in this file.** Every caption -- the column title,
  *      the accuracy, what it was scored on, the unshipped caveat, even the
  *      orange border -- is rendered from the bundle's own `provenance` block.
@@ -48,6 +54,19 @@
   const DEEP_W = (typeof window !== "undefined" && window.D2NN_DEEP_WEIGHTS)
     ? window.D2NN_DEEP_WEIGHTS
     : (typeof require !== "undefined" ? require("./d2nn_deep_weights.js") : null);
+
+  //: One animation frame. A board that cannot classify every model inside one
+  //: cannot follow a stroke, however the emission is scheduled -- so this is the
+  //: line between "update live" and "update when the pen pauses".
+  const FRAME_MS = 16.7;
+  //: Hysteresis around it, so a board sitting near the budget does not flip mode
+  //: between strokes. Enter settle mode above ENTER, leave below LEAVE.
+  const SETTLE_ENTER_MS = 20;
+  const SETTLE_LEAVE_MS = 10;
+  //: How long the pen must be still before an expensive board classifies. Short
+  //: enough not to read as waiting, long enough to swallow a whole stroke: moves
+  //: during a stroke are milliseconds apart, so this only ever fires on a pause.
+  const SETTLE_MS = 250;
 
   const STYLE_ID = "dc-style";
   const CSS = `
@@ -83,6 +102,11 @@
 .dc-note b{color:var(--pe-warn);}
 .dc-truth{font-size:13px;color:var(--pe-muted);margin:12px 0 0;}
 .dc-truth b{color:var(--pe-fg);}
+.dc-wait{font-size:12px;color:var(--dc-cand);margin:6px 0 0;min-height:1.2em;
+  opacity:0;transition:opacity .12s;}
+.dc-root.waiting .dc-wait{opacity:1;}
+.dc-root.waiting .dc-col .big{opacity:.4;}
+.dc-col .big{transition:opacity .12s;}
 `;
 
   function injectStyle() {
@@ -244,6 +268,7 @@
         ones. Or draw your own and watch both machines follow the stroke.</p>
         <div class="dc-source"></div>
         <p class="dc-truth"></p>
+        <p class="dc-wait">Still drawing &mdash; the machines run when you pause.</p>
       </div>
       <div class="dc-cols"></div>`;
     container.appendChild(root);
@@ -266,8 +291,28 @@
       m.share = el.querySelector(".share");
     }
 
+    /**
+     * How long a full board render costs, smoothed over renders.
+     *
+     * The board cannot know this before it has run: it depends on the models on
+     * it and on the machine it is running on, and a 56-mask column costs roughly
+     * eight times a 5-mask one on the same laptop. So it is measured here rather
+     * than guessed from mask counts, and the digit source is told what to do with
+     * it. An exponential average rides out one slow frame; the hysteresis keeps a
+     * board near the budget from flipping mode between strokes.
+     */
+    let source = null;
+    let cost = null;
+    function updateCadence(elapsed) {
+      cost = cost == null ? elapsed : cost * 0.7 + elapsed * 0.3;
+      if (!source) return;
+      if (cost > SETTLE_ENTER_MS) source.setSettle(SETTLE_MS);
+      else if (cost < SETTLE_LEAVE_MS) source.setSettle(0);
+    }
+
     /** Run one digit through every column. `label` is null for a drawing. */
     function render(digit, meta) {
+      const t0 = (typeof performance !== "undefined") ? performance.now() : 0;
       const label = meta ? meta.label : null;
       truth.innerHTML = label == null
         ? "Your drawing &mdash; no ground truth to score against."
@@ -284,24 +329,35 @@
             ? ""
             : ` — true ${label} got ${(res.fractions[label] * 100).toFixed(1)}%`);
       }
+      if (t0) updateCadence(performance.now() - t0);
     }
 
-    const source = SOURCE.mount(root.querySelector(".dc-source"), {
+    source = SOURCE.mount(root.querySelector(".dc-source"), {
       net: lead,
       gallery: opts.gallery,
+      // Start expensive boards in settle mode rather than discovering it on the
+      // first laggy stroke: the mount render below measures the real cost and
+      // corrects this either way, within one emission.
+      settleMs: models.length > 1 ? SETTLE_MS : 0,
       hint: "Drawn digits are re-centred and scaled the way MNIST was built, then sent "
         + "through both machines.",
     });
     source.subscribe(render);
+    // The columns go dim and the board says so while a stroke is still being
+    // drawn, because two frozen digits with no explanation read as a hang.
+    source.onPending((p) => root.classList.toggle("waiting", p));
 
     // `models` is exposed so a page can hang something else off a column's network
     // -- the 3D stage on the optics page draws the deep model from here rather
     // than calling buildNet again, which would duplicate ~15 MB of precomputed
     // cos/sin for a network already built two lines above.
-    return {
+    const api = {
       render: () => { const c = source.current(); if (c) render(c.digit, c.meta); },
       source, models,
+      cost: () => cost,
     };
+    container.__photonnCompare = api;   // handle for page scripts and browser tests
+    return api;
   }
 
   // noteFor and geomLine are exported so the "captions come from provenance,

@@ -21,12 +21,24 @@
  *   thumb    -- gallery thumbnail size in CSS px (default 44)
  *   mode     -- "gallery" (default) or "draw"
  *   hint     -- text under the pad; pass "" to suppress it
- * handle: { subscribe(fn), current(), setMode(mode), clear(), destroy() }
+ *   settleMs -- while drawing, wait this long after the last pointer move
+ *               before emitting (default 0: emit every frame, as before)
+ * handle: { subscribe(fn), onPending(fn), current(), pending(), setMode(mode),
+ *           setSettle(ms), clear(), destroy() }
  *
  * Subscribers are called as fn(digit28, meta) where meta is
  * {mode, index, label} -- label is null while drawing, because a drawing has
  * no ground truth. A late subscriber is replayed the current digit
  * immediately, so mount order does not matter.
+ *
+ * **Emission cadence is the consumers' problem to declare, and this is where it
+ * is solved.** Moves are coalesced to one per animation frame, which is enough
+ * while a consumer classifies inside a frame budget. It is not enough for a deep
+ * network: two models at ~17 ms and ~129 ms block the main thread for ~146 ms
+ * per frame, and since the pad's ink cannot be *painted* until the thread
+ * yields, the stroke arrives in 146 ms jumps and the pad feels broken. With
+ * `settleMs` set, nothing is emitted while the pen is moving; one emission
+ * follows the pause. Consumers that are cheap pass nothing and are unaffected.
  *
  * The extraction is deliberately a *move*, not a rewrite: the pad geometry,
  * the stroke width and the MNIST normalisation are all load-bearing and were
@@ -105,7 +117,11 @@
       drawing: false,
     };
     const subscribers = [];
+    const pendingSubs = [];
     let last = null;
+    let settleMs = Math.max(0, opts.settleMs || 0);
+    let settleTimer = 0;
+    let pending = false;
 
     // `pe-root` lets a host page retheme the widget through its own tokens
     // (build_site.py maps --pe-* onto the site palette); the defaults above
@@ -165,7 +181,21 @@
     clearPad();
 
     // -------------------------------------------------------------- emission
-    /** Read the current input and hand the normalised digit to every subscriber. */
+    function sameDigit(a, b) {
+      if (!a || !b || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    /** Read the current input and hand the normalised digit to every subscriber.
+     *
+     * An emission that carries the same digit as the last one is dropped. That is
+     * not a micro-optimisation here: pointerup re-emits after the final
+     * pointermove already did, and a settle timer that fires while the pen rests
+     * mid-stroke is followed by another emission on lift. Each duplicate costs a
+     * consumer a full forward pass -- ~146 ms on the comparison board -- for a
+     * result identical to the one already on screen.
+     */
     function emit() {
       let digit, label = null, index = null;
       if (state.mode === "gallery") {
@@ -178,7 +208,12 @@
         for (let i = 0; i < PAD * PAD; i++) gray[i] = px[i * 4] / 255;
         digit = net.normalizeDrawn(gray, PAD);
       }
-      last = { digit, meta: { mode: state.mode, index, label } };
+      const meta = { mode: state.mode, index, label };
+      const unchanged = last && last.meta.mode === meta.mode
+        && last.meta.index === meta.index && sameDigit(last.digit, digit);
+
+      last = { digit, meta };
+      if (unchanged) return;
       for (let i = 0; i < subscribers.length; i++) subscribers[i](last.digit, last.meta);
     }
 
@@ -192,6 +227,36 @@
       requestAnimationFrame(() => { scheduled = false; emit(); });
     }
 
+    /** True while a stroke is being drawn and its emission is still waiting. */
+    function setPending(v) {
+      if (v === pending) return;
+      pending = v;
+      for (let i = 0; i < pendingSubs.length; i++) pendingSubs[i](pending);
+    }
+
+    /** Restart the settle wait: emit once the pen has been still for settleMs. */
+    function requestSettledEmit() {
+      if (settleTimer) clearTimeout(settleTimer);
+      setPending(true);
+      settleTimer = setTimeout(() => {
+        settleTimer = 0;
+        setPending(false);
+        requestEmit();
+      }, settleMs);
+    }
+
+    /** Cancel any pending settle. Used when the stroke ends: a lift is a pause. */
+    function cancelSettle() {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = 0;
+      setPending(false);
+    }
+
+    function inputChanged() {
+      if (settleMs > 0 && state.drawing) requestSettledEmit();
+      else requestEmit();
+    }
+
     /** Register a consumer. Replays the current digit, so mount order is free. */
     function subscribe(fn) {
       subscribers.push(fn);
@@ -200,6 +265,28 @@
         const i = subscribers.indexOf(fn);
         if (i >= 0) subscribers.splice(i, 1);
       };
+    }
+
+    /** Register a listener for "a stroke is waiting to be classified". */
+    function onPending(fn) {
+      pendingSubs.push(fn);
+      fn(pending);
+      return () => {
+        const i = pendingSubs.indexOf(fn);
+        if (i >= 0) pendingSubs.splice(i, 1);
+      };
+    }
+
+    /**
+     * Change the settle delay after mount.
+     *
+     * A consumer cannot know what it costs until it has run once, so the board
+     * measures itself and calls this rather than the delay being guessed from a
+     * model's size here. Dropping to 0 releases anything already waiting.
+     */
+    function setSettle(ms) {
+      settleMs = Math.max(0, ms || 0);
+      if (settleMs === 0 && settleTimer) { cancelSettle(); requestEmit(); }
     }
 
     // ---------------------------------------------------------------- events
@@ -223,7 +310,7 @@
 
     btnGallery.addEventListener("click", () => setMode("gallery"));
     btnDraw.addEventListener("click", () => setMode("draw"));
-    clearBtn.addEventListener("click", () => { clearPad(); requestEmit(); });
+    clearBtn.addEventListener("click", () => { clearPad(); cancelSettle(); requestEmit(); });
 
     function padPos(ev) {
       const r = pad.getBoundingClientRect();
@@ -247,17 +334,19 @@
       padCtx.beginPath();
       padCtx.moveTo(p[0], p[1]);
       strokeTo(p[0], p[1]);
-      requestEmit();
+      inputChanged();
       ev.preventDefault();
     });
     pad.addEventListener("pointermove", (ev) => {
       if (!state.drawing) return;
       const p = padPos(ev);
       strokeTo(p[0], p[1]);
-      requestEmit();
+      inputChanged();
       ev.preventDefault();
     });
-    const endStroke = () => { state.drawing = false; requestEmit(); };
+    // Lifting the pen is the clearest pause there is, so it pre-empts the timer
+    // rather than waiting out another settleMs.
+    const endStroke = () => { state.drawing = false; cancelSettle(); requestEmit(); };
     pad.addEventListener("pointerup", endStroke);
     pad.addEventListener("pointercancel", endStroke);
     pad.addEventListener("pointerleave", () => { if (state.drawing) state.drawing = false; });
@@ -271,10 +360,18 @@
 
     return {
       subscribe,
+      onPending,
       current: () => last,
+      pending: () => pending,
       setMode,
-      clear: () => { clearPad(); requestEmit(); },
-      destroy: () => { subscribers.length = 0; root.remove(); },
+      setSettle,
+      clear: () => { clearPad(); cancelSettle(); requestEmit(); },
+      destroy: () => {
+        cancelSettle();
+        subscribers.length = 0;
+        pendingSubs.length = 0;
+        root.remove();
+      },
     };
   }
 

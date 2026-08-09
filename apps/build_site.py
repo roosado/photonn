@@ -795,9 +795,11 @@ OPTICS_BODY = r"""
       the download, because its phases are quantised to 8&nbsp;bits. That is not a shortcut: the
       Phase-4 budget measures this design as holding accuracy down to <strong>3-bit</strong> phase
       control, and 8&nbsp;bits is what a real SLM offers, so the quantised model is the more faithful
-      one. A forward pass costs roughly 17&nbsp;ms and 130&nbsp;ms respectively, so a drawn stroke
-      updates both columns at around <strong>7&nbsp;frames per second</strong> &mdash; the deep
-      machine is 56 diffraction steps of arithmetic, in a browser tab.</p>
+      one. A forward pass costs roughly 17&nbsp;ms and 130&nbsp;ms respectively &mdash; the deep
+      machine is 56 diffraction steps of arithmetic, in a browser tab &mdash; which is more than
+      an animation frame can hold, so the board <strong>waits for you to pause</strong> rather
+      than running mid-stroke. It measures its own cost to decide that; a board of cheap models
+      still follows the pen.</p>
     </div>
 
     <h3 class="sub-h">What 56 masks actually looks like</h3>

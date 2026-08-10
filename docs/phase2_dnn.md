@@ -411,11 +411,44 @@ it defers become the binding constraint exactly where accuracy is best. **This i
 flagged, not modelled** — quantifying it needs the plane-spacing error source that is
 still queued.
 
-Nothing downstream has moved. `exports/d2nn_phase2.h5`, the browser bundle, the
-Phase-4 budget and every quoted 0.799 still describe the 5-mask, 3 mm design —
+Nothing downstream has moved. `exports/d2nn_phase2.h5`, the shipped browser bundle,
+the Phase-4 budget and every quoted 0.799 still describe the 5-mask, 3 mm design —
 promoting a new geometry is a separate decision, and because `z` is geometry it
 would also re-derive the Phase-3 correspondence results (`z_min` = 2.967 mm,
 "connected by 0.81 px").
+
+### Operable, and still not shipped
+
+*2026-08-09.* The candidate now **runs in the browser** beside the shipped model on
+the optics page — same digit, same detector layout, both forward passes live —
+because a result you can operate is worth more than a table row. Being operable is
+not being promoted, and the distance between those two is the whole point of this
+project.
+
+The honesty machinery is in the data, not in the prose:
+
+- `apps/web/d2nn_deep_weights.js` carries `provenance.shipped: false` plus a caveat
+  naming what the extra accuracy costs. Every caption the widget prints is rendered
+  from that block — there is no accuracy literal anywhere in the JavaScript, and
+  `tests/test_web_contract.py` asserts it. **Promoting a model is regenerating a
+  bundle**, never editing a widget.
+- Unshipped does not mean incomparable. This model was scored on the same frozen
+  test set at the same training budget as the headline, so the board says *"Same
+  measurement as the shipped 0.7990"* rather than disclaiming the one honest
+  comparison on the page. A sweep-ranked candidate declares `not_scored_on` and
+  gets the disclaimer instead; the distinction lives in the bundles.
+- Phases ship **8-bit** (one `uint8` code per phase). That is not a download
+  shortcut: `tolerance_d2nn.md` measures this design as holding accuracy to 3-bit
+  phase control and an SLM offers 8, so the quantised model is the *more* faithful
+  one. It is also what keeps 917 504 phases to 1.2 MB instead of 4.9 MB.
+  `tests/test_deep_model.py` rebuilds the torch model from the committed bundle's
+  own codes and requires identical predictions through all 57 hops.
+
+So the reason it is marked "not shipped" is not that its number is soft — it is the
+tolerance trade in [`tolerance_d2nn.md`](tolerance_d2nn.md): +10.5 points costs 2×
+tighter phase, one more DAC bit and 4.7× tighter loss per mask, while **thermal
+crosstalk, the source that already makes this unbuildable on a real SLM, does not
+move at all**. Depth adds a second binding constraint without relieving the first.
 
 Reproduce with:
 
@@ -446,9 +479,13 @@ computed on it, orbitable, with a sweep that walks one wavefront through.
 
 Three things make that cheap and honest:
 
-- An orthographic projection of a flat plane is **affine**, so one
-  `setTransform` + `drawImage` renders a 128² plane as a correct parallelogram —
-  no WebGL, no library, consistent with the rest of the browser side.
+- An orthographic projection of a flat plane is **affine**, so one `ctx.transform`
+  + `drawImage` renders a 128² plane as a correct parallelogram — no WebGL, no
+  library, consistent with the rest of the browser side. It must be `transform`
+  (which *composes*) and never `setTransform` (which *replaces*): `draw()` puts a
+  devicePixelRatio scale on the context, and replacing the matrix drops it for the
+  light only, shrinking it by 1/dpr while the rig stays put. Invisible at dpr 1,
+  obvious on any phone; guarded by `tests/test_stage_projection.py`.
 - The panels are parallel and never intersect, so **back-to-front painting is
   exact occlusion**. (Light is composited additively rather than occluded: the
   masks are transmissive, so a plate must not darken the field behind it.)
@@ -469,6 +506,43 @@ The stack is 18 mm long across a 1.024 mm aperture — about 18:1 — so drawn t
 scale it is an unreadable needle. The depth axis is compressed ~×5.9 and the
 figure states that factor on its face.
 
+### What changes at 56 masks
+
+*2026-08-09.* The same widget draws the deep candidate on the optics page, and
+every assumption above had to be re-derived from the weight bundle rather than
+assumed from the shipped geometry. A 56-mask network is not a 5-mask one eleven
+times over:
+
+| | shipped, 5 masks | candidate, 56 masks |
+|---|---|---|
+| stack | 18 mm / 1.024 mm ≈ 17.6:1 | **30 mm** / 1.024 mm ≈ **29:1** |
+| depth compression | ×5.9 | **×9.8** |
+| mask panels drawn | all 5 | **6 of 56**, spread through the stack |
+| sub-hops per hop | 4 | **1** |
+| updates | follows the pen | **on a Refresh press** |
+
+- **Sampling.** Fifty-six plates at 0.53 mm are fifty-six near-identical pictures.
+  Six are drawn, first and last always included. Every label then names its *true*
+  index — `mask 23 of 56` — and the footer states the count, because a sampled
+  figure that reads as the whole stack is worse than no figure. The light between
+  the drawn panels is still computed at **every** one of the 57 hops, so the fifty
+  undrawn plates are visible as beam rather than as empty space.
+- **Sub-stepping follows the physics.** `subSteps = ⌊reach_per_hop / 3 px⌋`,
+  clamped to 1–4. At 12.47 px/hop the shipped stack gets 4 — the value that used
+  to be hardcoded; at 2.19 px/hop the deep stack gets 1, because nothing visibly
+  spreads within a hop. This is a legibility threshold, not a physical bound:
+  `sliceForward` is exact at any `subSteps`.
+- **Cadence.** A full redraw is a pass through 57 hops, so the deep stage waits
+  for a button rather than making the page stutter for a picture nobody reads
+  mid-stroke. It is handed the *digit*, not a finished result, so the forward pass
+  is deferred too. The same reasoning governs the comparison board, which measures
+  its own render cost and holds classification until the pen pauses — see
+  `tests/test_draw_cadence.py`.
+
+All four thresholds are set so the shipped geometry lands exactly where it already
+was, and `tests/test_stage_depth.py` asserts that: 5 masks still means 5 panels,
+4 sub-steps and no Refresh button.
+
 ---
 
 ## Reproduce
@@ -476,12 +550,31 @@ figure states that factor on its face.
 ```bash
 python -m apps.train_d2nn --quick          # ~15 s smoke config (grid 64)
 python -m apps.train_d2nn                   # 12k subset, 15 epochs (fast, underfits)
-python -m apps.train_d2nn --subset-train 60000 --epochs 40   # deliverable (~4.5 h CPU)
+python -m apps.train_d2nn --subset-train 60000 --epochs 40   # deliverable, ~40 min CPU
 python -m apps.visualize_d2nn               # render trained masks + example
 python -m apps.d2nn_demo                    # standalone live classifier + 3D stage
+python -m apps.compare_demo                 # standalone two-model board + deep stage
+
+# the shipped browser bundle (no arguments: paths and float32 are the defaults)
+python -m apps.export_d2nn_web
+
+# the unshipped 56-mask bundle: 8-bit, on the shipped model's gallery
+python -m apps.export_d2nn_web \
+    --h5 exports/sweep/d2nn_L56_60k_e25.h5 --pt exports/sweep/d2nn_L56_60k_e25.pt \
+    --out apps/web/d2nn_deep_weights.js --bits 8 --unshipped --label Candidate \
+    --gallery-from apps/web/d2nn_weights.js \
+    --caveat "buying those points costs 2x tighter phase control and 4.7x lower loss per mask"
+
 pytest -q tests/test_layers.py tests/test_models.py tests/test_detect.py tests/test_encode.py
 pytest -q tests/test_d2nn_crosscheck.py tests/test_stage_projection.py
+pytest -q tests/test_deep_model.py tests/test_stage_depth.py \
+         tests/test_draw_cadence.py tests/test_web_contract.py tests/test_web_style_ids.py
 ```
+
+Training cost is ~linear in mask count and runs at a **measured 63.5 ms per
+64-image step at 128², L=14** (152.6 ms at 128² and 905.1 ms at 256² for the same
+step). An earlier note in this project claimed a 7× overhead on the deliverable
+run; it is not reproducible, and projections should use the measured rate.
 
 ## What Phase 2 does not cover
 

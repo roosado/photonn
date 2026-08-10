@@ -124,6 +124,14 @@ Every edge re-measured against the candidate's own stricter bar (0.8588):
 tighter per-element loss.** That is the trade this project exists to quantify, and
 it is a more useful result than a clean win would have been.
 
+**This table is why the candidate is labelled "not shipped" in the browser.** Since
+2026-08-09 it runs live on the optics page beside the shipped model, on the same
+digits — so its number is easy to read as a straight upgrade. It is not one. The
+accuracy is real and measured the same way as the headline; what it costs is a
+build tolerance this project has no evidence anyone can hit. See
+[`phase2_dnn.md`](phase2_dnn.md) for how that caveat is carried in the bundle
+rather than written into the page.
+
 Three readings worth separating:
 
 1. **The binding constraint does not move.** Crosstalk fails at the same 0.25 px

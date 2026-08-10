@@ -57,6 +57,47 @@ Sources (URLs):
 - Fringing-field pixel crosstalk, *J. Eur. Opt. Soc.-RP* — https://link.springer.com/article/10.1186/s41476-021-00174-7
 - Fringing-field diffraction efficiency, *Appl. Opt.* 52(28):6877 — https://opg.optica.org/ao/abstract.cfm?URI=ao-52-28-6877
 
+## External / motivational
+
+These do not parameterise anything the code computes — they are the **outside
+context** the site's "Why build a computer out of light?" section stands on. They
+live in this ledger rather than only in the page so that the same rule applies to
+them as to everything else: verified before use, and dropped rather than
+approximated if they cannot be confirmed. Verified 2026-08-10.
+
+| Quantity | Value | Source | Used in |
+|---|---|---|---|
+| Energy per 32-bit add, 45 nm / 0.9 V | 0.9 pJ floating-point; ≈1/9 of that fixed-point | Horowitz, ISSCC 2014 | `site/index.html` — "why light" |
+| Energy per 32-bit SRAM read, 45 nm | 5 pJ | Horowitz, ISSCC 2014 | as above |
+| Energy per 32-bit DRAM read, 45 nm | 640 pJ | Horowitz, ISSCC 2014 | as above |
+
+Sources (URLs):
+- M. Horowitz, "Computing's energy problem (and what we can do about it)," *ISSCC*
+  2014, 10–14 — https://www.semanticscholar.org/paper/947620a1854655ed91a86b90d12695e05be85983
+- X. Lin et al., "All-optical machine learning using diffractive deep neural
+  networks," *Science* **361**, 1004 (2018), doi:10.1126/science.aat8084 —
+  https://www.science.org/doi/10.1126/science.aat8084
+- Y. Shen et al., "Deep learning with coherent nanophotonic circuits," *Nature
+  Photonics* **11**, 441 (2017), doi:10.1038/nphoton.2017.93 —
+  https://www.nature.com/articles/nphoton.2017.93
+- G. Wetzstein et al., "Inference in artificial intelligence with deep optics and
+  photonics," *Nature* **588**, 39 (2020), doi:10.1038/s41586-020-2973-6 —
+  https://www.nature.com/articles/s41586-020-2973-6
+- W. R. Clements et al., "Optimal design for universal multiport interferometers,"
+  *Optica* **3**, 1460 (2016), doi:10.1364/OPTICA.3.001460 —
+  https://opg.optica.org/optica/abstract.cfm?uri=optica-3-12-1460
+- M. Reck, A. Zeilinger, H. J. Bernstein & P. Bertani, "Experimental realization of
+  any discrete unitary operator," *Phys. Rev. Lett.* **73**, 58 (1994). *(Cited by
+  volume/page only; no URL verified.)*
+
+**Two derived numbers on that page, for the record.** The 60 ps transit is the
+18 mm stack length divided by `c`. The ~1 fJ per inference is the 1 pW × 1 ms
+shot-noise knee from [`tolerance_d2nn.md`](tolerance_d2nn.md), **not** the nominal
+1 mW × 1 ms operating point — which is 1 µJ per inference and *worse* than a GPU.
+The page states that explicitly so the weaker number cannot be mistaken for the
+claim. Neither figure includes the laser, modulator, detectors or converters;
+nothing in this project models those.
+
 ## Outstanding `UNSOURCED` / modelling choices
 
 Not every number is a directly-measured constant; some are deliberate modelling

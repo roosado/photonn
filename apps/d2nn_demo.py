@@ -32,8 +32,10 @@ def d2nn_bundle(include_asm: bool = True) -> str:
     """Return ``<script>`` tags with the D2NN demo inlined (CSP-safe, offline).
 
     ``include_asm`` inlines the propagation engine too. Set it ``False`` on a page
-    that already inlines ``asm.js`` (the explainer page does, for the Phase-1
-    explorer) so the ~7 KB engine is not shipped twice.
+    that already inlines ``asm.js`` -- for the diffraction explorer, say -- so the
+    ~7 KB engine is not shipped twice. No page currently does: since the site was
+    split the classifier and the explorer live on different pages, so both inline
+    it, and this stays as the guard for whenever they meet again.
     """
     parts = []
     if include_asm:

@@ -1,4 +1,4 @@
-name: Deploy explainer page to GitHub Pages
+name: Deploy site to GitHub Pages
 
 # Publishes the self-contained site/ folder. Using the GitHub Actions Pages source
 # (rather than "deploy from a branch") lets us serve an arbitrary subfolder -- the

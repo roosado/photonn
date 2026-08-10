@@ -43,7 +43,7 @@
  * The extraction is deliberately a *move*, not a rewrite: the pad geometry,
  * the stroke width and the MNIST normalisation are all load-bearing and were
  * verified against the trained model. d2nn_demo.js still carries its own copy
- * and is untouched -- the classifier page is live, and consolidating it is a
+ * and is untouched -- the front page's classifier is live, and consolidating it is a
  * separate step with its own testing.
  */
 (function () {

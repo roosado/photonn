@@ -11,14 +11,17 @@ imperfections are introduced.
 
 ### → **[roosado.github.io/photonn](https://roosado.github.io/photonn/)**
 
-The project explainer: every phase, all figures, and the Phase-1 diffraction explorer recomputing
-scalar diffraction **live in your browser** as you move the controls.
+**This neural network is made of light.** The trained diffractive network itself, running its
+forward pass in your browser: draw a digit or pick one from the frozen MNIST test set, and watch
+it diffract through five trained phase masks onto ten detectors. No libraries, no network,
+nothing precomputed.
 
-### → **[Classify a digit with light](https://roosado.github.io/photonn/classifier.html)**
-
-The trained diffractive network itself, running its forward pass in your browser. Draw a digit or
-pick one from the frozen MNIST test set, and watch it diffract through five trained phase masks onto
-ten detectors. No libraries, no network, nothing precomputed.
+Four more pages read on from it — [the wave optics
+underneath](https://roosado.github.io/photonn/physics.html) with the diffraction explorer
+recomputing scalar diffraction live as you move the controls, [the same machine built as a
+chip](https://roosado.github.io/photonn/chip.html), [how precisely it would have to be
+built](https://roosado.github.io/photonn/tolerance.html) — which is the study — and [how much
+better the optics could be](https://roosado.github.io/photonn/optics.html).
 
 Two codebases, one project, separated by a one-directional boundary:
 
@@ -55,10 +58,10 @@ hop is exact because `H(z₁)·H(z₂) = H(z₁+z₂)` and the band limit is ina
 drawn — scalar diffraction is not ray optics — and the slices are display-only: the cross-check
 asserts `classify()` logits stay **bit-identical** with slicing enabled.
 
-**Project explainer + live diffraction explorer (done).** A single self-contained explainer page
-tells the whole story — every phase, all figures, and the Phase-1 diffraction explorer embedded and
-running **live in the browser** — deployed to GitHub Pages by `python -m apps.build_site`, which
-writes both pages plus a body-only variant for embedding. The explorer itself was rebuilt: its
+**Project site + live diffraction explorer (done).** Five self-contained pages tell the whole
+story — the working machine first, the fabrication question last — deployed to GitHub Pages by
+`python -m apps.build_site`, which writes all of them plus a body-only variant for embedding. The
+explorer itself was rebuilt: its
 scalar-diffraction physics is ported to ~200 lines of dependency-free JavaScript
 ([`apps/web/asm.js`](apps/web/asm.js)) — a faithful translation of
 `photonn.propagate.angular_spectrum`, cross-checked against it to **< 1e-6**
@@ -83,7 +86,7 @@ individually. That comparison surfaced a result about the D²NN itself: six hops
 reach against **74 px** the design needs, so it is fully connected **by 0.81 px (~1%)** — 33 µm of
 headroom on the 3 mm mask separation, where the mesh's 36 columns for 36 modes is the Clements bound
 and full connectivity is guaranteed by construction. An
-[interactive version](https://roosado.github.io/photonn/#phase3) sits in the Phase-3 section of the site
+[interactive version](https://roosado.github.io/photonn/chip.html) sits on the site's chip page
 (`apps/web/analogy.js`); every number in it is read from the trained models by
 `python -m apps.export_analogy_web` and re-derived in `tests/test_correspondence.py`.
 
@@ -155,7 +158,7 @@ in [`docs/handoff_schema.md`](docs/handoff_schema.md); see `photonn/export.py` (
 photonn/        # Python design side (see CLAUDE.md for per-module responsibilities)
 apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier) · export_analogy_web.py, analogy_demo.py, analogy_figure.py (free-space↔chip correspondence)
 apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · analogy.js, analogy_geom.js (P3 correspondence)
-site/           # generated, self-contained, GitHub Pages ready: index.html (explainer) · classifier.html (live D²NN)
+site/           # generated, self-contained, GitHub Pages ready: index.html (the live D²NN) · physics.html · chip.html · tolerance.html (the study) · optics.html
 tests/          # pytest suite
 docs/           # handoff schema + parameter-source ledger
 photonn-hw/     # MATLAB as-built side (+io, +err, +mc, +viz, ErrorBudgetApp)

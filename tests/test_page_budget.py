@@ -28,15 +28,20 @@ SITE = os.path.join(HERE, "..", "site")
 
 KB = 1024
 
-#: page -> ceiling in KB. Measured after the 2026-08-10 pass, with roughly 15%
+#: page -> ceiling in KB. Measured after the 2026-08-10 redesign, with roughly 15%
 #: headroom over what each page actually weighs.
 BUDGET = {
-    "index.html": 500,        # explainer: 11 figures, 2 cheap widgets
-    "classifier.html": 300,   # one 8-bit model + the 3D stage
+    "index.html": 430,        # the live classifier (8-bit) + the 3D stage + one plate
+    "physics.html": 70,       # prose + the diffraction explorer; the cheap one
+    "chip.html": 190,         # the analogy widget + the mesh topology plate
+    "tolerance.html": 270,    # 16 tolerance figures, no widgets
     "optics.html": 1150,      # two models, one of them 56 masks at 4 bits
 }
 
-#: The whole site, as a phone would meet it across the three pages.
+#: The whole site, as a reader walking the sequential path would meet it. Five
+#: pages now rather than three, and the extra weight is real content -- the eight
+#: candidate-L56 figures that make "depth costs tolerance" showable. It still
+#: lands under the ceiling the three-page site was held to.
 TOTAL_BUDGET_KB = 1900
 
 

@@ -148,8 +148,8 @@ Derived, never typed: `apps/export_analogy_web.py` reads the reach from
 `propagate.diffraction_reach_px`, the detector layout from `detect.default_regions`
 and the topology from `layers.MZIMeshLayer._schedule`, and writes
 `apps/web/analogy_geom.js`. `tests/test_correspondence.py` re-derives all of it.
-The interactive version of this figure is `apps/web/analogy.js` (Phase-3 section of
-the explainer page); the static one is below.
+The interactive version of this figure is `apps/web/analogy.js` (the site's
+`chip.html`); the static one is below.
 
 ![Free space ↔ chip correspondence](figures/phase3_correspondence.png)
 

@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="The scalar diffraction that moves a light field from one plane to the next, the sampling limit that bounds it, and the ceiling linearity puts on the whole idea.">
+<title>photonn &mdash; the wave optics underneath</title>
+<style>
+
+:root{
+  color-scheme: light dark;
+  --bg:#f4f7fb; --surface:#ffffff; --surface-2:#eef2f8;
+  --border:#d8e0ec; --ink:#141b26; --ink-dim:#3f4c60; --muted:#6b7789;
+  --beam:#0f9e8f; --fringe:#c9701f; --good:#2f8f52; --bad:#c14a34;
+  --beam-soft:rgba(15,158,143,.10);
+  --spectral:linear-gradient(90deg,#39d1a0,#4fc6e6,#f2c14e,#ef7d5a,#c05aa8);
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,"Times New Roman",serif;
+  --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,"Liberation Mono",Menlo,monospace;
+  --measure:68ch;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0a0d12; --surface:#111826; --surface-2:#0e131d;
+    --border:#243149; --ink:#e8edf4; --ink-dim:#b7c2d2; --muted:#7787a0;
+    --beam:#2ec9b8; --fringe:#f2994a; --good:#57c07a; --bad:#e0705f;
+    --beam-soft:rgba(46,201,184,.14);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f4f7fb; --surface:#ffffff; --surface-2:#eef2f8;
+  --border:#d8e0ec; --ink:#141b26; --ink-dim:#3f4c60; --muted:#6b7789;
+  --beam:#0f9e8f; --fringe:#c9701f; --good:#2f8f52; --bad:#c14a34; --beam-soft:rgba(15,158,143,.10);
+}
+:root[data-theme="dark"]{
+  --bg:#0a0d12; --surface:#111826; --surface-2:#0e131d;
+  --border:#243149; --ink:#e8edf4; --ink-dim:#b7c2d2; --muted:#7787a0;
+  --beam:#2ec9b8; --fringe:#f2994a; --good:#57c07a; --bad:#e0705f; --beam-soft:rgba(46,201,184,.14);
+}
+
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--sans);font-size:17px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+.spectral-rule{height:3px;background:var(--spectral);}
+
+.topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);
+  background:color-mix(in srgb,var(--bg) 82%,transparent);
+  border-bottom:1px solid var(--border);}
+.topbar-in{max-width:1120px;margin:0 auto;padding:9px 24px;
+  display:flex;align-items:center;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;}
+.brand{font-family:var(--mono);font-size:.82rem;letter-spacing:.02em;color:var(--ink-dim);}
+.brand b{color:var(--beam);font-weight:600;}
+.theme-toggle{font-family:var(--mono);font-size:.74rem;letter-spacing:.04em;
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  border-radius:999px;padding:5px 13px;cursor:pointer;transition:color .15s,border-color .15s;}
+.theme-toggle:hover{color:var(--ink);border-color:var(--beam);}
+.theme-toggle:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
+.topbar-right{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;}
+/* Five pages share one row, so the nav is quieter than a row of pills would be:
+   only the page you are on is drawn as one. */
+.topbar-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
+.topbar-nav a{font-family:var(--mono);font-size:.74rem;letter-spacing:.03em;text-decoration:none;
+  color:var(--muted);border:1px solid transparent;border-radius:999px;padding:5px 11px;
+  white-space:nowrap;transition:color .15s,background .15s,border-color .15s;}
+.topbar-nav a:hover{color:var(--ink);background:var(--beam-soft);}
+.topbar-nav a[aria-current="page"]{color:var(--beam);background:var(--beam-soft);
+  border-color:color-mix(in srgb,var(--beam) 45%,transparent);}
+.topbar-nav a:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
+@media (max-width:900px){.brand span.brand-tail{display:none;}}
+@media (max-width:640px){.topbar-nav a{padding:5px 8px;font-size:.7rem;}}
+
+/* sequential hand-off at the foot of every page */
+.pagenext{display:block;text-decoration:none;background:var(--surface);
+  border:1px solid var(--border);border-left:3px solid var(--beam);border-radius:12px;
+  padding:19px 22px;margin:46px 0 6px;transition:background .15s,border-color .15s;}
+.pagenext:hover{background:var(--surface-2);border-color:var(--beam);}
+.pagenext:focus-visible{outline:2px solid var(--beam);outline-offset:3px;}
+.pagenext .k{display:block;font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted);}
+.pagenext .t{display:block;font-family:var(--serif);font-weight:600;color:var(--ink);
+  font-size:clamp(1.12rem,2vw,1.38rem);line-height:1.2;margin:.32rem 0 .28rem;}
+.pagenext .b{display:block;color:var(--ink-dim);font-size:.94rem;max-width:64ch;}
+
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px;}
+.col{max-width:var(--measure);}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--beam);margin:0 0 .5rem;}
+
+/* hero */
+.hero{padding:76px 0 30px;}
+.hero h1{font-family:var(--serif);font-weight:600;text-wrap:balance;
+  font-size:clamp(2.1rem,4.6vw,3.35rem);line-height:1.08;letter-spacing:-.01em;
+  margin:.2rem 0 .1rem;}
+.hero h1 em{font-style:italic;color:var(--fringe);}
+.hero .underbar{width:132px;height:3px;background:var(--spectral);margin:20px 0 22px;border-radius:2px;}
+.standfirst{font-size:1.16rem;color:var(--ink-dim);max-width:60ch;}
+.standfirst b{color:var(--ink);font-weight:600;}
+
+.stat-strip{display:flex;flex-wrap:wrap;gap:14px;margin:34px 0 8px;}
+.stat{flex:1 1 150px;background:var(--surface);border:1px solid var(--border);
+  border-radius:12px;padding:15px 17px;}
+.stat .v{font-family:var(--mono);font-size:1.5rem;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;display:block;letter-spacing:-.01em;}
+.stat .v small{font-size:.9rem;color:var(--muted);font-weight:500;}
+.stat .l{font-size:.8rem;color:var(--muted);display:block;margin-top:3px;line-height:1.35;}
+
+/* phase sections */
+.phase{padding:52px 0;border-top:1px solid var(--border);}
+.phase-head{display:flex;gap:20px;align-items:flex-start;margin-bottom:10px;}
+.ph-num{font-family:var(--mono);font-size:.95rem;font-weight:600;color:var(--beam);
+  border:1px solid var(--border);border-radius:9px;padding:7px 11px;line-height:1;
+  background:var(--beam-soft);white-space:nowrap;margin-top:4px;}
+.ph-num.next{color:var(--muted);background:transparent;border-style:dashed;}
+.phase-head h2{font-family:var(--serif);font-weight:600;text-wrap:balance;
+  font-size:clamp(1.55rem,2.8vw,2.05rem);line-height:1.14;margin:.1rem 0 0;}
+.prose{color:var(--ink-dim);}
+.prose p{margin:.85rem 0;max-width:var(--measure);}
+.prose strong{color:var(--ink);font-weight:600;}
+.sub-h{font-family:var(--serif);font-weight:600;color:var(--ink);
+  font-size:clamp(1.15rem,2vw,1.42rem);line-height:1.2;margin:2.1rem 0 .2rem;}
+.q{font-family:var(--mono);font-size:.92em;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:5px;padding:.05em .38em;color:var(--ink);
+  white-space:nowrap;}
+a.link{color:var(--beam);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--beam) 40%,transparent);}
+a.link:hover{border-bottom-color:var(--beam);}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:24px 0;}
+.stats .s{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 15px;}
+.stats .s .v{font-family:var(--mono);font-size:1.15rem;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;}
+.stats .s .l{font-size:.76rem;color:var(--muted);margin-top:2px;line-height:1.35;}
+
+/* figure plates -- always light, since the figures are light-background */
+.plate{background:#fff;border:1px solid var(--border);border-radius:12px;
+  padding:12px;margin:26px 0;overflow-x:auto;}
+.plate img{display:block;width:100%;height:auto;border-radius:6px;}
+.plate figcaption{font-family:var(--sans);font-size:.83rem;color:#5b6675;
+  margin-top:10px;padding:0 4px;line-height:1.5;}
+.plate figcaption .fign{font-family:var(--mono);color:var(--beam);font-weight:600;
+  letter-spacing:.02em;margin-right:.5em;}
+.plate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));
+  gap:16px;margin:26px 0;}
+.plate-grid .plate{margin:0;}
+
+/* tables -- wide content scrolls inside its own box, never the page */
+.tbl-wrap{overflow-x:auto;margin:24px 0;-webkit-overflow-scrolling:touch;}
+.tbl{border-collapse:collapse;font-size:.92rem;min-width:min(100%,540px);}
+.tbl th,.tbl td{border-bottom:1px solid var(--border);padding:9px 14px 9px 0;
+  text-align:left;vertical-align:top;color:var(--ink-dim);}
+.tbl th{font-family:var(--mono);font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;white-space:nowrap;}
+.tbl td strong{color:var(--ink);font-weight:600;}
+.tbl tr:last-child td{border-bottom:0;}
+
+/* inline reference list -- the one section sourced from outside this project */
+.refs{list-style:none;padding:0;margin:1.6rem 0 0;max-width:var(--measure);
+  border-top:1px solid var(--border);padding-top:.9rem;}
+.refs li{font-size:.84rem;color:var(--muted);margin:.42rem 0;line-height:1.5;}
+.refs li b{font-family:var(--mono);color:var(--beam);font-weight:600;margin-right:.45em;}
+.refs a{color:inherit;text-decoration:none;
+  border-bottom:1px solid color-mix(in srgb,var(--muted) 40%,transparent);}
+.refs a:hover{color:var(--ink);border-bottom-color:var(--beam);}
+sup.r{font-family:var(--mono);font-size:.66em;color:var(--beam);font-weight:600;
+  padding-left:.12em;}
+
+/* finding callout */
+.finding{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--bad);
+  border-radius:10px;padding:18px 20px;margin:26px 0;}
+.finding .tag{font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--bad);margin:0 0 .4rem;font-weight:600;}
+.finding p.body{margin:0;color:var(--ink);}
+.finding p.body strong{color:var(--ink);}
+
+/* explorer host */
+.explorer-band{background:var(--surface-2);border:1px solid var(--border);border-radius:16px;
+  padding:22px;margin:28px 0;}
+.explorer-band .cap{font-family:var(--mono);font-size:.76rem;letter-spacing:.05em;
+  color:var(--muted);margin:14px 0 0;}
+.pe-host .pe-root{--pe-fg:var(--ink);--pe-muted:var(--muted);--pe-panel:var(--surface);
+  --pe-border:var(--border);--pe-accent:var(--beam);--pe-ok:var(--good);--pe-warn:var(--bad);
+  --pa-mix:var(--fringe);}
+
+/* planned cards */
+.planned{opacity:.96;}
+.planned .phase-head h2{color:var(--ink-dim);}
+.badge-next{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);border:1px dashed var(--border);border-radius:999px;padding:3px 10px;
+  display:inline-block;margin-bottom:6px;}
+
+/* footer */
+footer{border-top:1px solid var(--border);margin-top:20px;padding:44px 0 70px;}
+.foot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:26px;}
+footer h3{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--beam);margin:0 0 .6rem;font-weight:600;}
+footer p{margin:.3rem 0;color:var(--ink-dim);font-size:.92rem;max-width:42ch;}
+footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:var(--muted);
+  border-top:1px solid var(--border);padding-top:18px;}
+
+/* motion */
+.reveal{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease;}
+.reveal.in{opacity:1;transform:none;}
+@media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none;}}
+
+@media (max-width:640px){
+  .phase-head{gap:13px;}
+  .hero{padding:52px 0 22px;}
+}
+
+</style>
+</head>
+<body>
+
+<div class="spectral-rule"></div>
+<header class="topbar">
+  <div class="topbar-in">
+    <span class="brand"><b>photonn</b><span class="brand-tail"> &middot; a fabrication-tolerance study of optical neural networks</span></span>
+    <div class="topbar-right">
+      <nav class="topbar-nav" aria-label="Sections"><a href="./">The machine</a><a href="physics.html" aria-current="page">The physics</a><a href="chip.html">The chip</a><a href="tolerance.html">Tolerance</a><a href="optics.html">Going deeper</a></nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme">◐ theme</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero col reveal">
+    <p class="eyebrow">Scalar diffraction, and where it stops working</p>
+    <h1>Everything rests on moving a field from one plane to the <em>next</em></h1>
+    <div class="underbar"></div>
+    <p class="standfirst">Before anything can be trained, coherent light has to be moved across
+    3&nbsp;mm of air <b>exactly</b> &mdash; and the simulation has to know when it can no longer do
+    that. One method does the moving, one criterion marks the edge, and one structural fact caps
+    what the whole idea can ever compute.</p>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The propagator</p>
+      <h2>Decompose into plane waves, delay each one, add them back up</h2></div></div>
+    <div class="prose col">
+      <p>A field is decomposed into plane waves by a Fourier transform, each is advanced by its own
+      axial phase, and they are recombined. That is the whole <strong>angular-spectrum method</strong>:
+      transform, multiply by
+      <span class="q">H = exp(i&thinsp;2&pi;z&thinsp;&radic;(1/&lambda;&sup2; &minus; f&sup2;))</span>,
+      transform back. It makes <strong>no paraxial approximation</strong> &mdash; it is exact up to the
+      grid&rsquo;s band limit, which is why Fresnel, Fraunhofer and the differentiable PyTorch layer
+      are all checked against it rather than the other way round. Against an analytic Gaussian beam
+      it agrees to <strong>~2&times;10<sup>&minus;8</sup></strong>.</p>
+      <p>Two behaviours fall straight out of that square root. Where
+      <span class="q">f&sup2; &gt; 1/&lambda;&sup2;</span> it turns imaginary, and computing it as a
+      <em>complex</em> sqrt makes those components <strong>decay</strong> with distance &mdash;
+      evanescent waves, for free, with no special case. And for large <span class="q">z</span> the
+      transfer function <strong>oscillates faster than the frequency grid can sample</strong>, which
+      is aliasing. Zeroing <span class="q">H</span> beyond the local-frequency limit keeps the method
+      alias-free into the far field, at the cost of discarding content past the propagating band.</p>
+      <p>The edge is a single criterion, <span class="q">z_crit = N&middot;dx&sup2;/&lambda;</span>
+      &mdash; 15.4&nbsp;mm at this operating point, against 3&nbsp;mm hops. It is enforced at runtime,
+      not only in tests. Note what it does <em>not</em> contain: <span class="q">z_crit</span> depends
+      on <span class="q">&lambda;</span>, <span class="q">dx</span> and <span class="q">N</span>
+      but <strong>not on the aperture</strong> &mdash; which is why, below, the aperture control does
+      not move the sampling threshold no matter how far you drag it.</p>
+    </div>
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="explorer"></div></div>
+      <p class="cap">Live &mdash; the diffraction runs on a hand-written FFT in your browser, the same
+      physics as the Python reference (cross-checked to &lt;10<sup>&minus;6</sup>). Move any control;
+      the sampling flag turns amber the moment <span style="white-space:nowrap">z &gt; z_crit</span>.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Drawing it without lying about it</p>
+      <h2>Why the 3D stack has haze in it and no rays</h2></div></div>
+    <div class="prose col">
+      <p>The light drawn <em>between</em> the mask planes on the front page is not decoration. A hop
+      can be split into sub-hops and re-run because
+      <span class="q">H(z&#8321;)&middot;H(z&#8322;) = H(z&#8321;+z&#8322;)</span>, and the one
+      <span class="q">z</span>-dependent term that would break that equality &mdash; the band limit
+      above &mdash; is <strong>inactive below <span class="q">z_crit</span></strong>. At 3&nbsp;mm
+      against 15.4&nbsp;mm it is inactive, so the intermediate planes are <strong>exact fields</strong>,
+      not interpolation. Above <span class="q">z_crit</span> the equality genuinely breaks, and the
+      test suite asserts both halves of that.</p>
+      <p><strong>No rays are drawn, deliberately.</strong> Scalar diffraction is not ray optics, and
+      straight lines from digit to detector would misrepresent the one thing the figure exists to
+      show &mdash; that every point of the input is reaching every detector at once. The stack is
+      18&nbsp;mm long across a 1.02&nbsp;mm aperture, about 18:1, so drawn to scale it is an
+      unreadable needle; the depth axis is compressed and the figure states its own compression
+      factor on its face rather than quietly flattering the geometry.</p>
+      <p>The drawing also <strong>cannot touch the answer</strong>. The prediction still comes from
+      the canonical six propagations, and the cross-check asserts the logits are bit-identical with
+      slicing switched on.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The limit, stated precisely</p>
+      <h2>Optical depth is not depth in the machine-learning sense</h2></div></div>
+    <div class="prose col">
+      <p>Propagation is linear in the field. A phase mask is linear in the field. Their composition
+      is therefore a <em>single</em> linear operator:</p>
+      <p><span class="q">E_out = M &middot; E_in</span>, with
+      <span class="q">M = P_L D_L P_{L&minus;1} D_{L&minus;1} &hellip; D&#8321; P&#8320;</span> &mdash;
+      each <span class="q">P</span> a propagation, each <span class="q">D</span> a diagonal mask.</p>
+      <p>No matter how many mask-and-propagation layers are stacked, the field-to-field map collapses
+      to one linear map. Extra layers add parameters and let <span class="q">M</span> better
+      approximate a desired operator <em>under the physical constraint</em> that it factorise into
+      phase-only masks separated by diffraction &mdash; but they add <strong>no nonlinear
+      compositional power whatsoever</strong>. Stacking here is not stacking in the sense the phrase
+      normally carries.</p>
+      <p>The only nonlinearity is the detection itself. The logit for class <em>c</em> is the
+      intensity summed over its detector region, which works out to
+      <span class="q">s_c = E_in&dagger; A_c E_in</span> with
+      <span class="q">A_c = M&dagger; R_c M &#8827; 0</span> &mdash; a positive-semidefinite
+      <strong>quadratic form</strong> in the input field. So the classifier computes one PSD quadratic
+      form per class and takes the argmax. That is strictly more than a linear classifier, and it is
+      exactly <em>one</em> nonlinear layer: linear optical transform, magnitude-square, linear sum.</p>
+      <p>One consequence is worth pulling out, because it is the only place a nonlinearity touches
+      the raw pixels: <strong>the input encoding</strong>. Writing the image into phase applies a
+      nonlinear <span class="q">exp(i&middot;&pi;&middot;image)</span> map before the optics ever sees
+      it, which is why the encoding choice measurably changes achievable accuracy. It is doing
+      nonlinear work the linear optics cannot.</p>
+      <p>Per the project&rsquo;s scope this limit is <strong>characterised, not engineered around</strong>.
+      No physical activation functions, no nonlinear media, no larger electronic head. If a bigger
+      electronic head would lift accuracy, that is a finding to report, not a bug to fix.</p>
+      <div class="finding">
+        <p class="tag">Correction &middot; kept on the record</p>
+        <p class="body">An earlier version of this project read the shipped network&rsquo;s
+        <strong>0.799 plateau</strong> as this ceiling being reached &mdash; measured rather than
+        asserted. <strong>That inference was wrong,</strong> and it is left here rather than quietly
+        removed. The operator argument above is untouched; what did not follow was concluding that
+        five masks had already exhausted the approximation. They had not, by at least eight points.
+        The plateau belonged to <em>that geometry</em>, and
+        <a class="link" href="optics.html">sweeping the geometry is a page of its own &rarr;</a></p>
+      </div>
+    </div>
+  </section>
+
+  <a class="pagenext reveal" href="chip.html"><span class="k">Next</span><span class="t">The same machine, built two ways &rarr;</span><span class="b">A mesh of interferometers on silicon computes what a stack of etched glass computes. Strip both to their skeletons and they differ on exactly one number.</span></a>
+
+  <footer class="reveal">
+    <div class="foot-grid">
+      <div><h3>Verified against analytics</h3><p>Angular spectrum against an analytic Gaussian to
+        ~2&times;10<sup>&minus;8</sup>; Fresnel against ASM in its validity range to ~9&times;10<sup>&minus;9</sup>;
+        Fraunhofer of a circular aperture against the Airy pattern, first null on the predicted ring.</p></div>
+      <div><h3>Enforced, not assumed</h3><p>Sampling is a runtime check, not just a test:
+        <span class="q">check_sampling</span> returns a report and the explorer flags the crossing
+        live. Beyond <span class="q">z_crit</span> the method does not fail loudly &mdash; which is
+        precisely why it is flagged.</p></div>
+      <div><h3>Scope</h3><p>Scalar theory only: no vector or polarisation-resolved propagation, and no
+        full-wave solver. If real component data is ever wanted it gets imported as measurements, not
+        simulated here.</p></div>
+    </div>
+    <p class="colophon">photonn &mdash; a portfolio study in optical computing and fabrication tolerance.
+    Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
+  </footer>
+
+</main>
+
+<script>
+/*
+ * mount_queue.js -- when the widgets on a page are allowed to start.
+ *
+ * Every widget on this site mounts itself, and used to do so from one shared
+ * DOMContentLoaded handler. On the optics page that meant the browser parsed two
+ * megabytes of inline script and then, in a single uninterrupted task, decoded a
+ * 56-mask model, ran it, ran it again for the 3D stage, and built ~60 offscreen
+ * canvases -- before the first pixel of prose was on screen. On a laptop that is
+ * an unpleasant half second. On a phone it is long enough that the tab is judged
+ * unresponsive and reloaded, which is why the page could appear to never load.
+ *
+ * Nothing here makes a widget cheaper or less interactive. It changes *when* the
+ * cost is paid:
+ *
+ *   1. Nothing runs until the first paint has happened, so the page is readable
+ *      immediately and the reader has something to look at while the machines
+ *      warm up.
+ *   2. Widgets start one at a time, in document order, with a yield between them.
+ *      The main thread is never held for more than one widget's mount, so the
+ *      page keeps responding to scrolls and taps throughout.
+ *   3. A widget far below the fold waits until the reader is approaching it. It
+ *      still starts by itself -- no tap, no button, nothing to discover -- just
+ *      not while it is a screen and a half away.
+ *
+ * There is deliberately no small-screen fallback and no "tap to activate": a
+ * phone gets the same working machines a laptop does, only sequenced so the
+ * device can survive delivering them.
+ *
+ * Usage:  window.PhotonnMount('containerId', function (el) { ... }, opts);
+ * opts (all optional):
+ *   defer  -- wait until the element is near the viewport before mounting.
+ *
+ * Standalone demo pages do not include this file, so every generated mount falls
+ * back to a plain DOMContentLoaded when window.PhotonnMount is absent.
+ */
+(function () {
+  "use strict";
+
+  const STYLE_ID = "photonn-mount-style";
+  const CSS = `
+.pm-pending{min-height:120px;display:flex;align-items:center;justify-content:center;}
+.pm-pending::after{content:"Warming up\\2026";font:0.9rem/1.5 ui-sans-serif,system-ui,sans-serif;
+  color:#7a8698;opacity:0;animation:pm-fade .4s ease-out .25s forwards;}
+@keyframes pm-fade{to{opacity:1;}}
+@media (prefers-reduced-motion:reduce){.pm-pending::after{animation:none;opacity:1;}}
+`;
+
+  function injectStyle() {
+    if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
+
+  //: How far ahead of the viewport a deferred widget starts warming up. Generous
+  //: on purpose -- a widget that is still blank when it scrolls into view has
+  //: saved load time by spending the reader's attention, which is a bad trade.
+  const NEAR_MARGIN = "600px";
+
+  const queue = [];
+  let draining = false;
+  let armed = false;      // afterFirstPaint has been scheduled
+  let painted = false;    // ...and has fired; until then nothing may run
+
+  function idle(fn) {
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(fn, { timeout: 400 });
+    } else {
+      setTimeout(fn, 0);
+    }
+  }
+
+  //: Longest we will wait for a paint that should already have happened. Only a
+  //: pathologically busy main thread reaches this; it exists so that no failure
+  //: mode of the paint signal can leave a page stuck showing "warming up".
+  const PAINT_TIMEOUT_MS = 2000;
+
+  /**
+   * Run `fn` once the page has painted -- or once it is clear no paint is coming.
+   *
+   * A hidden tab never paints and never fires requestAnimationFrame. That is not
+   * an edge case: opening a link in a background tab, or restoring a session,
+   * lands here. Waiting for a paint that will not arrive would leave every widget
+   * queued forever, so a hidden document skips the wait entirely and starts its
+   * widgets straight away -- by the time the reader switches to the tab, the page
+   * is ready rather than warming up.
+   */
+  function afterFirstPaint(fn) {
+    let done = false;
+    function go() {
+      if (done) return;
+      done = true;
+      fn();
+    }
+    if (typeof window.requestAnimationFrame !== "function"
+        || (typeof document !== "undefined" && document.visibilityState === "hidden")) {
+      return setTimeout(go, 0);
+    }
+    // rAF runs *before* the paint it belongs to; the timeout inside it lands
+    // after that paint has been committed.
+    window.requestAnimationFrame(function () { setTimeout(go, 0); });
+    setTimeout(go, PAINT_TIMEOUT_MS);
+  }
+
+  function run(job) {
+    try {
+      job.fn(job.el);
+    } catch (e) {
+      // One broken widget must not strand the rest of the queue.
+      if (window.console) window.console.error("photonn: mounting #" + job.id + " failed", e);
+    }
+    job.el.classList.remove("pm-pending");
+  }
+
+  function drain() {
+    if (draining || !painted) return;
+    const job = queue.shift();
+    if (!job) return;
+    draining = true;
+    idle(function () {
+      run(job);
+      draining = false;
+      drain();
+    });
+  }
+
+  function enqueue(job) {
+    queue.push(job);
+    drain();
+  }
+
+  /** Hold a job until its element is within NEAR_MARGIN of the viewport. */
+  function whenNear(job) {
+    if (typeof window.IntersectionObserver !== "function") return enqueue(job);
+    const io = new window.IntersectionObserver(function (entries) {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        io.disconnect();
+        enqueue(job);
+      }
+    }, { rootMargin: NEAR_MARGIN });
+    io.observe(job.el);
+  }
+
+  function schedule(id, fn, opts) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    injectStyle();
+    el.classList.add("pm-pending");
+    const job = { id: id, el: el, fn: fn };
+    if (opts && opts.defer) whenNear(job);
+    else enqueue(job);
+  }
+
+  function mount(id, fn, opts) {
+    if (document.readyState === "loading") {
+      window.addEventListener("DOMContentLoaded", function () { schedule(id, fn, opts); });
+    } else {
+      schedule(id, fn, opts);
+    }
+    if (!armed) {
+      armed = true;
+      afterFirstPaint(function () { painted = true; drain(); });
+    }
+  }
+
+  if (typeof window !== "undefined") window.PhotonnMount = mount;
+  if (typeof module !== "undefined") module.exports = { mount: mount, NEAR_MARGIN: NEAR_MARGIN };
+})();
+
+</script>
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeToggle');
+  try{var saved=localStorage.getItem('photonn-theme'); if(saved){root.setAttribute('data-theme',saved);}}catch(e){}
+  function cur(){var a=root.getAttribute('data-theme'); if(a) return a;
+    return window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';}
+  btn.addEventListener('click',function(){var n=cur()==='dark'?'light':'dark';
+    root.setAttribute('data-theme',n); try{localStorage.setItem('photonn-theme',n);}catch(e){}});
+})();
+(function(){
+  var els=document.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window)||window.matchMedia('(prefers-reduced-motion:reduce)').matches){
+    els.forEach(function(el){el.classList.add('in');}); return;}
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){
+    if(e.isIntersecting){e.target.classList.add('in'); io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px'});
+  els.forEach(function(el){io.observe(el);});
+})();
+</script>
+<script>
+/*
+ * asm.js -- browser-side angular-spectrum propagation.
+ *
+ * A faithful JavaScript port of photonn/propagate.py:angular_spectrum, written so
+ * the diffraction explorer can recompute scalar diffraction *live* in the browser
+ * (every control continuous), rather than flipping between precomputed frames.
+ *
+ * This is the single source of truth for the browser physics: it is inlined into
+ * the standalone explorer and the project explainer page, and it is loaded under
+ * Node by tests/test_asm_crosscheck.py, which asserts it matches the NumPy
+ * reference to < 1e-6 on a set of configs.
+ *
+ * Conventions match propagate.py exactly:
+ *   - fields are square n x n, stored row-major (index = iy*n + ix), centre-origin
+ *     (the origin sample sits at index n//2 along each axis);
+ *   - all lengths in metres, wavelength in metres, spatial frequencies in cycles/m;
+ *   - grid sizes are powers of two (64/128/256), so fftshift == ifftshift (a roll
+ *     by n/2) -- see shift2 below.
+ *
+ * References: Goodman, Introduction to Fourier Optics, 3rd ed., ch. 3; Matsushima
+ * & Shimobaba, IEEE TIP 18(11):2646 (2009) for the band limit; Voelz,
+ * Computational Fourier Optics, ch. 5 for the sampling / critical distance.
+ */
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------------ 1-D FFT
+  // Iterative in-place radix-2 Cooley-Tukey. Forward uses exp(-2pi i k n / N)
+  // (NumPy's sign convention); inverse uses +2pi and divides by N, so a 2-D
+  // inverse divides by n twice = 1/n^2, matching np.fft.ifft2.
+  function fft1d(re, im, inverse) {
+    const n = re.length;
+
+    // bit-reversal permutation
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) {
+        const tr = re[i]; re[i] = re[j]; re[j] = tr;
+        const ti = im[i]; im[i] = im[j]; im[j] = ti;
+      }
+    }
+
+    for (let len = 2; len <= n; len <<= 1) {
+      const ang = (inverse ? 2.0 : -2.0) * Math.PI / len;
+      const wlenRe = Math.cos(ang);
+      const wlenIm = Math.sin(ang);
+      const half = len >> 1;
+      for (let i = 0; i < n; i += len) {
+        let wRe = 1.0;
+        let wIm = 0.0;
+        for (let k = 0; k < half; k++) {
+          const aRe = re[i + k];
+          const aIm = im[i + k];
+          const bRe = re[i + k + half];
+          const bIm = im[i + k + half];
+          const vRe = bRe * wRe - bIm * wIm;
+          const vIm = bRe * wIm + bIm * wRe;
+          re[i + k] = aRe + vRe;
+          im[i + k] = aIm + vIm;
+          re[i + k + half] = aRe - vRe;
+          im[i + k + half] = aIm - vIm;
+          const nwRe = wRe * wlenRe - wIm * wlenIm;
+          wIm = wRe * wlenIm + wIm * wlenRe;
+          wRe = nwRe;
+        }
+      }
+    }
+
+    if (inverse) {
+      for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    }
+  }
+
+  // ------------------------------------------------------------------ 2-D FFT
+  // Row transforms then column transforms, on flat (n*n) real/imag arrays.
+  function fft2(re, im, n, inverse) {
+    const tr = new Float64Array(n);
+    const ti = new Float64Array(n);
+
+    for (let iy = 0; iy < n; iy++) {
+      const off = iy * n;
+      for (let ix = 0; ix < n; ix++) { tr[ix] = re[off + ix]; ti[ix] = im[off + ix]; }
+      fft1d(tr, ti, inverse);
+      for (let ix = 0; ix < n; ix++) { re[off + ix] = tr[ix]; im[off + ix] = ti[ix]; }
+    }
+    for (let ix = 0; ix < n; ix++) {
+      for (let iy = 0; iy < n; iy++) { tr[iy] = re[iy * n + ix]; ti[iy] = im[iy * n + ix]; }
+      fft1d(tr, ti, inverse);
+      for (let iy = 0; iy < n; iy++) { re[iy * n + ix] = tr[iy]; im[iy * n + ix] = ti[iy]; }
+    }
+  }
+
+  // fftshift / ifftshift for even n are identical: a circular roll by n/2 on each
+  // axis (since 2*(n/2) = n). Writes into caller-supplied destinations, which must
+  // not alias the sources.
+  function shift2Into(re, im, n, dre, dim) {
+    const h = n >> 1;
+    for (let iy = 0; iy < n; iy++) {
+      const sy = (iy + h) % n;
+      for (let ix = 0; ix < n; ix++) {
+        const sx = (ix + h) % n;
+        dre[iy * n + ix] = re[sy * n + sx];
+        dim[iy * n + ix] = im[sy * n + sx];
+      }
+    }
+  }
+
+  // Same, returning fresh arrays.
+  function shift2(re, im, n) {
+    const dre = new Float64Array(n * n);
+    const dim = new Float64Array(n * n);
+    shift2Into(re, im, n, dre, dim);
+    return [dre, dim];
+  }
+
+  // Transform-stage scratch, kept across calls and keyed by grid size.
+  //
+  // propagateField is the hot path -- the optics page runs 63 of them just to
+  // reach first paint -- and each one used to allocate four n*n Float64Arrays it
+  // immediately discarded: 512 KB per propagation at n=128, tens of MB per page
+  // load. That is garbage-collector pressure, which a phone feels long before it
+  // feels the arithmetic. The scratch is never handed out, so nothing outside
+  // this function can hold a reference to it.
+  const _scratch = new Map();
+  function scratch(n) {
+    let s = _scratch.get(n);
+    if (s === undefined) {
+      s = [new Float64Array(n * n), new Float64Array(n * n)];
+      _scratch.set(n, s);
+    }
+    return s;
+  }
+
+  // -------------------------------------------------------------- frequencies
+  // np.fft.fftfreq(n, dx) in cycles/m, unshifted order: [0,1,..,n/2-1,-n/2,..,-1]/(n*dx).
+  function fftfreq(n, dx) {
+    const f = new Float64Array(n);
+    const inv = 1.0 / (n * dx);
+    const half = n >> 1;
+    for (let i = 0; i < n; i++) f[i] = (i < half ? i : i - n) * inv;
+    return f;
+  }
+
+  // ------------------------------------------------------------ transfer fn H
+  // Mirrors propagate.py:angular_spectrum_transfer (lines 79-87), in unshifted
+  // order so it multiplies fft2(ifftshift(E)) directly.
+  //   H = exp(i 2pi z sqrt(1/lam^2 - fx^2 - fy^2))   (complex sqrt -> evanescent)
+  // then band-limited to |fx|,|fy| <= u_limit = 1/(lam*sqrt((2*du*z)^2 + 1)).
+  function buildTransfer(n, dx, lambda, z) {
+    const f = fftfreq(n, dx);
+    const hre = new Float64Array(n * n);
+    const him = new Float64Array(n * n);
+    const invLam2 = 1.0 / (lambda * lambda);
+    const du = 1.0 / (n * dx);
+    const uLimit = 1.0 / (lambda * Math.sqrt((2.0 * du * z) * (2.0 * du * z) + 1.0));
+    const twoPiZ = 2.0 * Math.PI * z;
+
+    for (let iy = 0; iy < n; iy++) {
+      const fy = f[iy];
+      const fy2 = fy * fy;
+      const yBand = Math.abs(fy) <= uLimit;
+      for (let ix = 0; ix < n; ix++) {
+        const idx = iy * n + ix;
+        const fx = f[ix];
+        if (!yBand || Math.abs(fx) > uLimit) { hre[idx] = 0.0; him[idx] = 0.0; continue; }
+        const arg = invLam2 - fx * fx - fy2;
+        if (arg >= 0.0) {
+          const theta = twoPiZ * Math.sqrt(arg);       // propagating: unit modulus
+          hre[idx] = Math.cos(theta);
+          him[idx] = Math.sin(theta);
+        } else {
+          hre[idx] = Math.exp(-twoPiZ * Math.sqrt(-arg)); // evanescent: real decay (z>0)
+          him[idx] = 0.0;
+        }
+      }
+    }
+    return [hre, him];
+  }
+
+  // ---------------------------------------------------------------- aperture
+  // Uniform plane wave clipped by a hard aperture, centred at n//2. Mirrors
+  // elements.aperture: `size` is the full width (diameter for circular, side for
+  // square). Returns [re, im] with im all zero.
+  function aperture(n, dx, shape, size) {
+    const re = new Float64Array(n * n);
+    const im = new Float64Array(n * n);
+    const c = n >> 1;
+    if (shape === "square") {
+      const half = size / 2.0;
+      for (let iy = 0; iy < n; iy++) {
+        const y = (iy - c) * dx;
+        const inY = Math.abs(y) <= half;
+        for (let ix = 0; ix < n; ix++) {
+          const x = (ix - c) * dx;
+          re[iy * n + ix] = (inY && Math.abs(x) <= half) ? 1.0 : 0.0;
+        }
+      }
+    } else { // circular
+      const r2 = (size / 2.0) * (size / 2.0);
+      for (let iy = 0; iy < n; iy++) {
+        const y = (iy - c) * dx;
+        const y2 = y * y;
+        for (let ix = 0; ix < n; ix++) {
+          const x = (ix - c) * dx;
+          re[iy * n + ix] = (x * x + y2 <= r2) ? 1.0 : 0.0;
+        }
+      }
+    }
+    return [re, im];
+  }
+
+  // --------------------------------------------------------------- propagator
+  // One propagation step on a complex field: ifftshift -> fft2 -> xH -> ifft2 ->
+  // fftshift. Returns fresh [re, im] in centre-origin layout; the inputs are not
+  // modified. Mirrors photonn.layers.AngularSpectrumLayer.forward.
+  //
+  // H is passed in already built rather than derived from (dx, lambda, z) because
+  // the caller usually propagates the same distance repeatedly -- the D2NN makes
+  // six identical-z hops through its mask stack, so it builds H once and reuses it
+  // (see d2nn.js). Use buildTransfer(n, dx, lambda, z) to make one.
+  // The out-parameter form: writes the propagated field into (outRe, outIm) and
+  // allocates nothing. Passing the inputs back in as the outputs is explicitly
+  // allowed and is how the mask stack propagates in place -- the sources are read
+  // once into scratch before anything is written, so aliasing is safe.
+  function propagateFieldInto(re, im, n, hre, him, outRe, outIm) {
+    const s = scratch(n);
+    const a = s[0], b = s[1];
+    shift2Into(re, im, n, a, b);           // ifftshift
+    fft2(a, b, n, false);
+    for (let i = 0; i < n * n; i++) {
+      const x = a[i], y = b[i], c = hre[i], d = him[i];
+      a[i] = x * c - y * d;
+      b[i] = x * d + y * c;
+    }
+    fft2(a, b, n, true);
+    shift2Into(a, b, n, outRe, outIm);     // fftshift
+    return [outRe, outIm];
+  }
+
+  function propagateField(re, im, n, hre, him) {
+    return propagateFieldInto(re, im, n, hre, him,
+                              new Float64Array(n * n), new Float64Array(n * n));
+  }
+
+  // Full ASM pipeline for a hard-aperture input, then |E|^2. Returns a
+  // Float64Array(n*n) of intensity in centre-origin layout, matching
+  // photonn.propagate.angular_spectrum(field, z).intensity().
+  function propagateIntensity(n, dx, lambda, z, shape, size) {
+    const [re0, im0] = aperture(n, dx, shape, size);
+    const [hre, him] = buildTransfer(n, dx, lambda, z);
+    const [re, im] = propagateField(re0, im0, n, hre, him);
+    const I = new Float64Array(n * n);
+    for (let i = 0; i < n * n; i++) I[i] = re[i] * re[i] + im[i] * im[i];
+    return I;
+  }
+
+  // ------------------------------------------------------------ sampling info
+  // check_sampling criteria (propagate.py:172-188), aperture-independent.
+  function zCrit(n, dx, lambda) { return n * dx * dx / lambda; }           // ASM well-sampled if |z| <= this
+  function zFraunhofer(n, dx, lambda) {                                     // far field beyond this (D = n*dx)
+    const D = n * dx;
+    return 2.0 * D * D / lambda;
+  }
+
+  const ASM = {
+    fft1d, fft2, shift2, shift2Into, fftfreq, buildTransfer, aperture,
+    propagateField, propagateFieldInto, propagateIntensity, zCrit, zFraunhofer,
+  };
+
+  if (typeof module !== "undefined" && module.exports) module.exports = ASM;
+  if (typeof window !== "undefined") window.ASM = ASM;
+})();
+
+</script>
+<script>
+/*
+ * explorer.js -- live diffraction explorer widget.
+ *
+ * Mounts a self-contained interactive control panel + canvases that recompute
+ * angular-spectrum propagation on every input, using the physics in asm.js
+ * (window.ASM). Continuous controls for aperture shape/size, distance, wavelength
+ * and grid size, with a live sampling-violation flag (z vs z_crit = n*dx^2/lam).
+ *
+ * Usage:  window.PhotonnExplorer.mount(containerElement, opts)
+ * opts (all optional): { extent, grid, wavelength, apertureSize, distance, shape }
+ * SI units in, metres/metres/metres.
+ *
+ * Depends on window.ASM (asm.js). No external libraries; no network.
+ */
+(function () {
+  "use strict";
+
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
+  // Inferno-style colormap anchors (matplotlib inferno, 9 stops) -> 256 LUT.
+  const ANCHORS = [
+    [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
+    [188, 55, 84], [221, 81, 58], [243, 120, 25], [252, 255, 164],
+  ];
+  const LUT = (function () {
+    const lut = new Uint8ClampedArray(256 * 3);
+    const seg = ANCHORS.length - 1;
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255 * seg;
+      const k = Math.min(seg - 1, Math.floor(t));
+      const f = t - k;
+      const a = ANCHORS[k], b = ANCHORS[k + 1];
+      lut[i * 3] = a[0] + (b[0] - a[0]) * f;
+      lut[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
+      lut[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
+    }
+    return lut;
+  })();
+
+  const STYLE_ID = "pe-style";
+  const CSS = `
+.pe-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
+  --pe-accent:#3b6ea5;--pe-ok:#3f8f4e;--pe-warn:#c14a3d;
+  color:var(--pe-fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  display:flex;flex-direction:column;gap:14px;max-width:820px;}
+@media (prefers-color-scheme:dark){.pe-root{--pe-fg:#e6eaf0;--pe-muted:#9aa6b5;
+  --pe-panel:#1c2128;--pe-border:#30363d;--pe-accent:#6ea8e0;--pe-ok:#5cc06e;--pe-warn:#e0705f;}}
+.pe-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:12px 18px;background:var(--pe-panel);border:1px solid var(--pe-border);
+  border-radius:10px;padding:14px 16px;}
+.pe-ctl{display:flex;flex-direction:column;gap:4px;}
+.pe-ctl > label{font-weight:600;font-size:12px;letter-spacing:.01em;
+  display:flex;justify-content:space-between;gap:8px;}
+.pe-ctl > label span{color:var(--pe-accent);font-variant-numeric:tabular-nums;font-weight:600;}
+.pe-ctl input[type=range]{width:100%;accent-color:var(--pe-accent);}
+.pe-seg{display:flex;border:1px solid var(--pe-border);border-radius:7px;overflow:hidden;}
+.pe-seg button{flex:1;border:0;background:transparent;color:var(--pe-muted);
+  padding:6px 4px;font:inherit;font-size:12px;cursor:pointer;}
+.pe-seg button[aria-pressed=true]{background:var(--pe-accent);color:#fff;}
+.pe-banner{border-radius:8px;padding:9px 13px;font-weight:600;font-size:13px;
+  color:#fff;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;}
+.pe-banner.ok{background:var(--pe-ok);}
+.pe-banner.warn{background:var(--pe-warn);}
+.pe-banner small{font-weight:500;opacity:.92;}
+.pe-plots{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+.pe-panelbox{background:var(--pe-panel);border:1px solid var(--pe-border);
+  border-radius:10px;padding:10px;}
+.pe-panelbox h4{margin:0 0 6px;font-size:12px;color:var(--pe-muted);font-weight:600;
+  text-transform:uppercase;letter-spacing:.04em;}
+.pe-field-wrap{display:flex;gap:8px;align-items:stretch;}
+.pe-field{width:320px;height:320px;max-width:100%;image-rendering:auto;
+  border-radius:6px;display:block;background:#000;}
+.pe-colorbar{width:14px;border-radius:4px;
+  background:linear-gradient(to top,rgb(0,0,4),rgb(66,10,104),rgb(147,38,103),
+    rgb(221,81,58),rgb(252,255,164));}
+.pe-cross{width:320px;height:150px;max-width:100%;display:block;}
+.pe-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+  gap:6px 16px;font-size:12px;color:var(--pe-muted);
+  border-top:1px solid var(--pe-border);padding-top:10px;}
+.pe-meta b{color:var(--pe-fg);font-variant-numeric:tabular-nums;font-weight:600;}
+.pe-axis{font-size:11px;color:var(--pe-muted);text-align:center;margin-top:2px;}
+`;
+
+  function injectStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
+
+  function el(tag, cls, html) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  function control(label, valueSpanId) {
+    const wrap = el("div", "pe-ctl");
+    const lab = el("label");
+    lab.innerHTML = `${label} <span id="${valueSpanId}"></span>`;
+    wrap.appendChild(lab);
+    return { wrap, lab };
+  }
+
+  function mount(container, opts) {
+    opts = opts || {};
+    injectStyle();
+
+    const state = {
+      extent: opts.extent || 4.0e-3,          // fixed window (m)
+      grid: opts.grid || 128,                 // 64 / 128 / 256
+      wavelength: opts.wavelength || 633e-9,  // m
+      apertureSize: opts.apertureSize || 0.4e-3, // m (full width)
+      distance: opts.distance || 0.05,        // m
+      shape: opts.shape || "circular",
+    };
+
+    const root = el("div", "pe-root");
+    container.innerHTML = "";
+    container.appendChild(root);
+
+    // ---- controls
+    const controls = el("div", "pe-controls");
+
+    // aperture shape (segmented)
+    const shapeCtl = el("div", "pe-ctl");
+    shapeCtl.appendChild(el("label", null, "Aperture shape"));
+    const seg = el("div", "pe-seg");
+    const btnCirc = el("button", null, "Circular");
+    const btnSq = el("button", null, "Square");
+    seg.appendChild(btnCirc); seg.appendChild(btnSq);
+    shapeCtl.appendChild(seg);
+
+    // aperture size
+    const size = control("Aperture width ⌀", "pe-size-v");
+    const sizeIn = el("input");
+    sizeIn.type = "range"; sizeIn.min = "0.05"; sizeIn.max = "3.0"; sizeIn.step = "0.01";
+    sizeIn.value = (state.apertureSize * 1e3).toString();
+    size.wrap.appendChild(sizeIn);
+
+    // distance
+    const dist = control("Distance z", "pe-dist-v");
+    const distIn = el("input");
+    distIn.type = "range"; distIn.min = "1"; distIn.max = "500"; distIn.step = "1";
+    distIn.value = (state.distance * 1e3).toString();
+    dist.wrap.appendChild(distIn);
+
+    // wavelength
+    const wl = control("Wavelength λ", "pe-wl-v");
+    const wlIn = el("input");
+    wlIn.type = "range"; wlIn.min = "380"; wlIn.max = "1600"; wlIn.step = "1";
+    wlIn.value = (state.wavelength * 1e9).toString();
+    wl.wrap.appendChild(wlIn);
+
+    // grid size (segmented)
+    const gridCtl = el("div", "pe-ctl");
+    gridCtl.appendChild(el("label", null, "Grid N (samples/side)"));
+    const gseg = el("div", "pe-seg");
+    const gbtns = [64, 128, 256].map((g) => {
+      const b = el("button", null, String(g));
+      b.dataset.g = String(g);
+      gseg.appendChild(b);
+      return b;
+    });
+    gridCtl.appendChild(gseg);
+
+    controls.appendChild(shapeCtl);
+    controls.appendChild(size.wrap);
+    controls.appendChild(dist.wrap);
+    controls.appendChild(wl.wrap);
+    controls.appendChild(gridCtl);
+    root.appendChild(controls);
+
+    // ---- banner
+    const banner = el("div", "pe-banner ok");
+    root.appendChild(banner);
+
+    // ---- plots
+    const plots = el("div", "pe-plots");
+
+    const fieldBox = el("div", "pe-panelbox");
+    fieldBox.appendChild(el("h4", null, "Intensity |E|² (peak-normalized)"));
+    const fieldWrap = el("div", "pe-field-wrap");
+    const fieldCanvas = el("canvas", "pe-field");
+    const colorbar = el("div", "pe-colorbar");
+    fieldWrap.appendChild(fieldCanvas);
+    fieldWrap.appendChild(colorbar);
+    fieldBox.appendChild(fieldWrap);
+    fieldBox.appendChild(el("div", "pe-axis", "x, y in mm (window fixed)"));
+
+    const crossBox = el("div", "pe-panelbox");
+    crossBox.appendChild(el("h4", null, "Horizontal cross-section (mid-row)"));
+    const crossCanvas = el("canvas", "pe-cross");
+    crossBox.appendChild(crossCanvas);
+    crossBox.appendChild(el("div", "pe-axis", "x in mm"));
+
+    plots.appendChild(fieldBox);
+    plots.appendChild(crossBox);
+    root.appendChild(plots);
+
+    // ---- meta readout
+    const meta = el("div", "pe-meta");
+    root.appendChild(meta);
+
+    // offscreen buffer for the n x n image
+    const off = document.createElement("canvas");
+    const offCtx = off.getContext("2d");
+
+    function renderField(intensity, n) {
+      let peak = 0;
+      for (let i = 0; i < intensity.length; i++) if (intensity[i] > peak) peak = intensity[i];
+      const inv = peak > 0 ? 1 / peak : 0;
+      off.width = n; off.height = n;
+      const img = offCtx.createImageData(n, n);
+      const d = img.data;
+      for (let i = 0; i < n * n; i++) {
+        let v = intensity[i] * inv;
+        if (v < 0) v = 0; else if (v > 1) v = 1;
+        const li = (v * 255) | 0;
+        d[i * 4] = LUT[li * 3];
+        d[i * 4 + 1] = LUT[li * 3 + 1];
+        d[i * 4 + 2] = LUT[li * 3 + 2];
+        d[i * 4 + 3] = 255;
+      }
+      offCtx.putImageData(img, 0, 0);
+
+      const dpr = canvasScale();
+      const W = 320;
+      fieldCanvas.width = W * dpr; fieldCanvas.height = W * dpr;
+      const ctx = fieldCanvas.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.clearRect(0, 0, fieldCanvas.width, fieldCanvas.height);
+      ctx.drawImage(off, 0, 0, fieldCanvas.width, fieldCanvas.height);
+      return peak;
+    }
+
+    function renderCross(intensity, n, dx) {
+      const dpr = canvasScale();
+      const W = 320, H = 150;
+      crossCanvas.width = W * dpr; crossCanvas.height = H * dpr;
+      const ctx = crossCanvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, W, H);
+
+      const mid = (n >> 1) * n;
+      let peak = 0;
+      for (let ix = 0; ix < n; ix++) { const v = intensity[mid + ix]; if (v > peak) peak = v; }
+      const inv = peak > 0 ? 1 / peak : 0;
+
+      const style = getComputedStyle(root);
+      const accent = style.getPropertyValue("--pe-accent").trim() || "#3b6ea5";
+      const border = style.getPropertyValue("--pe-border").trim() || "#ccc";
+      const pad = 6, baseY = H - 16;
+
+      // axis baseline
+      ctx.strokeStyle = border; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad, baseY); ctx.lineTo(W - pad, baseY); ctx.stroke();
+
+      // curve
+      ctx.strokeStyle = accent; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (let ix = 0; ix < n; ix++) {
+        const x = pad + (ix / (n - 1)) * (W - 2 * pad);
+        const y = baseY - intensity[mid + ix] * inv * (baseY - pad);
+        if (ix === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // x tick labels (min / 0 / max in mm)
+      const half = (n >> 1) * dx * 1e3;
+      ctx.fillStyle = style.getPropertyValue("--pe-muted").trim() || "#888";
+      ctx.font = "10px system-ui, sans-serif";
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left"; ctx.fillText((-half).toFixed(1), pad, baseY + 3);
+      ctx.textAlign = "center"; ctx.fillText("0", W / 2, baseY + 3);
+      ctx.textAlign = "right"; ctx.fillText(half.toFixed(1), W - pad, baseY + 3);
+    }
+
+    function compute() {
+      const n = state.grid;
+      const dx = state.extent / n;
+      const lam = state.wavelength;
+      const z = state.distance;
+
+      const t0 = performance.now();
+      const I = window.ASM.propagateIntensity(n, dx, lam, z, state.shape, state.apertureSize);
+      renderField(I, n);
+      renderCross(I, n, dx);
+      const ms = performance.now() - t0;
+
+      const zc = window.ASM.zCrit(n, dx, lam);
+      const zf = window.ASM.zFraunhofer(n, dx, lam);
+      const ok = Math.abs(z) <= zc;
+
+      banner.className = "pe-banner " + (ok ? "ok" : "warn");
+      banner.innerHTML = ok
+        ? `✓ Sampling OK <small>|z| = ${(z * 1e3).toFixed(0)} mm ≤ z_crit = ${(zc * 1e3).toFixed(0)} mm · far field beyond ${(zf * 1e2).toFixed(1)} cm</small>`
+        : `⚠ Aliasing risk <small>|z| = ${(z * 1e3).toFixed(0)} mm &gt; z_crit = ${(zc * 1e3).toFixed(0)} mm — band-limited ASM active (high-angle content dropped)</small>`;
+
+      meta.innerHTML =
+        `<div>λ <b>${(lam * 1e9).toFixed(0)} nm</b></div>` +
+        `<div>Aperture ⌀ <b>${(state.apertureSize * 1e3).toFixed(2)} mm</b></div>` +
+        `<div>z <b>${(z * 1e3).toFixed(0)} mm</b></div>` +
+        `<div>Grid <b>${n}×${n}</b></div>` +
+        `<div>dx <b>${(dx * 1e6).toFixed(1)} µm</b></div>` +
+        `<div>Window <b>${(state.extent * 1e3).toFixed(1)} mm</b></div>` +
+        `<div>z_crit <b>${(zc * 1e3).toFixed(0)} mm</b></div>` +
+        `<div>compute <b>${ms.toFixed(1)} ms</b></div>`;
+    }
+
+    // rAF-coalesced recompute (one per frame max, keeps 256^2 dragging smooth)
+    let scheduled = false;
+    function requestCompute() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => { scheduled = false; compute(); });
+    }
+
+    function updateValueLabels() {
+      document.getElementById("pe-size-v").textContent = (state.apertureSize * 1e3).toFixed(2) + " mm";
+      document.getElementById("pe-dist-v").textContent = (state.distance * 1e3).toFixed(0) + " mm";
+      document.getElementById("pe-wl-v").textContent = (state.wavelength * 1e9).toFixed(0) + " nm";
+    }
+
+    function setShape(sh) {
+      state.shape = sh;
+      btnCirc.setAttribute("aria-pressed", String(sh === "circular"));
+      btnSq.setAttribute("aria-pressed", String(sh === "square"));
+      requestCompute();
+    }
+    function setGrid(g) {
+      state.grid = g;
+      gbtns.forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.g === g)));
+      requestCompute();
+    }
+
+    // wiring
+    sizeIn.addEventListener("input", () => { state.apertureSize = +sizeIn.value * 1e-3; updateValueLabels(); requestCompute(); });
+    distIn.addEventListener("input", () => { state.distance = +distIn.value * 1e-3; updateValueLabels(); requestCompute(); });
+    wlIn.addEventListener("input", () => { state.wavelength = +wlIn.value * 1e-9; updateValueLabels(); requestCompute(); });
+    btnCirc.addEventListener("click", () => setShape("circular"));
+    btnSq.addEventListener("click", () => setShape("square"));
+    gbtns.forEach((b) => b.addEventListener("click", () => setGrid(+b.dataset.g)));
+
+    // init
+    setShape(state.shape);
+    setGrid(state.grid);
+    updateValueLabels();
+    compute();
+
+    return { recompute: compute, state };
+  }
+
+  if (typeof window !== "undefined") window.PhotonnExplorer = { mount };
+})();
+
+</script>
+<script>
+  (function () {
+    function boot(el) {
+      window.PhotonnExplorer.mount(el, {});
+    }
+    if (window.PhotonnMount) window.PhotonnMount("explorer", boot);
+    else if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', function () { boot(document.getElementById("explorer")); });
+    } else {
+      boot(document.getElementById("explorer"));
+    }
+  })();
+</script>
+
+</body>
+</html>

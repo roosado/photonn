@@ -471,7 +471,7 @@ larger grid's budget against the 128² requirement overstates the headroom by 2�
 ## Seeing the machine: the 3D stage
 
 The trained network runs live in the browser (`apps/web/d2nn.js`, cross-checked to
-torch), and the classifier page draws it two ways. The filmstrip is the precise
+torch), and the site's front page draws it two ways. The filmstrip is the precise
 instrument — seven exact per-plane images. Above it, `apps/web/d2nn_stage.js`
 draws the **optical stack itself**: the entrance plane, the five masks and the
 detector plane as parallel panels along the optical axis, each carrying the field

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="How precisely must a photonic neural network be fabricated before it stops computing what it was trained to compute? An interactive study.">
+<meta name="description" content="Live work: what the shipped optical design leaves on the table, and what a fifty-six-mask network costs in fabrication tolerance to collect it.">
 <title>photonn &mdash; how much better could the optics be?</title>
 <style>
 
@@ -47,8 +47,8 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(8px);
   background:color-mix(in srgb,var(--bg) 82%,transparent);
   border-bottom:1px solid var(--border);}
-.topbar-in{max-width:1120px;margin:0 auto;padding:10px 24px;
-  display:flex;align-items:center;justify-content:space-between;gap:16px;}
+.topbar-in{max-width:1120px;margin:0 auto;padding:9px 24px;
+  display:flex;align-items:center;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;}
 .brand{font-family:var(--mono);font-size:.82rem;letter-spacing:.02em;color:var(--ink-dim);}
 .brand b{color:var(--beam);font-weight:600;}
 .theme-toggle{font-family:var(--mono);font-size:.74rem;letter-spacing:.04em;
@@ -56,17 +56,31 @@ body{margin:0;background:var(--bg);color:var(--ink);
   border-radius:999px;padding:5px 13px;cursor:pointer;transition:color .15s,border-color .15s;}
 .theme-toggle:hover{color:var(--ink);border-color:var(--beam);}
 .theme-toggle:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
-.topbar-right{display:flex;align-items:center;gap:10px;}
-.navlink{font-family:var(--mono);font-size:.74rem;letter-spacing:.04em;text-decoration:none;
-  color:var(--beam);border:1px solid color-mix(in srgb,var(--beam) 45%,transparent);
-  background:var(--beam-soft);border-radius:999px;padding:5px 13px;white-space:nowrap;
-  transition:border-color .15s,background .15s;}
-.navlink:hover{border-color:var(--beam);background:color-mix(in srgb,var(--beam) 16%,transparent);}
-.navlink:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
-@media (max-width:640px){
-  .brand span.brand-tail{display:none;}
-  .navlink{padding:5px 10px;}
-}
+.topbar-right{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;}
+/* Five pages share one row, so the nav is quieter than a row of pills would be:
+   only the page you are on is drawn as one. */
+.topbar-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
+.topbar-nav a{font-family:var(--mono);font-size:.74rem;letter-spacing:.03em;text-decoration:none;
+  color:var(--muted);border:1px solid transparent;border-radius:999px;padding:5px 11px;
+  white-space:nowrap;transition:color .15s,background .15s,border-color .15s;}
+.topbar-nav a:hover{color:var(--ink);background:var(--beam-soft);}
+.topbar-nav a[aria-current="page"]{color:var(--beam);background:var(--beam-soft);
+  border-color:color-mix(in srgb,var(--beam) 45%,transparent);}
+.topbar-nav a:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
+@media (max-width:900px){.brand span.brand-tail{display:none;}}
+@media (max-width:640px){.topbar-nav a{padding:5px 8px;font-size:.7rem;}}
+
+/* sequential hand-off at the foot of every page */
+.pagenext{display:block;text-decoration:none;background:var(--surface);
+  border:1px solid var(--border);border-left:3px solid var(--beam);border-radius:12px;
+  padding:19px 22px;margin:46px 0 6px;transition:background .15s,border-color .15s;}
+.pagenext:hover{background:var(--surface-2);border-color:var(--beam);}
+.pagenext:focus-visible{outline:2px solid var(--beam);outline-offset:3px;}
+.pagenext .k{display:block;font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--muted);}
+.pagenext .t{display:block;font-family:var(--serif);font-weight:600;color:var(--ink);
+  font-size:clamp(1.12rem,2vw,1.38rem);line-height:1.2;margin:.32rem 0 .28rem;}
+.pagenext .b{display:block;color:var(--ink-dim);font-size:.94rem;max-width:64ch;}
 
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px;}
 .col{max-width:var(--measure);}
@@ -129,6 +143,27 @@ a.link:hover{border-bottom-color:var(--beam);}
   gap:16px;margin:26px 0;}
 .plate-grid .plate{margin:0;}
 
+/* tables -- wide content scrolls inside its own box, never the page */
+.tbl-wrap{overflow-x:auto;margin:24px 0;-webkit-overflow-scrolling:touch;}
+.tbl{border-collapse:collapse;font-size:.92rem;min-width:min(100%,540px);}
+.tbl th,.tbl td{border-bottom:1px solid var(--border);padding:9px 14px 9px 0;
+  text-align:left;vertical-align:top;color:var(--ink-dim);}
+.tbl th{font-family:var(--mono);font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);font-weight:600;white-space:nowrap;}
+.tbl td strong{color:var(--ink);font-weight:600;}
+.tbl tr:last-child td{border-bottom:0;}
+
+/* inline reference list -- the one section sourced from outside this project */
+.refs{list-style:none;padding:0;margin:1.6rem 0 0;max-width:var(--measure);
+  border-top:1px solid var(--border);padding-top:.9rem;}
+.refs li{font-size:.84rem;color:var(--muted);margin:.42rem 0;line-height:1.5;}
+.refs li b{font-family:var(--mono);color:var(--beam);font-weight:600;margin-right:.45em;}
+.refs a{color:inherit;text-decoration:none;
+  border-bottom:1px solid color-mix(in srgb,var(--muted) 40%,transparent);}
+.refs a:hover{color:var(--ink);border-bottom-color:var(--beam);}
+sup.r{font-family:var(--mono);font-size:.66em;color:var(--beam);font-weight:600;
+  padding-left:.12em;}
+
 /* finding callout */
 .finding{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--bad);
   border-radius:10px;padding:18px 20px;margin:26px 0;}
@@ -179,9 +214,9 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 <div class="spectral-rule"></div>
 <header class="topbar">
   <div class="topbar-in">
-    <span class="brand"><b>photonn</b><span class="brand-tail"> · a fabrication-tolerance study of optical neural networks</span></span>
+    <span class="brand"><b>photonn</b><span class="brand-tail"> &middot; a fabrication-tolerance study of optical neural networks</span></span>
     <div class="topbar-right">
-      <a class="navlink" href="./">&larr; The study</a>
+      <nav class="topbar-nav" aria-label="Sections"><a href="./">The machine</a><a href="physics.html">The physics</a><a href="chip.html">The chip</a><a href="tolerance.html">Tolerance</a><a href="optics.html" aria-current="page">Going deeper</a></nav>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme">◐ theme</button>
     </div>
   </div>
@@ -190,7 +225,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 <main class="wrap">
 
   <section class="hero col reveal">
-    <p class="eyebrow">Phase two &middot; Work in progress</p>
+    <p class="eyebrow">Live work &middot; not a result</p>
     <h1>How much better could the <em>optics</em> be?</h1>
     <div class="underbar"></div>
     <p class="standfirst">The shipped network scores 0.799 and cannot be pushed further by training:
@@ -205,7 +240,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   </section>
 
   <section class="phase reveal">
-    <div class="phase-head col"><span class="ph-num">01</span>
+    <div class="phase-head col">
       <div><p class="eyebrow">The constraint</p>
       <h2>A detector can only be reached by light that gets to it</h2></div></div>
     <div class="prose col">
@@ -228,7 +263,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   </section>
 
   <section class="phase reveal">
-    <div class="phase-head col"><span class="ph-num">02</span>
+    <div class="phase-head col">
       <div><p class="eyebrow">The trade</p>
       <h2>Separation and depth spend the same budget</h2></div></div>
     <div class="prose col">
@@ -246,10 +281,11 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <div class="finding">
         <p class="tag">Finding</p>
         <p class="body"><strong>The plateau belonged to the geometry, not the architecture.</strong>
-        The explainer says the shipped network sits at a ceiling set by being one linear operator
-        followed by one intensity readout. The operator part is true; the ceiling part was not.
-        Fourteen masks reach <strong>0.852</strong> on a third of the data and under a third of the
-        epochs &mdash; and had not converged when the run stopped.</p>
+        This project used to read the shipped network&rsquo;s 0.799 as the ceiling set by being
+        <a class="link" href="physics.html">one linear operator and one intensity readout
+        &rarr;</a> The operator part is true; the ceiling part was not. Fourteen masks reach
+        <strong>0.852</strong> on a third of the data and under a third of the epochs &mdash; and had
+        not converged when the run stopped.</p>
       </div>
     </div>
 
@@ -278,7 +314,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       on whichever digit you pick &mdash; or one you draw &mdash; the same angular-spectrum physics
       as the Python reference, cross-checked against PyTorch to better than
       10<sup>&minus;3</sup>.</p>
-      <p>The gallery is the one the classifier page uses, deliberately stocked with <strong>six
+      <p>The gallery is the one the front page uses, deliberately stocked with <strong>six
       digits the shipped network gets wrong</strong>. The deep network recovers three of them and
       breaks none of the ten the shipped one already had. The three it still misses, it misses
       <em>the same way</em> &mdash; same wrong class, both machines, which is a hint that those
@@ -288,23 +324,29 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       plane and reads a weak maximum off it, while the deep stack lands it inside the boxes. That is
       the difference between about 60% and <strong>79%</strong> of the input photons reaching a
       detector, and it is the same routing mechanism the accuracy gain comes from.</p>
+      <p>Two trained models is <strong>0.7&nbsp;MB</strong> of phases on one page. The candidate
+      carries <strong>eleven times</strong> the parameters &mdash; 918k against 82k &mdash; for under
+      six times the download, because its phases are quantised harder: <strong>4&nbsp;bits</strong>
+      against 8. Neither model is flattered by that. The error budget measures this design as holding
+      accuracy down to <strong>3-bit</strong> phase control, and on the same 2,000 digits the encoded
+      models score <strong>0.9015</strong> and <strong>0.7995</strong> against the float 0.9040 and
+      0.7990 &mdash; five digits either way, inside the noise of a test set that size. What runs in
+      your browser is therefore the same machine the study measured, not a lighter stand-in.</p>
+      <p>A forward pass costs roughly <strong>11&nbsp;ms</strong> and <strong>100&nbsp;ms</strong>
+      respectively &mdash; the deep machine is 56 diffraction steps of arithmetic, in a browser tab
+      &mdash; which is far more than an animation frame can hold. So the board <strong>waits for you
+      to pause</strong> rather than classifying mid-stroke, and it measures its own render cost to
+      decide that: a board carrying only cheap models still follows the pen. The alternative &mdash;
+      keeping the fast column live and deferring the deep one &mdash; was rejected on purpose,
+      because it would show two different digits side by side.</p>
     </div>
 
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="compare"></div></div>
-      <p class="cap">Live &mdash; two trained models, <strong>0.7&nbsp;MB</strong> of phases together.
-      The candidate carries <strong>eleven times</strong> the parameters (918k against 82k) for under
-      six times the download, because its phases are quantised harder: <strong>4&nbsp;bits</strong>
-      against 8. Neither is flattered by that. The Phase-4 budget measures this design as holding
-      accuracy down to <strong>3-bit</strong> phase control, and on the same 2,000 digits the encoded
-      models score <strong>0.9015</strong> and <strong>0.7995</strong> against the float 0.9040 and
-      0.7990 &mdash; five digits either way, inside the noise of a test set that size. What runs in
-      your browser is therefore the same machine the study measured, not a lighter stand-in.
-      A forward pass costs roughly 11&nbsp;ms and 100&nbsp;ms respectively &mdash; the deep
-      machine is 56 diffraction steps of arithmetic, in a browser tab &mdash; which is more than
-      an animation frame can hold, so the board <strong>waits for you to pause</strong> rather
-      than running mid-stroke. It measures its own cost to decide that; a board of cheap models
-      still follows the pen.</p>
+      <p class="cap">Live &mdash; the shipped 5-mask network and the unshipped 56-mask candidate, one
+      digit, both forward passes computed here. Every caption in the board is rendered from the
+      weight bundles&rsquo; own provenance, so promoting a model is regenerating a bundle rather than
+      editing a page.</p>
     </div>
 
     <h3 class="sub-h">What 56 masks actually looks like</h3>
@@ -323,7 +365,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       29:1 needle that has to be compressed almost tenfold just to fit on a screen. Past about
       forty plates at this spacing, calling it a stack of discrete masks is already a stretch
       &mdash; it is closer to a volume of glass, which is a different thing to fabricate and one
-      the <a class="link" href="./">error budget &rarr;</a> does not yet model.</p>
+      the <a class="link" href="tolerance.html">error budget &rarr;</a> does not yet model.</p>
     </div>
 
     <div class="explorer-band reveal">
@@ -335,7 +377,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   </section>
 
   <section class="phase reveal">
-    <div class="phase-head col"><span class="ph-num">03</span>
+    <div class="phase-head col">
       <div><p class="eyebrow">What this does not show</p>
       <h2>Reading it honestly</h2></div></div>
     <div class="prose col">
@@ -358,9 +400,10 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       carved out of the training data instead. It was used once, at the end, to score the single
       configuration that had already won.</p>
       <p><strong>Nothing here is shipped, and the deep model is not simply better.</strong> The
-      trained model, the <a class="link" href="classifier.html">browser classifier &rarr;</a> and
-      the <a class="link" href="./">error budget &rarr;</a> all still describe the 5-mask, 3&nbsp;mm
-      design. Running the full Phase-4 budget against the 56-mask candidate prices the +10.5 points:
+      trained model, the <a class="link" href="./">browser classifier &rarr;</a> and
+      the <a class="link" href="tolerance.html">error budget &rarr;</a> all still describe the
+      5-mask, 3&nbsp;mm design. Running the full budget against the 56-mask candidate prices the
+      +10.5 points:
       <strong>2&times; tighter per-pixel phase</strong> (0.3 &rarr; 0.15&nbsp;rad), <strong>one more
       DAC bit</strong>, and <strong>4.7&times; tighter loss per mask</strong>. Detector power and
       wavelength margin loosen, for the same photon-capture reason the accuracy rose &mdash; but
@@ -369,6 +412,8 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       than the accuracy, is the result.</p>
     </div>
   </section>
+
+  <a class="pagenext reveal" href="./"><span class="k">Back to the start</span><span class="t">This neural network is made of light &rarr;</span><span class="b">A digit enters as a beam, crosses five plates of fabricated glass, and the answer is where the light lands. It runs live, in your browser.</span></a>
 
   <footer class="reveal">
     <div class="foot-grid">
@@ -1497,7 +1542,7 @@ if (typeof module !== 'undefined') { module.exports = OPTICS_SWEEP; }
    * which is what lets one page hold two trained models at once and run the same
    * digit through both. The default export is still a single ready-built network
    * around window.D2NN_WEIGHTS, so callers that only ever want the shipped model
-   * (the classifier page, the torch cross-check) are unaffected.
+   * (the front page, the torch cross-check) are unaffected.
    */
   function buildNet(W) {
     if (!W) throw new Error("buildNet needs a weights bundle");
@@ -1957,7 +2002,7 @@ if (typeof module !== 'undefined') { module.exports = OPTICS_SWEEP; }
  * The extraction is deliberately a *move*, not a rewrite: the pad geometry,
  * the stroke width and the MNIST normalisation are all load-bearing and were
  * verified against the trained model. d2nn_demo.js still carries its own copy
- * and is untouched -- the classifier page is live, and consolidating it is a
+ * and is untouched -- the front page's classifier is live, and consolidating it is a
  * separate step with its own testing.
  */
 (function () {

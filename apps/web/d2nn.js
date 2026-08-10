@@ -40,7 +40,7 @@
    * which is what lets one page hold two trained models at once and run the same
    * digit through both. The default export is still a single ready-built network
    * around window.D2NN_WEIGHTS, so callers that only ever want the shipped model
-   * (the classifier page, the torch cross-check) are unaffected.
+   * (the front page, the torch cross-check) are unaffected.
    */
   function buildNet(W) {
     if (!W) throw new Error("buildNet needs a weights bundle");

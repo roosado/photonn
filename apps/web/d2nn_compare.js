@@ -320,6 +320,7 @@
 
       for (const m of models) {
         const res = m.net.classify(digit);
+        m.last = res;                        // see onResult: the stage reuses this
         drawPlane(m.plane, m.net, res);
         m.big.textContent = res.pred;
         m.big.className = "big " + (label == null ? "" : (res.pred === label ? "ok" : "bad"));
@@ -329,7 +330,26 @@
             ? ""
             : ` — true ${label} got ${(res.fractions[label] * 100).toFixed(1)}%`);
       }
+      for (const fn of listeners) fn(models, meta || null);
       if (t0) updateCadence(performance.now() - t0);
+    }
+
+    // Anything else on the page that wants what a column just computed.
+    //
+    // Without this, a widget following the board has to re-run the forward pass
+    // to get at the same result -- on the optics page that was a second 57-hop
+    // pass through the deep model for a digit the board had just finished. It
+    // fires after the columns are drawn, so a listener never delays the board.
+    const listeners = [];
+    function onResult(fn) {
+      listeners.push(fn);
+      for (const m of models) {
+        if (m.last) { fn(models, source ? (source.current() || {}).meta || null : null); break; }
+      }
+      return () => {
+        const i = listeners.indexOf(fn);
+        if (i >= 0) listeners.splice(i, 1);
+      };
     }
 
     source = SOURCE.mount(root.querySelector(".dc-source"), {
@@ -353,7 +373,7 @@
     // cos/sin for a network already built two lines above.
     const api = {
       render: () => { const c = source.current(); if (c) render(c.digit, c.meta); },
-      source, models,
+      source, models, onResult,
       cost: () => cost,
     };
     container.__photonnCompare = api;   // handle for page scripts and browser tests

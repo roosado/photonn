@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import os
 
-from apps.diffraction_explorer import read_web_asset
+from apps.diffraction_explorer import mount_script, read_web_asset
 
 
 def d2nn_bundle(include_asm: bool = True) -> str:
@@ -56,18 +56,13 @@ def d2nn_mount(container_id: str = "d2nn", stage_id: str = None, **opts) -> str:
     digit source (the gallery and paint pad), never two out of sync.
     """
     cfg = json.dumps(opts)
-    lines = [
-        "<script>",
-        "  window.addEventListener('DOMContentLoaded', function () {",
-        f"    var demo = window.PhotonnD2NN.mount(document.getElementById('{container_id}'), {cfg});",
-    ]
+    body = [f"var demo = window.PhotonnD2NN.mount(el, {cfg});"]
     if stage_id:
-        lines += [
-            f"    var stage = window.PhotonnD2NNStage.mount(document.getElementById('{stage_id}'));",
-            "    demo.subscribe(function (res, meta) { stage.setResult(res, meta); });",
+        body += [
+            f"var stage = window.PhotonnD2NNStage.mount(document.getElementById('{stage_id}'));",
+            "demo.subscribe(function (res, meta) { stage.setResult(res, meta); });",
         ]
-    lines += ["  });", "</script>"]
-    return "\n".join(lines)
+    return mount_script(container_id, "\n".join(body))
 
 
 _PAGE = """<!doctype html>

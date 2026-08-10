@@ -19,6 +19,7 @@ Run: python -m apps.build_site
 from __future__ import annotations
 
 import base64
+import functools
 import io
 import os
 
@@ -27,7 +28,7 @@ from PIL import Image
 from apps.analogy_demo import analogy_bundle, analogy_mount
 from apps.compare_demo import compare_bundle, compare_mount
 from apps.d2nn_demo import d2nn_bundle, d2nn_mount
-from apps.diffraction_explorer import explorer_bundle, explorer_mount
+from apps.diffraction_explorer import explorer_bundle, explorer_mount, mount_queue_bundle
 from apps.optics_demo import optics_bundle, optics_mount
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,29 +49,75 @@ FIGURES = {
     "sensitivity": "photonn-hw/figures/sensitivity_map.png",
 }
 
-DEFAULT_OPT = {"fmt": "png", "max_w": 1500}
-# Per-figure encoding overrides. The two heavy figures are 83% of the page:
-#  - the masks plate is a smooth colormap image -> JPEG is ~4x smaller with no
-#    visible loss at display size;
-#  - the mesh topology is a line/diagram figure -> keep PNG (thin lines + text),
-#    just cap the width lower.
-# Every other figure is a small line plot and stays PNG at the default width.
+# A figure is encoded at roughly 2x the CSS width it is actually displayed at,
+# which is all a 2x-density screen can resolve. Full-width plates sit in a 1120 px
+# column (`.wrap`) less padding, so ~1040 px of image; the seven plates inside
+# `.plate-grid` are laid out `minmax(270px, 1fr)` three-up, so they display at
+# only ~330 px and were previously encoded at 970 -- about 3x the pixels they show.
+GRID_MAX_W = 700
+PLATE_MAX_W = 1440
+
+DEFAULT_OPT = {"max_w": PLATE_MAX_W}
 FIG_OPTS = {
-    "phase2_masks": {"fmt": "jpeg", "max_w": 1400, "quality": 85},
-    # Six detector-plane colormap panels dominate this plate, so JPEG again; the
-    # line work above them stays legible at 1500 px.
-    "optics_sweep": {"fmt": "jpeg", "max_w": 1500, "quality": 88},
-    "mesh_topology": {"fmt": "png", "max_w": 1300},
+    "tol_phase": {"max_w": GRID_MAX_W},
+    "tol_quant": {"max_w": GRID_MAX_W},
+    "tol_wavelength": {"max_w": GRID_MAX_W},
+    "tol_crosstalk": {"max_w": GRID_MAX_W},
+    "tol_detector": {"max_w": GRID_MAX_W},
+    "tol_loss": {"max_w": GRID_MAX_W},
+    "confusion": {"max_w": GRID_MAX_W},
 }
 
+# AVIF at q60 is the knee of the quality curve for these figures, measured against
+# the lossless downscale: q50->q65 buys 1.7 dB on the mesh diagram (the hardest
+# case, thin lines plus text), q65->q80 buys 0.9 dB for 40% more bytes. Past q60
+# the extra bits go to smooth background the eye never inspects. Lossless is not
+# competitive here -- lossless AVIF/WebP on that same diagram are 249/238 KB
+# against 66 KB at q60.
+AVIF_QUALITY = 60
+WEBP_QUALITY = 85
 
-def encode_figure(rel_path: str, fmt: str = "png", max_w: int = 1500, quality: int = 85) -> str:
+
+def _encodings(im: "Image.Image") -> list[tuple[str, bytes]]:
+    """Every encoding worth considering for a figure, as (mime, bytes).
+
+    Which one wins is not predictable from the kind of figure, so it is measured
+    per figure rather than declared: WebP beats PNG on most of these plots but
+    *loses badly* on the dense detector-noise plot (75 KB against 39 KB), and a
+    256-colour palette PNG beats plain PNG on every line plot. Encoding all of
+    them and keeping the smallest costs a second of build time and removes the
+    guesswork.
+    """
+    out = []
+
+    def add(mime, image, fmt, **kw):
+        buf = io.BytesIO()
+        image.save(buf, format=fmt, **kw)
+        out.append((mime, buf.getvalue()))
+
+    add("image/avif", im, "AVIF", quality=AVIF_QUALITY)
+    add("image/webp", im, "WEBP", quality=WEBP_QUALITY, method=6)
+    add("image/png", im, "PNG", optimize=True)
+    # Matplotlib line art uses few distinct colours; a palette cut is lossless in
+    # practice for these and roughly halves the PNG.
+    add("image/png", im.convert("P", palette=Image.ADAPTIVE, colors=256), "PNG", optimize=True)
+    return out
+
+
+@functools.lru_cache(maxsize=None)
+def encode_figure(rel_path: str, max_w: int = PLATE_MAX_W) -> str:
     """Return a data URI for a figure, downscaled and flattened onto white.
 
     Matplotlib figures have white backgrounds, so we flatten any alpha onto white
     (keeps them readable inside a light 'plate' on either page theme) and cap the
-    width to keep the self-contained page lean. ``fmt`` is ``"png"`` (lossless, for
-    line plots and diagrams) or ``"jpeg"`` (for smooth colormap images, far smaller).
+    width to what the layout actually displays. The format is chosen by encoding
+    the figure every way that could win and keeping the smallest result -- see
+    :func:`_encodings`.
+
+    AVIF wins for every figure in this project today, which sets the browser floor
+    at Safari 16.4 / Chrome 85 / Firefox 93. There is no fallback: these pages are
+    self-contained by design, so a fallback would mean shipping two copies of every
+    figure and giving back the saving.
     """
     im = Image.open(os.path.join(REPO, rel_path))
     if im.mode in ("RGBA", "LA", "P"):
@@ -82,14 +129,8 @@ def encode_figure(rel_path: str, fmt: str = "png", max_w: int = 1500, quality: i
     if im.width > max_w:
         h = round(im.height * max_w / im.width)
         im = im.resize((max_w, h), Image.LANCZOS)
-    buf = io.BytesIO()
-    if fmt == "jpeg":
-        im.save(buf, format="JPEG", quality=quality, optimize=True, progressive=True)
-        mime = "image/jpeg"
-    else:
-        im.save(buf, format="PNG", optimize=True)
-        mime = "image/png"
-    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    mime, payload = min(_encodings(im), key=lambda c: len(c[1]))
+    b64 = base64.b64encode(payload).decode("ascii")
     return f"data:{mime};base64,{b64}"
 
 
@@ -790,12 +831,15 @@ OPTICS_BODY = r"""
 
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="compare"></div></div>
-      <p class="cap">Live &mdash; two trained models, 1.6&nbsp;MB of phases together. The candidate
-      carries <strong>eleven times</strong> the parameters (918k against 82k) for under three times
-      the download, because its phases are quantised to 8&nbsp;bits. That is not a shortcut: the
-      Phase-4 budget measures this design as holding accuracy down to <strong>3-bit</strong> phase
-      control, and 8&nbsp;bits is what a real SLM offers, so the quantised model is the more faithful
-      one. A forward pass costs roughly 17&nbsp;ms and 130&nbsp;ms respectively &mdash; the deep
+      <p class="cap">Live &mdash; two trained models, <strong>0.7&nbsp;MB</strong> of phases together.
+      The candidate carries <strong>eleven times</strong> the parameters (918k against 82k) for under
+      six times the download, because its phases are quantised harder: <strong>4&nbsp;bits</strong>
+      against 8. Neither is flattered by that. The Phase-4 budget measures this design as holding
+      accuracy down to <strong>3-bit</strong> phase control, and on the same 2,000 digits the encoded
+      models score <strong>0.9015</strong> and <strong>0.7995</strong> against the float 0.9040 and
+      0.7990 &mdash; five digits either way, inside the noise of a test set that size. What runs in
+      your browser is therefore the same machine the study measured, not a lighter stand-in.
+      A forward pass costs roughly 11&nbsp;ms and 100&nbsp;ms respectively &mdash; the deep
       machine is 56 diffraction steps of arithmetic, in a browser tab &mdash; which is more than
       an animation frame can hold, so the board <strong>waits for you to pause</strong> rather
       than running mid-stroke. It measures its own cost to decide that; a board of cheap models
@@ -925,7 +969,7 @@ def render():
     for key in FIGURES:
         opt = {**DEFAULT_OPT, **FIG_OPTS.get(key, {})}
         body = body.replace(f"@@FIG_{key}@@", encode_figure(FIGURES[key], **opt))
-    body = body.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
+    body = body.replace("@@PAGE_SCRIPT@@", mount_queue_bundle() + PAGE_SCRIPT)
     body = body.replace("@@EXPLORER_BUNDLE@@", explorer_bundle())
     body = body.replace("@@EXPLORER_MOUNT@@", explorer_mount("explorer"))
     body = body.replace("@@ANALOGY_BUNDLE@@", analogy_bundle())
@@ -943,7 +987,7 @@ def render():
     # The classifier page carries the whole engine: no explorer bundle runs here,
     # so it inlines asm.js itself.
     cls = CLASSIFIER_BODY
-    cls = cls.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
+    cls = cls.replace("@@PAGE_SCRIPT@@", mount_queue_bundle() + PAGE_SCRIPT)
     cls = cls.replace("@@D2NN_BUNDLE@@", d2nn_bundle(include_asm=True))
     cls = cls.replace("@@D2NN_MOUNT@@", d2nn_mount("d2nn", stage_id="stage"))
     classifier = _document(cls).replace(
@@ -957,7 +1001,7 @@ def render():
     for key in ("optics_sweep",):
         o = {**DEFAULT_OPT, **FIG_OPTS.get(key, {})}
         opt = opt.replace(f"@@FIG_{key}@@", encode_figure(FIGURES[key], **o))
-    opt = opt.replace("@@PAGE_SCRIPT@@", PAGE_SCRIPT)
+    opt = opt.replace("@@PAGE_SCRIPT@@", mount_queue_bundle() + PAGE_SCRIPT)
     opt = opt.replace("@@OPTICS_BUNDLE@@", optics_bundle())
     opt = opt.replace("@@OPTICS_MOUNT@@", optics_mount("optics", zMm=3))
     opt = opt.replace("@@COMPARE_BUNDLE@@", compare_bundle(stage=True))

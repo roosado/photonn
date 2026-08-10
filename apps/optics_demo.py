@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import os
 
-from apps.diffraction_explorer import read_web_asset
+from apps.diffraction_explorer import mount_script, read_web_asset
 
 
 def optics_bundle() -> str:
@@ -30,13 +30,7 @@ def optics_mount(container_id: str = "optics", **opts) -> str:
     the initial separation).
     """
     cfg = json.dumps(opts)
-    return (
-        "<script>\n"
-        "  window.addEventListener('DOMContentLoaded', function () {\n"
-        f"    window.PhotonnOptics.mount(document.getElementById('{container_id}'), {cfg});\n"
-        "  });\n"
-        "</script>"
-    )
+    return mount_script(container_id, f"window.PhotonnOptics.mount(el, {cfg});")
 
 
 _PAGE = """<!doctype html>

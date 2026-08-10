@@ -51,7 +51,7 @@ import h5py
 import numpy as np
 import torch
 
-from apps.web_bundle import b64, encode_masks, js_global, read_bundle
+from apps.web_bundle import b64, encode_masks, js_global, quantise_phase, read_bundle
 from photonn.detect import default_regions
 from photonn.models import D2NN
 from photonn.train import embed_input, load_dataset
@@ -78,7 +78,7 @@ def parse_args(argv=None):
     p.add_argument("--h5", default=H5_PATH, help="Phase-2 handoff to export (default: the shipped one)")
     p.add_argument("--pt", default=PT_PATH, help="torch checkpoint matching --h5")
     p.add_argument("--out", default=WEIGHTS_JS, help="weight bundle to write")
-    p.add_argument("--bits", type=int, default=32, choices=(8, 32),
+    p.add_argument("--bits", type=int, default=32, choices=(4, 8, 32),
                    help="phase encoding: 32 = float32 radians, 8 = uint8 codes (default: 32)")
     p.add_argument("--fixture", default=None,
                    help="path for the torch cross-check fixture. Default: the shipped "
@@ -289,14 +289,17 @@ def bundle_header(out_path, h5_path, hand, bits, n_gallery, prov, max_err, copie
     what = ("the trained Phase-2 diffractive network" if prov["shipped"]
             else "a *candidate* diffractive network")
 
-    if bits == 8:
+    if bits in (4, 8):
+        levels = 1 << bits
+        packing = ("uint8 phase codes" if bits == 8
+                   else "4-bit phase codes packed two per byte, high nibble first")
         masks_line = (
-            f" * masks_b64   : {hand['n_layers']} x {hand['n']} x {hand['n']} uint8 phase codes "
-            f"(masks_bits: 8), decoded as\n"
-            f" *               code * 2pi/256 - pi radians and applied as E * exp(i * phi).\n"
+            f" * masks_b64   : {hand['n_layers']} x {hand['n']} x {hand['n']} {packing} "
+            f"(masks_bits: {bits}), decoded as\n"
+            f" *               code * 2pi/{levels} - pi radians and applied as E * exp(i * phi).\n"
             f" *               Max encoding error {max_err:.4f} rad; the Phase-4 budget holds this\n"
-            f" *               design to 3-bit phase control, so 8 bits is free -- and is what an\n"
-            f" *               SLM offers.\n")
+            f" *               design to 3-bit phase control, so {bits} bits is within what the\n"
+            f" *               hardware model already assumes.\n")
     else:
         masks_line = (
             f" * masks_b64   : {hand['n_layers']} x {hand['n']} x {hand['n']} float32 phase "
@@ -349,8 +352,8 @@ def write_weights_js(hand, regions, gallery, prov, masks_b64, bits, path, header
         "input_frac": hand["input_frac"],
         "regions": [[r.y0, r.y1, r.x0, r.x1] for r in regions],
     }
-    if bits == 8:
-        payload["masks_bits"] = 8
+    if bits != 32:
+        payload["masks_bits"] = bits
     payload["masks_b64"] = masks_b64
     payload.update(gallery)
     payload["provenance"] = prov
@@ -422,10 +425,22 @@ def main(argv=None):
 
     digits28 = recover_mnist(hand)
     model, history = load_model(hand, args.pt)
+
+    # Score the model that is being *shipped*, not the float model it came from.
+    # At --bits 8 or 4 the browser applies quantised phases, so the float logits
+    # would describe a network no visitor ever runs -- and the cross-check fixture
+    # written below would pin the wrong one.
+    if args.bits != 32:
+        quantised = quantise_phase(hand["masks"], args.bits)
+        with torch.no_grad():
+            for m, phi in zip(model.masks, quantised):
+                m.phi.copy_(torch.from_numpy(phi).to(m.phi.dtype))
+
     logits, preds = torch_logits(model, hand["canvases"], hand["phase_scale"])
     labels = hand["labels"]
     acc = float((preds == labels).mean())
-    print(f"  torch accuracy on the frozen test set: {acc:.4f}")
+    print(f"  torch accuracy on the frozen test set: {acc:.4f}"
+          + ("" if args.bits == 32 else f"  ({args.bits}-bit phase)"))
 
     prov = provenance(history, acc, len(labels), label=args.label,
                       shipped=not args.unshipped, caveat=args.caveat)
@@ -445,8 +460,8 @@ def main(argv=None):
         detail += f", {sum(1 for i in gallery_idx if preds[i] != labels[i])} of them misclassified"
     else:
         detail += f" copied from {_rel(args.gallery_from)}"
-    if args.bits == 8:
-        detail += f", 8-bit phase (max error {max_err:.4f} rad)"
+    if args.bits != 32:
+        detail += f", {args.bits}-bit phase (max error {max_err:.4f} rad)"
     print(f"wrote {_rel(args.out)} ({size // 1024} KB, {detail})")
 
     if args.fixture:

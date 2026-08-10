@@ -30,6 +30,50 @@ def read_web_asset(name: str) -> str:
         return fh.read()
 
 
+def mount_queue_bundle() -> str:
+    """Return the ``<script>`` holding the page's mount scheduler.
+
+    Include this once per multi-widget page, before any mount script. Pages that
+    carry only one widget can omit it -- :func:`mount_script` falls back to a
+    plain listener when the scheduler is absent, which is what the standalone
+    demo pages under ``apps/`` rely on.
+    """
+    return f"<script>\n{read_web_asset('mount_queue.js')}\n</script>\n"
+
+
+def mount_script(container_id: str, body: str, defer: bool = False) -> str:
+    """Wrap widget-mount JavaScript so the page decides when it runs.
+
+    ``body`` is JavaScript that mounts the widget into the local variable ``el``.
+    It is handed to ``apps/web/mount_queue.js``, which holds every widget until
+    after the first paint and then starts them one at a time -- so a page carrying
+    several expensive widgets never blocks the main thread on all of them at once.
+    With ``defer``, the widget additionally waits until the reader is approaching
+    it. Either way it still starts by itself: nothing here asks for a tap.
+
+    The ``readyState`` check in the fallback matters for nested mounts. A widget
+    that schedules another one (the optics board mounting the 3D stage off its own
+    network) runs long after DOMContentLoaded, so a fallback that only ever added
+    a listener would silently never fire.
+    """
+    ident = json.dumps(container_id)
+    opts = ", {defer: true}" if defer else ""
+    lines = ["<script>", "  (function () {", "    function boot(el) {"]
+    lines += [f"      {line}" for line in body.strip().splitlines()]
+    lines += [
+        "    }",
+        f"    if (window.PhotonnMount) window.PhotonnMount({ident}, boot{opts});",
+        "    else if (document.readyState === 'loading') {",
+        f"      window.addEventListener('DOMContentLoaded', function () {{ boot(document.getElementById({ident})); }});",
+        "    } else {",
+        f"      boot(document.getElementById({ident}));",
+        "    }",
+        "  })();",
+        "</script>",
+    ]
+    return "\n".join(lines)
+
+
 def explorer_bundle() -> str:
     """Return ``<script>`` tags with asm.js + explorer.js inlined (CSP-safe, offline).
 
@@ -48,13 +92,7 @@ def explorer_mount(container_id: str = "explorer", **opts) -> str:
     grid, wavelength, apertureSize, distance, shape).
     """
     cfg = json.dumps(opts)
-    return (
-        "<script>\n"
-        "  window.addEventListener('DOMContentLoaded', function () {\n"
-        f"    window.PhotonnExplorer.mount(document.getElementById('{container_id}'), {cfg});\n"
-        "  });\n"
-        "</script>"
-    )
+    return mount_script(container_id, f"window.PhotonnExplorer.mount(el, {cfg});")
 
 
 _PAGE = """<!doctype html>

@@ -25,6 +25,17 @@
 (function () {
   "use strict";
 
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
   const DATA = (typeof window !== "undefined" && window.OPTICS_SWEEP)
     ? window.OPTICS_SWEEP
     : (typeof require !== "undefined" ? require("./optics_sweep.js") : null);
@@ -67,7 +78,7 @@
   }
 
   function fitCanvas(canvas, cssW, cssH) {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = canvasScale();
     canvas.style.height = cssH + "px";
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);

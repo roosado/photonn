@@ -32,6 +32,7 @@ import numpy as np
 import pytest
 import torch
 
+from apps.web_bundle import decode_masks
 from photonn.models import D2NN
 from photonn.train import encode_input
 
@@ -84,11 +85,9 @@ def js(bundle):
 
 
 def _torch_logits(bundle):
-    """Rebuild the model from the bundle's own uint8 codes, as the browser does."""
+    """Rebuild the model from the bundle's own phase codes, as the browser does."""
     n, layers = bundle["n"], bundle["n_layers"]
-    codes = np.frombuffer(base64.b64decode(bundle["masks_b64"]), dtype=np.uint8)
-    step = 2 * np.pi / 256
-    masks = (codes.astype(np.float64) * step - np.pi).reshape(layers, n, n)
+    masks = decode_masks(bundle["masks_b64"], bundle.get("masks_bits", 32), (layers, n, n))
 
     model = D2NN(n=n, n_layers=layers, dx=bundle["dx"],
                  wavelength=bundle["wavelength"], separation=bundle["separation"])
@@ -103,7 +102,7 @@ def _torch_logits(bundle):
 
 
 def test_deep_matches_torch(bundle, js):
-    """Predictions identical and logits within 1e-3, through 57 hops of 8-bit phase."""
+    """Predictions identical and logits within 1e-3, through 57 hops of quantised phase."""
     ref = _torch_logits(bundle)
     assert len(js) == len(ref)
     for k, row in enumerate(js):
@@ -116,9 +115,11 @@ def test_deep_geometry_is_the_trained_one(bundle):
     """Guard what makes this a different machine: depth, and a sub-millimetre gap."""
     assert bundle["n_layers"] == N_LAYERS
     assert bundle["separation"] == pytest.approx(0.5263e-3, rel=1e-4)
-    assert bundle["masks_bits"] == 8
-    codes = base64.b64decode(bundle["masks_b64"])
-    assert len(codes) == N_LAYERS * bundle["n"] ** 2, "mask payload is not one byte per phase"
+    bits = bundle["masks_bits"]
+    assert bits in (4, 8), f"a deep bundle must ship quantised, got masks_bits={bits}"
+    payload = base64.b64decode(bundle["masks_b64"])
+    expected = N_LAYERS * bundle["n"] ** 2 * bits // 8
+    assert len(payload) == expected, f"mask payload is {len(payload)} B, expected {expected} at {bits} bits"
 
 
 def test_deep_is_unshipped_but_states_a_real_test_accuracy(bundle):

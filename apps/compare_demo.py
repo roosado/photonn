@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import os
 
-from apps.diffraction_explorer import read_web_asset
+from apps.diffraction_explorer import mount_script, read_web_asset
 
 #: Weight bundles a board can carry: key -> (web asset, the window global it sets).
 #: The globals are derived from the filenames by ``apps.web_bundle.js_global``.
@@ -74,32 +74,36 @@ def compare_mount(container_id: str = "compare", models=DEFAULT_MODELS,
     the objects themselves, in column order.
 
     With ``stage_id``, the 3D stage is mounted there for the ``stage_model``
-    column and fed **the digit** rather than a finished result: the stage decides
-    for itself whether to run the forward pass now or on a Refresh press, which
-    for a deep network is the difference between a smooth page and a stuttering
-    one. Its network comes off the board, so it is built once.
+    column and fed the result **the board just computed**, via ``onResult``. Its
+    network comes off the board too, so the model is built once and run once.
+
+    Feeding it the digit instead would make the stage classify independently, and
+    for the 56-mask column that is a second 57-hop forward pass -- about 130 ms --
+    for a digit the board finished microseconds earlier. The stage still decides
+    for itself *when to draw*; what it no longer does is recompute the physics.
     """
     keys = list(models)
     globals_js = ", ".join(f"window.{g}" for _, g in _assets(keys))
     cfg = ", ".join([f"models: [{globals_js}]"]
                     + [f"{k}: {json.dumps(v)}" for k, v in opts.items()])
 
-    lines = ["<script>",
-             "  window.addEventListener('DOMContentLoaded', function () {",
-             f"    var board = window.PhotonnD2NNCompare.mount("
-             f"document.getElementById('{container_id}'), {{{cfg}}});"]
+    body = [f"var board = window.PhotonnD2NNCompare.mount(el, {{{cfg}}});"]
     if stage_id:
         if stage_model not in keys:
             raise KeyError(f"stage_model {stage_model!r} is not one of the board's models {keys}")
         idx = keys.index(stage_model)
-        lines += [
-            f"    var stage = window.PhotonnD2NNStage.mount("
-            f"document.getElementById('{stage_id}'), "
-            f"{{net: board.models[{idx}].net}});",
-            "    board.source.subscribe(function (digit, meta) { stage.setDigit(digit, meta); });",
+        # The stage is scheduled from inside the board's own mount, as a second
+        # job: it needs the board's network, and it sits well below the fold, so
+        # it warms up as the reader comes down to it rather than at load.
+        body += [
+            f"var mountStage = function (sel) {{",
+            f"  var stage = window.PhotonnD2NNStage.mount(sel, {{net: board.models[{idx}].net}});",
+            f"  board.onResult(function (models, meta) {{ stage.setResult(models[{idx}].last, meta); }});",
+            f"}};",
+            f"if (window.PhotonnMount) window.PhotonnMount('{stage_id}', mountStage, {{defer: true}});",
+            f"else mountStage(document.getElementById('{stage_id}'));",
         ]
-    lines += ["  });", "</script>"]
-    return "\n".join(lines)
+    return mount_script(container_id, "\n".join(body))
 
 
 _PAGE = """<!doctype html>

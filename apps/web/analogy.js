@@ -26,6 +26,17 @@
 (function () {
   "use strict";
 
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
   const GEOM = (typeof window !== "undefined" && window.PHOTONN_ANALOGY_GEOM)
     ? window.PHOTONN_ANALOGY_GEOM
     : (typeof require !== "undefined" ? require("./analogy_geom.js") : null);
@@ -103,7 +114,7 @@
 
   /** Size a canvas to its CSS box at device resolution; return a ready 2D context. */
   function fitCanvas(canvas, cssW, cssH) {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = canvasScale();
     canvas.style.height = cssH + "px";
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);

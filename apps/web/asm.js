@@ -93,11 +93,10 @@
   }
 
   // fftshift / ifftshift for even n are identical: a circular roll by n/2 on each
-  // axis (since 2*(n/2) = n). Returns fresh arrays.
-  function shift2(re, im, n) {
+  // axis (since 2*(n/2) = n). Writes into caller-supplied destinations, which must
+  // not alias the sources.
+  function shift2Into(re, im, n, dre, dim) {
     const h = n >> 1;
-    const dre = new Float64Array(n * n);
-    const dim = new Float64Array(n * n);
     for (let iy = 0; iy < n; iy++) {
       const sy = (iy + h) % n;
       for (let ix = 0; ix < n; ix++) {
@@ -106,7 +105,32 @@
         dim[iy * n + ix] = im[sy * n + sx];
       }
     }
+  }
+
+  // Same, returning fresh arrays.
+  function shift2(re, im, n) {
+    const dre = new Float64Array(n * n);
+    const dim = new Float64Array(n * n);
+    shift2Into(re, im, n, dre, dim);
     return [dre, dim];
+  }
+
+  // Transform-stage scratch, kept across calls and keyed by grid size.
+  //
+  // propagateField is the hot path -- the optics page runs 63 of them just to
+  // reach first paint -- and each one used to allocate four n*n Float64Arrays it
+  // immediately discarded: 512 KB per propagation at n=128, tens of MB per page
+  // load. That is garbage-collector pressure, which a phone feels long before it
+  // feels the arithmetic. The scratch is never handed out, so nothing outside
+  // this function can hold a reference to it.
+  const _scratch = new Map();
+  function scratch(n) {
+    let s = _scratch.get(n);
+    if (s === undefined) {
+      s = [new Float64Array(n * n), new Float64Array(n * n)];
+      _scratch.set(n, s);
+    }
+    return s;
   }
 
   // -------------------------------------------------------------- frequencies
@@ -196,8 +220,14 @@
   // the caller usually propagates the same distance repeatedly -- the D2NN makes
   // six identical-z hops through its mask stack, so it builds H once and reuses it
   // (see d2nn.js). Use buildTransfer(n, dx, lambda, z) to make one.
-  function propagateField(re, im, n, hre, him) {
-    let [a, b] = shift2(re, im, n);        // ifftshift
+  // The out-parameter form: writes the propagated field into (outRe, outIm) and
+  // allocates nothing. Passing the inputs back in as the outputs is explicitly
+  // allowed and is how the mask stack propagates in place -- the sources are read
+  // once into scratch before anything is written, so aliasing is safe.
+  function propagateFieldInto(re, im, n, hre, him, outRe, outIm) {
+    const s = scratch(n);
+    const a = s[0], b = s[1];
+    shift2Into(re, im, n, a, b);           // ifftshift
     fft2(a, b, n, false);
     for (let i = 0; i < n * n; i++) {
       const x = a[i], y = b[i], c = hre[i], d = him[i];
@@ -205,7 +235,13 @@
       b[i] = x * d + y * c;
     }
     fft2(a, b, n, true);
-    return shift2(a, b, n);                // fftshift
+    shift2Into(a, b, n, outRe, outIm);     // fftshift
+    return [outRe, outIm];
+  }
+
+  function propagateField(re, im, n, hre, him) {
+    return propagateFieldInto(re, im, n, hre, him,
+                              new Float64Array(n * n), new Float64Array(n * n));
   }
 
   // Full ASM pipeline for a hard-aperture input, then |E|^2. Returns a
@@ -229,8 +265,8 @@
   }
 
   const ASM = {
-    fft1d, fft2, shift2, fftfreq, buildTransfer, aperture,
-    propagateField, propagateIntensity, zCrit, zFraunhofer,
+    fft1d, fft2, shift2, shift2Into, fftfreq, buildTransfer, aperture,
+    propagateField, propagateFieldInto, propagateIntensity, zCrit, zFraunhofer,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = ASM;

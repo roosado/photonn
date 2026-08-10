@@ -56,6 +56,17 @@
 (function () {
   "use strict";
 
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
     : (typeof require !== "undefined" ? require("./d2nn.js") : null);
@@ -393,11 +404,38 @@
       return out;
     }
 
+    /**
+     * The depth-ordered intensity stack to draw, as [{z, I}] from the entrance
+     * plane down.
+     *
+     * At subSteps === 1 the slices *are* the canonical planes: sliceForward would
+     * walk exactly the hops classify() already walked, and
+     * tests/test_d2nn_crosscheck.py pins those two to better than 1e-11 of peak.
+     * So the beam is read straight out of the result rather than propagating the
+     * whole stack a second time. On the 56-mask stage -- which is precisely the
+     * one that lands on subSteps = 1, because its hops are 2.19 px of reach --
+     * that is 57 propagations per digit that no longer happen.
+     */
+    function sliceStack(res, S) {
+      const f = MODEL.encodeInput(res.canvas);
+      if (S !== 1) return MODEL.sliceForward(f[0], f[1], S);
+
+      const entrance = new Float64Array(N * N);
+      for (let i = 0; i < entrance.length; i++) {
+        entrance[i] = f[0][i] * f[0][i] + f[1][i] * f[1][i];
+      }
+      const out = [{ z: 0, I: entrance }];
+      for (let L = 0; L < res.planes.length; L++) {
+        out.push({ z: (L + 1) * W.separation, I: res.planes[L] });
+      }
+      out.push({ z: (res.planes.length + 1) * W.separation, I: res.intensity });
+      return out;
+    }
+
     function buildSliceBitmaps(res, panels) {
       const S = Math.max(1, state.subSteps);
       const dz = W.separation / S;
-      const f = MODEL.encodeInput(res.canvas);
-      const slices = MODEL.sliceForward(f[0], f[1], S);
+      const slices = sliceStack(res, S);
 
       // Skip only the depths a *drawn panel* already occupies -- those are drawn
       // opaque. The test used to be "does a mask sit here", which was the same
@@ -604,7 +642,7 @@
     function draw() {
       const w = canvas.clientWidth || 720;
       const h = Math.max(300, Math.min(430, Math.round(w * 0.52)));
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasScale();
       canvas.style.height = h + "px";
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);

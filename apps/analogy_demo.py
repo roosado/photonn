@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 
-from apps.diffraction_explorer import read_web_asset
+from apps.diffraction_explorer import mount_script, read_web_asset
 
 
 def analogy_bundle() -> str:
@@ -31,13 +31,7 @@ def analogy_mount(container_id: str = "analogy", **opts) -> str:
     initial slider position in 0..1).
     """
     cfg = json.dumps(opts)
-    return (
-        "<script>\n"
-        "  window.addEventListener('DOMContentLoaded', function () {\n"
-        f"    window.PhotonnAnalogy.mount(document.getElementById('{container_id}'), {cfg});\n"
-        "  });\n"
-        "</script>"
-    )
+    return mount_script(container_id, f"window.PhotonnAnalogy.mount(el, {cfg});")
 
 
 _PAGE = """<!doctype html>

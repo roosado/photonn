@@ -73,32 +73,64 @@
     }
 
     // ------------------------------------------------------- decoded weights
-    // Masks ship as float32 radians, or as uint8 codes when the bundle sets
-    // masks_bits: 8. The quantised form is not a shortcut -- the Phase-4 budget
-    // measures this design as holding accuracy down to 3-bit phase control
+    // Masks ship as float32 radians, or as quantised phase codes when the bundle
+    // sets masks_bits: 8 (one code per byte) or 4 (two per byte, high nibble
+    // first). The quantised form is not a shortcut -- the Phase-4 budget measures
+    // this design as holding accuracy down to 3-bit phase control
     // (docs/tolerance_d2nn.md), and 8 bits is what a real SLM offers, so the
-    // quantised model is the more faithful one. It is 4x smaller, which is what
-    // lets a second trained model share the page.
-    const MASKS = W.masks_bits === 8
-      ? (function () {
-          const codes = b64ToBytes(W.masks_b64);
-          const out = new Float32Array(codes.length);
-          const step = 2 * Math.PI / 256;
-          for (let i = 0; i < codes.length; i++) out[i] = codes[i] * step - Math.PI;
-          return out;
-        })()
-      : b64ToFloat32(W.masks_b64);                  // n_layers * N * N, radians
-    const GALLERY = b64ToBytes(W.gallery_b64);       // k * 28 * 28, uint8
+    // quantised model is the more faithful one.
+    const BITS = W.masks_bits || 32;
+    const NPHASE = W.n_layers * N * N;
 
-    // exp(i*phi) per mask element, precomputed once: the same five masks are
-    // applied on every inference, so this trades ~1.3 MB for 5*N*N trig calls
-    // per classification.
-    const MASK_COS = new Float64Array(MASKS.length);
-    const MASK_SIN = new Float64Array(MASKS.length);
-    for (let i = 0; i < MASKS.length; i++) {
-      MASK_COS[i] = Math.cos(MASKS[i]);
-      MASK_SIN[i] = Math.sin(MASKS[i]);
+    // exp(i*phi) is looked up, never recomputed per inference. How that table is
+    // built is the whole memory story of this page:
+    //
+    //   float32 bundle -> one cos and one sin per *element*. At 56 masks that is
+    //                     2 x 917,504 doubles = 14.7 MB, from 1.8 M trig calls,
+    //                     all built synchronously at mount.
+    //   quantised      -> a mask has only 2^BITS distinct phases, so the table is
+    //                     2^BITS entries (4 KB at 8 bits) and the codes stay a
+    //                     Uint8Array. Same arithmetic, ~20x less memory: the deep
+    //                     model goes from 18.4 MB retained to about 0.9 MB.
+    //
+    // CODES is null for a float32 bundle, which is what the hot loops branch on.
+    let CODES = null;
+    let COS_T, SIN_T;
+    if (BITS === 32) {
+      const phases = b64ToFloat32(W.masks_b64);      // n_layers * N * N, radians
+      COS_T = new Float64Array(phases.length);
+      SIN_T = new Float64Array(phases.length);
+      for (let i = 0; i < phases.length; i++) {
+        COS_T[i] = Math.cos(phases[i]);
+        SIN_T[i] = Math.sin(phases[i]);
+      }
+    } else {
+      const bytes = b64ToBytes(W.masks_b64);
+      if (BITS === 8) {
+        CODES = bytes;
+      } else if (BITS === 4) {
+        CODES = new Uint8Array(bytes.length * 2);
+        for (let i = 0; i < bytes.length; i++) {
+          CODES[2 * i] = bytes[i] >> 4;
+          CODES[2 * i + 1] = bytes[i] & 15;
+        }
+      } else {
+        throw new Error("masks_bits=" + BITS + " is not decodable (expected 4, 8 or 32)");
+      }
+      if (CODES.length < NPHASE) {
+        throw new Error("masks_b64 holds " + CODES.length + " codes, need " + NPHASE);
+      }
+      const levels = 1 << BITS;
+      const step = 2 * Math.PI / levels;
+      COS_T = new Float64Array(levels);
+      SIN_T = new Float64Array(levels);
+      for (let c = 0; c < levels; c++) {
+        const phi = c * step - Math.PI;
+        COS_T[c] = Math.cos(phi);
+        SIN_T[c] = Math.sin(phi);
+      }
     }
+    const GALLERY = b64ToBytes(W.gallery_b64);       // k * 28 * 28, uint8
 
     // One transfer function for every hop (all hops are the same distance).
     const H = ASM.buildTransfer(N, W.dx, W.wavelength, W.separation);
@@ -237,6 +269,34 @@
       return [re, im];
     }
 
+    // ------------------------------------------------------------- mask optics
+    /**
+     * Apply mask L in place: E <- E * exp(i*phi).
+     *
+     * The quantised and float bundles need different indexing, and that choice is
+     * made once per mask plane rather than once per element -- 56 branches per
+     * inference instead of 917,504.
+     */
+    function applyMask(a, b, L) {
+      const off = L * N * N;
+      if (CODES) {
+        for (let i = 0; i < N * N; i++) {
+          const k = CODES[off + i];
+          const c = COS_T[k], s = SIN_T[k];
+          const x = a[i], y = b[i];
+          a[i] = x * c - y * s;
+          b[i] = x * s + y * c;
+        }
+      } else {
+        for (let i = 0; i < N * N; i++) {
+          const c = COS_T[off + i], s = SIN_T[off + i];
+          const x = a[i], y = b[i];
+          a[i] = x * c - y * s;
+          b[i] = x * s + y * c;
+        }
+      }
+    }
+
     // ----------------------------------------------------------------- forward
     /**
      * Propagate an encoded field through the mask stack and detect.
@@ -246,26 +306,21 @@
      */
     function forward(re, im) {
       const planes = [];
-      let a = re, b = im;
+      // One working pair for the whole pass, propagated in place. The previous
+      // form allocated a fresh pair per hop, which at 56 masks meant 114 discarded
+      // n*n Float64Arrays -- 14 MB of garbage for one classification.
+      const a = Float64Array.from(re), b = Float64Array.from(im);
 
       for (let L = 0; L < W.n_layers; L++) {
-        const p = ASM.propagateField(a, b, N, H[0], H[1]);
-        a = p[0]; b = p[1];
+        ASM.propagateFieldInto(a, b, N, H[0], H[1], a, b);
 
         const I = new Float64Array(N * N);
         for (let i = 0; i < I.length; i++) I[i] = a[i] * a[i] + b[i] * b[i];
         planes.push(I);
 
-        const off = L * N * N;
-        for (let i = 0; i < N * N; i++) {
-          const c = MASK_COS[off + i], s = MASK_SIN[off + i];
-          const x = a[i], y = b[i];
-          a[i] = x * c - y * s;
-          b[i] = x * s + y * c;
-        }
+        applyMask(a, b, L);
       }
-      const out = ASM.propagateField(a, b, N, H[0], H[1]);
-      a = out[0]; b = out[1];
+      ASM.propagateFieldInto(a, b, N, H[0], H[1], a, b);
 
       const intensity = new Float64Array(N * N);
       let total = 0;
@@ -329,27 +384,34 @@
       const out = [{ z: 0, I: intensityOf(a, b) }];
       for (let L = 0; L <= W.n_layers; L++) {
         for (let s = 0; s < S; s++) {
-          const p = ASM.propagateField(a, b, N, Hs[0], Hs[1]);
-          a = p[0]; b = p[1];
+          ASM.propagateFieldInto(a, b, N, Hs[0], Hs[1], a, b);
           out.push({ z: (L * S + s + 1) * dz, I: intensityOf(a, b) });
         }
         if (L === W.n_layers) break;
         // A pure phase mask leaves |E| alone, so the slice just recorded at this
         // plane is the arriving *and* departing intensity -- no duplicate needed.
-        const off = L * N * N;
-        for (let i = 0; i < N * N; i++) {
-          const c = MASK_COS[off + i], s2 = MASK_SIN[off + i];
-          const x = a[i], y = b[i];
-          a[i] = x * c - y * s2;
-          b[i] = x * s2 + y * c;
-        }
+        applyMask(a, b, L);
       }
       return out;
     }
 
-    /** Trained phase of mask L as an N*N Float32Array in radians (for display). */
+    /**
+     * Trained phase of mask L as an N*N Float32Array in radians (for display).
+     *
+     * Built per call rather than held: the stack of radians is 3.7 MB at 56 masks
+     * and only a handful of planes are ever drawn, so keeping it resident to save
+     * 16k arctangent-free multiplies on a redraw is a bad trade.
+     */
     function maskPhase(L) {
-      return MASKS.subarray(L * N * N, (L + 1) * N * N);
+      const out = new Float32Array(N * N);
+      const off = L * N * N;
+      if (CODES) {
+        const step = 2 * Math.PI / (1 << BITS);
+        for (let i = 0; i < out.length; i++) out[i] = CODES[off + i] * step - Math.PI;
+      } else {
+        for (let i = 0; i < out.length; i++) out[i] = Math.atan2(SIN_T[off + i], COS_T[off + i]);
+      }
+      return out;
     }
 
     /** 28x28 digit in [0,1] -> full result, including the input map for display. */

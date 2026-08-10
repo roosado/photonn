@@ -19,6 +19,17 @@
 (function () {
   "use strict";
 
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
     : (typeof require !== "undefined" ? require("./d2nn.js") : null);
@@ -140,7 +151,7 @@
     }
     octx.putImageData(img, 0, 0);
 
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = canvasScale();
     canvas.style.width = size + "px";
     canvas.style.height = size + "px";
     canvas.width = Math.round(size * dpr);
@@ -294,8 +305,8 @@
     // -------------------------------------------------------------- rendering
     function drawRegions(ctx, canvas, winner) {
       const s = canvas.width / N;
-      ctx.lineWidth = Math.max(1, 1.25 * (window.devicePixelRatio || 1));
-      ctx.font = `${11 * (window.devicePixelRatio || 1)}px system-ui, sans-serif`;
+      ctx.lineWidth = Math.max(1, 1.25 * (canvasScale()));
+      ctx.font = `${11 * (canvasScale())}px system-ui, sans-serif`;
       ctx.textBaseline = "bottom";
       for (let c = 0; c < regions.length; c++) {
         const r = regions[c];                       // [y0, y1, x0, x1]
@@ -303,7 +314,7 @@
         const w = (r[3] - r[2]) * s, h = (r[1] - r[0]) * s;
         const win = c === winner;
         ctx.strokeStyle = win ? "#ffffff" : "rgba(255,255,255,0.42)";
-        ctx.lineWidth = (win ? 2.0 : 1.0) * (window.devicePixelRatio || 1);
+        ctx.lineWidth = (win ? 2.0 : 1.0) * (canvasScale());
         ctx.strokeRect(x, y, w, h);
         ctx.fillStyle = win ? "#ffffff" : "rgba(255,255,255,0.55)";
         ctx.fillText(String(c), x + 1.5, y - 1.5);

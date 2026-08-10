@@ -15,6 +15,17 @@
 (function () {
   "use strict";
 
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
   // Inferno-style colormap anchors (matplotlib inferno, 9 stops) -> 256 LUT.
   const ANCHORS = [
     [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
@@ -224,7 +235,7 @@
       }
       offCtx.putImageData(img, 0, 0);
 
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasScale();
       const W = 320;
       fieldCanvas.width = W * dpr; fieldCanvas.height = W * dpr;
       const ctx = fieldCanvas.getContext("2d");
@@ -236,7 +247,7 @@
     }
 
     function renderCross(intensity, n, dx) {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasScale();
       const W = 320, H = 150;
       crossCanvas.width = W * dpr; crossCanvas.height = H * dpr;
       const ctx = crossCanvas.getContext("2d");

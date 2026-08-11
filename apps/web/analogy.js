@@ -169,9 +169,9 @@
     skelBox.appendChild(el("h4", null, "One skeleton, two machines"));
     skelBox.appendChild(el("p", "sub",
       "Both processors are the same alternating sequence: a layer you train, then a layer "
-      + "of fixed hardware that mixes channels, repeated, ending in a square-law detector. "
-      + "In both, <em>only the phases are trainable</em> — the mixing is unprogrammable. "
-      + "Hover a stripe to see its counterpart."));
+      + "of fixed hardware that blends the channels together, repeated, ending in a detector "
+      + "that measures brightness. In both, <em>the only thing training adjusts is a delay</em>, "
+      + "and the blending step is fixed by the hardware. Hover a stripe to see its counterpart."));
     const skelCanvas = el("canvas", "pa-canvas");
     skelBox.appendChild(skelCanvas);
     const key = el("div", "pa-key",
@@ -184,12 +184,12 @@
 
     // ---------------------------------------------------------- panel 2: reach
     const reachBox = el("div", "pa-box");
-    reachBox.appendChild(el("h4", null, "Reach — the one axis they differ on"));
+    reachBox.appendChild(el("h4", null, "Reach, the one thing they differ on"));
     reachBox.appendChild(el("p", "sub",
-      "How far can one layer move information sideways? Diffraction hands you a wide reach "
-      + "for free but you cannot steer it; a coupler reaches exactly one neighbour, so you need "
-      + "as many columns as modes — and in exchange you can dial in <em>any</em> unitary. "
-      + "Drag to walk both machines from their input to their output."));
+      "How far can one layer carry information sideways? Diffraction hands you a wide reach "
+      + "for free, but you cannot steer it. A coupler reaches exactly one neighbour, so you need "
+      + "as many columns as you have channels, and in exchange every coupling can be set "
+      + "individually. Drag to walk both machines from their input to their output."));
     const reachCanvas = el("canvas", "pa-canvas");
     reachBox.appendChild(reachCanvas);
 
@@ -215,9 +215,9 @@
     }
     reachBox.appendChild(stats);
     reachBox.appendChild(el("p", "pa-note",
-      `Reach per hop is <code>z·λ/(2·dx²)</code> = ${fmt(REACH, 1)} px at `
-      + `z = ${fmt(D.separation * 1e3, 0)} mm — the steepest ray a `
-      + `${D.dx * 1e6} µm pixel grid can carry. Nothing beyond the cone can influence the `
+      `Reach per gap is <code>z·λ/(2·dx²)</code> = ${fmt(REACH, 1)} px at `
+      + `z = ${fmt(D.separation * 1e3, 0)} mm, set by the steepest angle a `
+      + `${D.dx * 1e6} µm pixel grid can still represent. Nothing outside the cone can influence the `
       + "readout, whatever the masks are set to."));
     root.appendChild(reachBox);
 
@@ -227,37 +227,37 @@
     const table = el("table", "pa-table");
     const ROWS = [
       ["", "a channel is",
-        `one pixel of the field — <b>${group(N * N)}</b> of them`,
-        `one waveguide mode — <b>${MODES}</b> of them`],
+        `one pixel of the beam, <b>${group(N * N)}</b> of them`,
+        `one waveguide, <b>${MODES}</b> of them`],
       ["phase", "you train",
-        `a phase mask: <b>e<sup>iφ</sup></b> per pixel`,
-        `a phase shifter: <b>e<sup>iφ</sup></b> per MZI arm`],
+        `a phase mask: one delay per pixel`,
+        `a phase shifter: one delay per arm`],
       ["phase", "set in hardware by",
-        "etched surface relief, or an SLM pixel",
-        "a thermo-optic heater current"],
-      ["mix", "the fixed mixing is",
-        `<b>${fmt(D.separation * 1e3, 0)} mm of air</b> — diffraction`,
+        "how deep the glass is etched there",
+        "a tiny heater warming the silicon"],
+      ["mix", "the fixed blending is",
+        `<b>${fmt(D.separation * 1e3, 0)} mm of air</b>, where light spreads`,
         "a <b>50:50 directional coupler</b>"],
-      ["mix", "one mixing layer reaches",
-        `<b>${fmt(REACH, 1)} px</b> — wide, but not steerable`,
-        "<b>1 mode</b> — narrow, but individually steerable"],
+      ["mix", "one blending layer reaches",
+        `<b>${fmt(REACH, 1)} px</b>, wide but not steerable`,
+        "<b>1 channel</b>, narrow but individually steerable"],
       ["", "so its depth is",
-        `<b>${D.n_layers}</b> masks, <b>${HOPS}</b> propagations`,
+        `<b>${D.n_layers}</b> masks, <b>${HOPS}</b> gaps to cross`,
         `<b>${COLS}</b> columns (<b>${M.svd_columns}</b> for U·Σ·V†)`],
       ["", "readout",
-        "integrated intensity in 10 detector boxes",
-        "intensity on the first 10 output modes"],
+        "brightness added up in 10 detector boxes",
+        "brightness on the first 10 outputs"],
     ];
-    let thead = "<thead><tr><th></th><th>Free space — D²NN</th>"
-      + "<th>Chip — MZI mesh</th></tr></thead><tbody>";
+    let thead = "<thead><tr><th></th><th>Free space · glass stack</th>"
+      + "<th>Chip · interferometer mesh</th></tr></thead><tbody>";
     for (const [kind, name, a, b] of ROWS) {
       thead += `<tr data-kind="${kind}"><th>${name}</th><td>${a}</td><td>${b}</td></tr>`;
     }
     table.innerHTML = thead + "</tbody>";
     tableBox.appendChild(table);
     tableBox.appendChild(el("p", "pa-note",
-      "Two realisations of one abstraction — not two arrangements of the same hardware. "
-      + `A ${group(N * N)}-pixel field and a ${MODES}-mode chip are nowhere near the same size; `
+      "Two versions of one idea, not two arrangements of the same hardware. "
+      + `A ${group(N * N)}-pixel beam and a ${MODES}-channel chip are nowhere near the same size; `
       + "what they share is the skeleton, not the scale."));
     root.appendChild(tableBox);
 
@@ -360,18 +360,18 @@
 
     const HOVER_TEXT = {
       phase: () => `<b>Trainable phase.</b> On the left, one of ${D.n_layers} phase masks: `
-        + `${group(N * N)} pixel-wise values of e<sup>iφ</sup>, one per pixel of the field. `
-        + `On the right, one of ${COLS} columns of phase shifters: one e<sup>iφ</sup> per MZI arm. `
-        + "Same operation — a diagonal matrix of unit-modulus entries — at two scales.",
+        + `${group(N * N)} delays, one for every pixel of the beam. `
+        + `On the right, one of ${COLS} columns of phase shifters, one delay per interferometer arm. `
+        + "The same operation at two very different scales: hold each channel back on its own, without touching its neighbours.",
       mix: () => `<span class="mixw"><b>Fixed mixing.</b></span> On the left, `
-        + `${fmt(D.separation * 1e3, 0)} mm of empty space: diffraction spreads every pixel over `
-        + `±${fmt(REACH, 1)} px of its neighbours. On the right, a column of 50:50 couplers, `
-        + "each blending exactly two adjacent modes. Neither is trainable — the mixing is "
-        + "geometry and hardware, and training only ever moves the phases between them.",
+        + `${fmt(D.separation * 1e3, 0)} mm of empty space, where diffraction spreads every pixel over `
+        + `±${fmt(REACH, 1)} px of its neighbours. On the right, a column of couplers, each `
+        + "splitting light evenly between two neighbouring channels. Neither can be trained. The blending is "
+        + "fixed by geometry and hardware, and training only ever moves the delays between them.",
     };
     const IDLE_TEXT = "<b>Both machines alternate the same two layers.</b> Everything trainable is a "
       + "phase; everything that moves information between channels is fixed hardware. That is the "
-      + "whole correspondence — the rest is packaging.";
+      + "whole correspondence. The rest is packaging.";
 
     function setHover(kind) {
       if (state.hover === kind) return;
@@ -422,7 +422,7 @@
       const sx = (px) => x0 + (px / (N - 1)) * (x1 - x0);
       const sy = (k) => y0 + (k / HOPS) * (y1 - y0);
 
-      label(ctx, `Free space — ${N} pixels across`, box.x, box.y + 9, p.fg, 11.5, "left", 600);
+      label(ctx, `Free space, ${N} pixels across`, box.x, box.y + 9, p.fg, 11.5, "left", 600);
 
       // Plane rules: the input, each phase mask, the detector.
       ctx.lineWidth = 1;
@@ -492,7 +492,7 @@
           ? [`cone edge px ${fmt(edge, 1)} · detector px ${D.detector_x[0]}`,
              `${fmt(D.margin_px, 2)} px to spare`]
           : [`cone edge px ${fmt(edge, 1)} · first detector px ${D.detector_x[0]}`
-             + ` — ${fmt(D.margin_px, 2)} px to spare`];
+             + `, ${fmt(D.margin_px, 2)} px to spare`];
         lines.forEach((line, i) =>
           label(ctx, line, x0, yD + 30 + i * 13, p.warn, 10.5, "left", 600));
       } else {
@@ -515,7 +515,7 @@
       const sx = (c) => x0 + (c / COLS) * (x1 - x0);
       const sy = (m) => y0 + (m / (MODES - 1)) * (y1 - y0);
 
-      label(ctx, `Chip — ${MODES} waveguide modes`, box.x, box.y + 9, p.fg, 11.5, "left", 600);
+      label(ctx, `Chip, ${MODES} waveguide channels`, box.x, box.y + 9, p.fg, 11.5, "left", 600);
 
       // Waveguides, then the MZIs exactly where MZIMeshLayer puts them: the drawn
       // brick pattern *is* the trained Clements schedule.
@@ -605,13 +605,13 @@
         },
         {
           v: `${channelsM} of ${MODES}`,
-          l: `mesh reach — one mode per coupler column`,
+          l: `mesh reach, one channel per coupler column`,
           cls: "",
         },
         {
           v: done ? "exactly enough" : `${M.required_columns} columns needed`,
           l: done
-            ? `${COLS} columns for ${MODES} modes — the Clements bound, full connectivity by construction`
+            ? `${COLS} columns for ${MODES} channels, exactly the bound Clements proves you need`
             : "mode 0 ↔ mode 35 is the worst pair",
           cls: done ? "full" : "",
         },

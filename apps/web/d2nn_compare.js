@@ -217,7 +217,7 @@
     if (prov.shipped === false) {
       let s = `<b>Not shipped.</b> ${fmtAcc(prov.accuracy)}${on}`;
       if (run) s += ` (${run})`;
-      if (prov.caveat) s += ` &mdash; ${prov.caveat}`;
+      if (prov.caveat) s += `. ${prov.caveat}`;
       s += ".";
       if (comparable(prov, reference)) {
         s += ` Same measurement as the shipped ${fmtAcc(reference.accuracy)}.`;
@@ -263,12 +263,12 @@
     root.innerHTML = `
       <div class="dc-box">
         <h4>Pick a digit</h4>
-        <p class="sub">${lead.nGallery} from the frozen MNIST test set, deliberately stocked
-        with ones the shipped network gets <em>wrong</em> &mdash; those are the interesting
+        <p class="sub">${lead.nGallery} from the held-back MNIST test set, deliberately stocked
+        with ones the shipped network gets <em>wrong</em>, which are the interesting
         ones. Or draw your own and watch both machines follow the stroke.</p>
         <div class="dc-source"></div>
         <p class="dc-truth"></p>
-        <p class="dc-wait">Still drawing &mdash; the machines run when you pause.</p>
+        <p class="dc-wait">Still drawing. Both machines run when you pause.</p>
       </div>
       <div class="dc-cols"></div>`;
     container.appendChild(root);
@@ -315,7 +315,7 @@
       const t0 = (typeof performance !== "undefined") ? performance.now() : 0;
       const label = meta ? meta.label : null;
       truth.innerHTML = label == null
-        ? "Your drawing &mdash; no ground truth to score against."
+        ? "Your drawing, so there is no right answer to score against."
         : `True label: <b>${label}</b>`;
 
       for (const m of models) {
@@ -328,7 +328,7 @@
           `${(res.fractions[res.pred] * 100).toFixed(1)}% of output power`
           + (label == null || res.pred === label
             ? ""
-            : ` — true ${label} got ${(res.fractions[label] * 100).toFixed(1)}%`);
+            : `, while the true ${label} got ${(res.fractions[label] * 100).toFixed(1)}%`);
       }
       for (const fn of listeners) fn(models, meta || null);
       if (t0) updateCadence(performance.now() - t0);

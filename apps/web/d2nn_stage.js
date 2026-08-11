@@ -367,9 +367,10 @@
     root.appendChild(box);
 
     root.appendChild(el("p", "ds-note",
-      "Drag to orbit. Every panel carries the field computed on it; the haze between "
-      + "them is the field at intermediate depths, which is exact physics here, not a "
-      + "gradient. No rays are drawn &mdash; scalar diffraction is not ray optics."));
+      "Drag to orbit. Every panel carries the light actually computed on it, and the haze "
+      + "between them is the light at those in-between depths, computed the same way "
+      + "rather than shaded in. No rays are drawn on purpose: light here behaves as a "
+      + "wave, and straight arrows would misrepresent it."));
 
     // ------------------------------------------------------------- bitmap cache
     // Compute and render are separate: orbiting and sweeping only re-run the
@@ -731,7 +732,7 @@
       // who has drawn something and sees an unchanged stack needs to know it is
       // waiting rather than broken.
       if (state.pending) {
-        const msg = "Showing the previous digit — press Refresh";
+        const msg = "Showing the previous digit. Press Refresh to update.";
         ctx.save();
         ctx.font = "600 11.5px ui-monospace, SFMono-Regular, Menlo, monospace";
         ctx.textAlign = "right";
@@ -822,18 +823,18 @@
     function updateFoot() {
       const showing = state.view === "phase"
         ? "masks show their trained phase (cyclic colour); the other planes show light"
-        : "each plane shows the intensity arriving on it, square-root stretched";
+        : "each plane shows the brightness arriving on it, on a square-root scale";
       // Sampling is stated in the running text as well as on every label: the
       // labels are only readable at some orbit angles, and this claim has to
       // survive the figure being screenshotted.
       footL.innerHTML = SAMPLED
-        ? `${showing} &mdash; <b>${MASK_IDX.length} of ${W.n_layers} masks drawn</b>, `
+        ? `${showing}, <b>${MASK_IDX.length} of ${W.n_layers} masks drawn</b>, `
           + "spread through the stack"
         : showing;
       const pred = state.res ? state.res.pred : null;
       footR.innerHTML =
         `<b>${(TOTAL_Z * 1e3).toFixed(0)} mm</b> of optics across a `
-        + `<b>${(APERTURE * 1e3).toFixed(2)} mm</b> aperture &mdash; depth compressed `
+        + `<b>${(APERTURE * 1e3).toFixed(2)} mm</b> across, so the depth is squashed `
         + `<b>&times;${COMPRESSION.toFixed(1)}</b>, not to scale`
         + (pred == null ? "" : ` &middot; reads <b>${pred}</b>`);
     }

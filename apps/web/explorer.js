@@ -190,7 +190,7 @@
     const plots = el("div", "pe-plots");
 
     const fieldBox = el("div", "pe-panelbox");
-    fieldBox.appendChild(el("h4", null, "Intensity |E|² (peak-normalized)"));
+    fieldBox.appendChild(el("h4", null, "Brightness |E|² (scaled to its own peak)"));
     const fieldWrap = el("div", "pe-field-wrap");
     const fieldCanvas = el("canvas", "pe-field");
     const colorbar = el("div", "pe-colorbar");
@@ -307,7 +307,7 @@
       banner.className = "pe-banner " + (ok ? "ok" : "warn");
       banner.innerHTML = ok
         ? `✓ Sampling OK <small>|z| = ${(z * 1e3).toFixed(0)} mm ≤ z_crit = ${(zc * 1e3).toFixed(0)} mm · far field beyond ${(zf * 1e2).toFixed(1)} cm</small>`
-        : `⚠ Aliasing risk <small>|z| = ${(z * 1e3).toFixed(0)} mm &gt; z_crit = ${(zc * 1e3).toFixed(0)} mm — band-limited ASM active (high-angle content dropped)</small>`;
+        : `⚠ Aliasing risk <small>|z| = ${(z * 1e3).toFixed(0)} mm &gt; z_crit = ${(zc * 1e3).toFixed(0)} mm. The steepest light is being discarded to keep the result honest</small>`;
 
       meta.innerHTML =
         `<div>λ <b>${(lam * 1e9).toFixed(0)} nm</b></div>` +

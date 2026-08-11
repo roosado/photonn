@@ -242,7 +242,7 @@
 
     // ------------------------------------------------------------- prediction
     const resBox = el("div", "pd-box");
-    resBox.appendChild(el("h4", null, "Detector readout — share of output power per class"));
+    resBox.appendChild(el("h4", null, "Detector readout: share of the light landing in each class box"));
     const result = el("div", "pd-result");
     const pred = el("div", "pd-pred");
     const predBig = el("div", "big", "–");
@@ -288,15 +288,15 @@
     }
     const filmWrap = el("div", "pd-plane");
     filmWrap.appendChild(film);
-    filmWrap.appendChild(el("div", "lab", "intensity arriving at each phase mask"));
+    filmWrap.appendChild(el("div", "lab", "brightness arriving at each phase mask"));
     optics.appendChild(filmWrap);
 
-    const detPanel = planePanel("Detector plane — ten regions", 172);
+    const detPanel = planePanel("Detector plane, ten class regions", 172);
     optics.appendChild(detPanel.wrap);
 
     opticsBox.appendChild(optics);
     opticsBox.appendChild(el("p", "pd-note",
-      "Square-root intensity scale for legibility; the readout numbers are untouched."));
+      "Brightness is drawn on a square-root scale so the faint parts stay visible. The numbers below are untouched."));
     root.appendChild(opticsBox);
 
     const note = el("p", "pd-note", "");
@@ -345,10 +345,10 @@
         predVerdict.textContent = "";
         predVerdict.className = "verdict";
       } else if (trueLabel === res.pred) {
-        predVerdict.textContent = "✓ correct — true label " + trueLabel;
+        predVerdict.textContent = "✓ correct. True label " + trueLabel;
         predVerdict.className = "verdict ok";
       } else {
-        predVerdict.textContent = "✗ wrong — true label " + trueLabel;
+        predVerdict.textContent = "✗ wrong. True label " + trueLabel;
         predVerdict.className = "verdict bad";
       }
     }
@@ -369,9 +369,9 @@
       const ms = (typeof performance !== "undefined") ? performance.now() - t0 : 0;
       render(res, trueLabel);
       note.textContent =
-        `${NET.weights.n_layers} phase masks, ${NET.weights.n_layers + 1} propagations of `
+        `${NET.weights.n_layers} phase masks, ${NET.weights.n_layers + 1} gaps of `
         + `${(NET.weights.separation * 1e3).toFixed(0)} mm at `
-        + `${(NET.weights.wavelength * 1e9).toFixed(0)} nm, ${N}×${N} grid — `
+        + `${(NET.weights.wavelength * 1e9).toFixed(0)} nm, ${N}×${N} grid, `
         + `computed in your browser in ${ms.toFixed(0)} ms.`;
 
       // Anything else showing the same digit (the 3D stage) follows from here,
@@ -409,8 +409,8 @@
       gallery.style.display = mode === "gallery" ? "" : "none";
       drawWrap.style.display = mode === "draw" ? "" : "none";
       srcHead.textContent = mode === "gallery"
-        ? "Input digit — frozen MNIST test set"
-        : "Input digit — your drawing";
+        ? "Input digit, from the held-back test set"
+        : "Input digit, your drawing";
       requestCompute();
     }
 

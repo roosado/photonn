@@ -307,20 +307,20 @@
 
       valEl.textContent = zMm.toFixed(1) + " mm";
 
-      let txt = `<b>${reach.toFixed(2)} px</b> per hop, <b>${total.toFixed(1)} px</b> over `
-              + `${hops} hops. `;
+      let txt = `<b>${reach.toFixed(2)} px</b> per gap, <b>${total.toFixed(1)} px</b> over `
+              + `${hops} gaps. `;
       txt += covered
         ? `<span class="ok">Every input pixel can reach every detector</span> `
           + `(needs ${d.required_px} px). `
-        : `<span class="bad">Under-connected</span> &mdash; ${(d.required_px - total).toFixed(1)} px `
-          + `short, so part of the input cannot influence part of the readout at all. `;
+        : `<span class="bad">Under-connected</span> by ${(d.required_px - total).toFixed(1)} px, `
+          + `so part of the input cannot influence part of the readout at all. `;
       if (near.point) {
         txt += near.exact
           ? `Measured accuracy <b>${near.point.acc.toFixed(4)}</b>.`
           : `Nearest measured configuration: ${near.point.z_mm} mm, `
             + `accuracy ${near.point.acc.toFixed(4)}.`;
         if (near.exact && near.point.wrap_logit != null && near.point.wrap_logit > 0.02) {
-          txt += ` <span class="warn">Wrap-contaminated</span>: the finite grid mis-states `
+          txt += ` <span class="warn">Wrap-around</span>: light is running off the edge of the finite grid and reappearing on the far side, mis-stating `
                + `the detector readings by ${(near.point.wrap_logit * 100).toFixed(1)}% here.`;
         }
       }

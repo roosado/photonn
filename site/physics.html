@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="The scalar diffraction that moves a light field from one plane to the next, the sampling limit that bounds it, and the ceiling linearity puts on the whole idea.">
-<title>photonn &mdash; the wave optics underneath</title>
+<meta name="description" content="How light is moved across a gap of air exactly, the sampling limit that bounds the calculation, and the ceiling that linearity puts on the whole idea.">
+<title>photonn &middot; the wave optics underneath</title>
 <style>
 
 :root{
@@ -227,13 +227,13 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 <main class="wrap">
 
   <section class="hero col reveal">
-    <p class="eyebrow">Scalar diffraction, and where it stops working</p>
-    <h1>Everything rests on moving a field from one plane to the <em>next</em></h1>
+    <p class="eyebrow">How the light is moved, and where the method stops working</p>
+    <h1>Everything rests on moving light from one plane to the <em>next</em></h1>
     <div class="underbar"></div>
-    <p class="standfirst">Before anything can be trained, coherent light has to be moved across
-    3&nbsp;mm of air <b>exactly</b> &mdash; and the simulation has to know when it can no longer do
-    that. One method does the moving, one criterion marks the edge, and one structural fact caps
-    what the whole idea can ever compute.</p>
+    <p class="standfirst">Before anything can be trained, the simulation has to move light across
+    3&nbsp;mm of air <b>exactly</b>, and it has to know the point at which it can no longer do that.
+    One method does the moving, one criterion marks that point, and one structural fact caps what
+    the whole idea can ever compute.</p>
   </section>
 
   <section class="phase reveal">
@@ -241,33 +241,45 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <div><p class="eyebrow">The propagator</p>
       <h2>Decompose into plane waves, delay each one, add them back up</h2></div></div>
     <div class="prose col">
-      <p>A field is decomposed into plane waves by a Fourier transform, each is advanced by its own
-      axial phase, and they are recombined. That is the whole <strong>angular-spectrum method</strong>:
-      transform, multiply by
+      <p>Any pattern of light, however complicated, can be written as a sum of <strong>plane
+      waves</strong>: perfectly flat, evenly spaced wavefronts, each travelling in one particular
+      direction. That is useful because a plane wave crossing a gap does something trivial. It stays
+      a plane wave and simply falls behind by an amount set by its direction. So the recipe is to
+      split the light into plane waves with a Fourier transform, hold each one back by its own
+      amount, and add them all back together. That is the whole <strong>angular-spectrum
+      method</strong>: transform, multiply by
       <span class="q">H = exp(i&thinsp;2&pi;z&thinsp;&radic;(1/&lambda;&sup2; &minus; f&sup2;))</span>,
-      transform back. It makes <strong>no paraxial approximation</strong> &mdash; it is exact up to the
-      grid&rsquo;s band limit, which is why Fresnel, Fraunhofer and the differentiable PyTorch layer
-      are all checked against it rather than the other way round. Against an analytic Gaussian beam
-      it agrees to <strong>~2&times;10<sup>&minus;8</sup></strong>.</p>
+      transform back. It makes <strong>no small-angle approximation</strong>, the simplification most
+      textbook diffraction formulas lean on and the one usually called <em>paraxial</em>, so it stays
+      exact even for steeply travelling light. That is
+      why Fresnel, Fraunhofer and the differentiable PyTorch layer are all checked against it rather
+      than the other way round. Against a Gaussian beam with a known closed-form answer it agrees to
+      <strong>~2&times;10<sup>&minus;8</sup></strong>.</p>
       <p>Two behaviours fall straight out of that square root. Where
-      <span class="q">f&sup2; &gt; 1/&lambda;&sup2;</span> it turns imaginary, and computing it as a
-      <em>complex</em> sqrt makes those components <strong>decay</strong> with distance &mdash;
-      evanescent waves, for free, with no special case. And for large <span class="q">z</span> the
-      transfer function <strong>oscillates faster than the frequency grid can sample</strong>, which
-      is aliasing. Zeroing <span class="q">H</span> beyond the local-frequency limit keeps the method
-      alias-free into the far field, at the cost of discarding content past the propagating band.</p>
-      <p>The edge is a single criterion, <span class="q">z_crit = N&middot;dx&sup2;/&lambda;</span>
-      &mdash; 15.4&nbsp;mm at this operating point, against 3&nbsp;mm hops. It is enforced at runtime,
-      not only in tests. Note what it does <em>not</em> contain: <span class="q">z_crit</span> depends
-      on <span class="q">&lambda;</span>, <span class="q">dx</span> and <span class="q">N</span>
-      but <strong>not on the aperture</strong> &mdash; which is why, below, the aperture control does
-      not move the sampling threshold no matter how far you drag it.</p>
+      <span class="q">f&sup2; &gt; 1/&lambda;&sup2;</span> the quantity under it goes negative, which
+      corresponds to light angled so steeply it cannot actually travel. Computing the root over the
+      complex numbers makes those components <strong>die away</strong> with distance instead, which
+      is the correct physics: these are <em>evanescent</em> waves, which cling to the surface rather
+      than propagating. No special case is needed. And over a long enough distance the multiplier
+      <span class="q">H</span> starts <strong>spinning faster than the grid has points to follow
+      it</strong>. A grid that cannot keep up with a wave reports a slower one that happens to match
+      at the sample points, which is <em>aliasing</em>, and the answer silently becomes wrong.
+      Setting <span class="q">H</span> to zero past the point where the grid can still track it
+      keeps the method honest at long range, at the cost of throwing away the steepest light.</p>
+      <p>The edge is a single criterion,
+      <span class="q">z_crit = N&middot;dx&sup2;/&lambda;</span>, which is 15.4&nbsp;mm here against
+      3&nbsp;mm gaps. It is checked every time the code runs, not only in the tests. Note what it
+      does <em>not</em> contain. It depends on the wavelength, the pixel size and the number of
+      pixels, but <strong>not on the width of the opening the light passes through</strong>, which
+      is why the aperture control below does not move the sampling threshold no matter how far you
+      drag it.</p>
     </div>
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="explorer"></div></div>
-      <p class="cap">Live &mdash; the diffraction runs on a hand-written FFT in your browser, the same
-      physics as the Python reference (cross-checked to &lt;10<sup>&minus;6</sup>). Move any control;
-      the sampling flag turns amber the moment <span style="white-space:nowrap">z &gt; z_crit</span>.</p>
+      <p class="cap">Live. The diffraction is computed in your browser, the same physics as the
+      Python original and checked against it to better than 10<sup>&minus;6</sup>. Move any control;
+      the sampling flag turns amber the moment
+      <span style="white-space:nowrap">z &gt; z_crit</span>.</p>
     </div>
   </section>
 
@@ -276,23 +288,25 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <div><p class="eyebrow">Drawing it without lying about it</p>
       <h2>Why the 3D stack has haze in it and no rays</h2></div></div>
     <div class="prose col">
-      <p>The light drawn <em>between</em> the mask planes on the front page is not decoration. A hop
-      can be split into sub-hops and re-run because
-      <span class="q">H(z&#8321;)&middot;H(z&#8322;) = H(z&#8321;+z&#8322;)</span>, and the one
-      <span class="q">z</span>-dependent term that would break that equality &mdash; the band limit
-      above &mdash; is <strong>inactive below <span class="q">z_crit</span></strong>. At 3&nbsp;mm
-      against 15.4&nbsp;mm it is inactive, so the intermediate planes are <strong>exact fields</strong>,
-      not interpolation. Above <span class="q">z_crit</span> the equality genuinely breaks, and the
-      test suite asserts both halves of that.</p>
-      <p><strong>No rays are drawn, deliberately.</strong> Scalar diffraction is not ray optics, and
-      straight lines from digit to detector would misrepresent the one thing the figure exists to
-      show &mdash; that every point of the input is reaching every detector at once. The stack is
-      18&nbsp;mm long across a 1.02&nbsp;mm aperture, about 18:1, so drawn to scale it is an
-      unreadable needle; the depth axis is compressed and the figure states its own compression
-      factor on its face rather than quietly flattering the geometry.</p>
+      <p>The light drawn <em>between</em> the mask planes on the front page is not decoration. One
+      3&nbsp;mm gap can be cut into several shorter steps and re-run, because propagating a distance
+      and then another gives exactly the same answer as propagating the sum in one go:
+      <span class="q">H(z&#8321;)&middot;H(z&#8322;) = H(z&#8321;+z&#8322;)</span>. The one thing that
+      would break that equality is the band limit described above, and below
+      <span class="q">z_crit</span> it is <strong>switched off entirely</strong>. At 3&nbsp;mm
+      against 15.4&nbsp;mm it is switched off, so those in-between planes are <strong>the real
+      light</strong>, not an interpolation between the planes on either side. Above
+      <span class="q">z_crit</span> the equality genuinely does break, and the test suite asserts
+      both halves of that.</p>
+      <p><strong>No rays are drawn, deliberately.</strong> Light here is treated as a wave, not as
+      travelling arrows, and drawing straight lines from digit to detector would misrepresent the one
+      thing the figure exists to show: that every point of the input reaches every detector at once.
+      The stack is 18&nbsp;mm long across an opening of 1.02&nbsp;mm, about 18:1, so drawn true to
+      scale it is an unreadable needle. The depth is therefore squashed, and the figure prints its
+      own squash factor on its face rather than quietly flattering the geometry.</p>
       <p>The drawing also <strong>cannot touch the answer</strong>. The prediction still comes from
-      the canonical six propagations, and the cross-check asserts the logits are bit-identical with
-      slicing switched on.</p>
+      the canonical six propagations, and a test asserts the ten class scores are bit-for-bit
+      identical whether the extra in-between planes are computed or not.</p>
     </div>
   </section>
 
@@ -301,41 +315,51 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <div><p class="eyebrow">The limit, stated precisely</p>
       <h2>Optical depth is not depth in the machine-learning sense</h2></div></div>
     <div class="prose col">
-      <p>Propagation is linear in the field. A phase mask is linear in the field. Their composition
-      is therefore a <em>single</em> linear operator:</p>
-      <p><span class="q">E_out = M &middot; E_in</span>, with
-      <span class="q">M = P_L D_L P_{L&minus;1} D_{L&minus;1} &hellip; D&#8321; P&#8320;</span> &mdash;
-      each <span class="q">P</span> a propagation, each <span class="q">D</span> a diagonal mask.</p>
-      <p>No matter how many mask-and-propagation layers are stacked, the field-to-field map collapses
-      to one linear map. Extra layers add parameters and let <span class="q">M</span> better
-      approximate a desired operator <em>under the physical constraint</em> that it factorise into
-      phase-only masks separated by diffraction &mdash; but they add <strong>no nonlinear
-      compositional power whatsoever</strong>. Stacking here is not stacking in the sense the phrase
-      normally carries.</p>
-      <p>The only nonlinearity is the detection itself. The logit for class <em>c</em> is the
-      intensity summed over its detector region, which works out to
+      <p>Crossing a gap is linear in the light. Passing through a mask is linear in the light. Doing
+      one after the other is therefore still linear, and the whole stack collapses into a
+      <em>single</em> multiplication by one big matrix:</p>
+      <p><span class="q">E_out = M &middot; E_in</span>, where
+      <span class="q">M = P_L D_L P_{L&minus;1} D_{L&minus;1} &hellip; D&#8321; P&#8320;</span>, each
+      <span class="q">P</span> a gap and each <span class="q">D</span> a mask.</p>
+      <p>This matters more than it sounds. No matter how many masks and gaps are stacked up, the
+      map from input light to output light is one matrix. Extra layers add adjustable numbers, and
+      they let <span class="q">M</span> come closer to whatever matrix you wanted, <em>subject to
+      the physical constraint</em> that it be buildable out of delay-only masks separated by air.
+      What they do not add is any of the compounding power that stacking layers gives an ordinary
+      neural network, where each layer bends the result before the next one sees it.
+      <strong>Depth here is not depth in that sense at all.</strong></p>
+      <p>The single exception is the detection. The score for class <em>c</em> is the brightness
+      added up over its detector region, and brightness is the square of the wave&rsquo;s height. Work
+      that through and the score is
       <span class="q">s_c = E_in&dagger; A_c E_in</span> with
-      <span class="q">A_c = M&dagger; R_c M &#8827; 0</span> &mdash; a positive-semidefinite
-      <strong>quadratic form</strong> in the input field. So the classifier computes one PSD quadratic
-      form per class and takes the argmax. That is strictly more than a linear classifier, and it is
-      exactly <em>one</em> nonlinear layer: linear optical transform, magnitude-square, linear sum.</p>
-      <p>One consequence is worth pulling out, because it is the only place a nonlinearity touches
-      the raw pixels: <strong>the input encoding</strong>. Writing the image into phase applies a
-      nonlinear <span class="q">exp(i&middot;&pi;&middot;image)</span> map before the optics ever sees
-      it, which is why the encoding choice measurably changes achievable accuracy. It is doing
-      nonlinear work the linear optics cannot.</p>
-      <p>Per the project&rsquo;s scope this limit is <strong>characterised, not engineered around</strong>.
-      No physical activation functions, no nonlinear media, no larger electronic head. If a bigger
-      electronic head would lift accuracy, that is a finding to report, not a bug to fix.</p>
+      <span class="q">A_c = M&dagger; R_c M &#8827; 0</span>. In words: each score is a
+      <strong>quadratic form</strong>, meaning the inputs enter multiplied together in pairs rather
+      than one at a time, and the <span class="q">&#8827; 0</span> says the resulting score can never
+      go negative. The classifier computes one of these per class and picks the largest. That is
+      strictly more powerful than a plain linear classifier, and it is exactly <em>one</em> nonlinear
+      step: linear optics, square the magnitude, add up.</p>
+      <p>One consequence is worth pulling out, because it is the only other place anything nonlinear
+      touches the raw pixels: <strong>how the image is written into the beam</strong>. Encoding it as
+      delays rather than brightness passes the pixel values through
+      <span class="q">exp(i&middot;&pi;&middot;image)</span> before the optics ever sees them, and
+      that step is not linear. This is why the choice of encoding measurably changes the accuracy
+      that can be reached. It is quietly doing work the linear optics downstream cannot do.</p>
+      <p>By the project&rsquo;s own scope this limit is <strong>measured and described, not
+      engineered around</strong>. There is no attempt to add a nonlinear step in the optics, no
+      exotic materials, and no larger electronic network bolted on the end to compensate. If a
+      bigger electronic stage would lift the accuracy, that is a result worth reporting, not a bug
+      to fix.</p>
       <div class="finding">
         <p class="tag">Correction &middot; kept on the record</p>
         <p class="body">An earlier version of this project read the shipped network&rsquo;s
-        <strong>0.799 plateau</strong> as this ceiling being reached &mdash; measured rather than
-        asserted. <strong>That inference was wrong,</strong> and it is left here rather than quietly
-        removed. The operator argument above is untouched; what did not follow was concluding that
-        five masks had already exhausted the approximation. They had not, by at least eight points.
-        The plateau belonged to <em>that geometry</em>, and
-        <a class="link" href="optics.html">sweeping the geometry is a page of its own &rarr;</a></p>
+        <strong>0.799 plateau</strong> as this ceiling being reached, and presented it as measured
+        rather than merely asserted. <strong>That inference was wrong,</strong> and it is left here
+        rather than quietly removed. The argument above is untouched: the stack really is one matrix.
+        What did not follow was concluding that five masks had already wrung everything out of it.
+        They had not, by at least eight points. The plateau belonged to <em>that particular
+        arrangement of the optics</em>, and
+        <a class="link" href="optics.html">sweeping that arrangement is a page of its own
+        &rarr;</a></p>
       </div>
     </div>
   </section>
@@ -344,18 +368,19 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 
   <footer class="reveal">
     <div class="foot-grid">
-      <div><h3>Verified against analytics</h3><p>Angular spectrum against an analytic Gaussian to
-        ~2&times;10<sup>&minus;8</sup>; Fresnel against ASM in its validity range to ~9&times;10<sup>&minus;9</sup>;
-        Fraunhofer of a circular aperture against the Airy pattern, first null on the predicted ring.</p></div>
-      <div><h3>Enforced, not assumed</h3><p>Sampling is a runtime check, not just a test:
-        <span class="q">check_sampling</span> returns a report and the explorer flags the crossing
-        live. Beyond <span class="q">z_crit</span> the method does not fail loudly &mdash; which is
-        precisely why it is flagged.</p></div>
-      <div><h3>Scope</h3><p>Scalar theory only: no vector or polarisation-resolved propagation, and no
-        full-wave solver. If real component data is ever wanted it gets imported as measurements, not
-        simulated here.</p></div>
+      <div><h3>Checked against known answers</h3><p>Every case here has a textbook solution to check
+        against. The angular spectrum matches a Gaussian beam to ~2&times;10<sup>&minus;8</sup>;
+        Fresnel matches it inside its valid range to ~9&times;10<sup>&minus;9</sup>; a round hole
+        gives the classic bullseye pattern with its first dark ring exactly where theory puts it.</p></div>
+      <div><h3>Enforced, not assumed</h3><p>The sampling limit is checked whenever the code runs, not
+        only in the tests: <span class="q">check_sampling</span> returns a report, and the explorer
+        flags the crossing live. Past <span class="q">z_crit</span> the method does not crash or
+        obviously misbehave, which is precisely why it has to be flagged.</p></div>
+      <div><h3>Scope</h3><p>Light is treated as a single wave with no direction of vibration, which
+        rules out polarisation effects, and there is no full electromagnetic solver anywhere. If real
+        component data is ever wanted it gets imported as measurements rather than simulated here.</p></div>
     </div>
-    <p class="colophon">photonn &mdash; a portfolio study in optical computing and fabrication tolerance.
+    <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
     Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
   </footer>
 
@@ -1022,7 +1047,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     const plots = el("div", "pe-plots");
 
     const fieldBox = el("div", "pe-panelbox");
-    fieldBox.appendChild(el("h4", null, "Intensity |E|² (peak-normalized)"));
+    fieldBox.appendChild(el("h4", null, "Brightness |E|² (scaled to its own peak)"));
     const fieldWrap = el("div", "pe-field-wrap");
     const fieldCanvas = el("canvas", "pe-field");
     const colorbar = el("div", "pe-colorbar");
@@ -1139,7 +1164,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       banner.className = "pe-banner " + (ok ? "ok" : "warn");
       banner.innerHTML = ok
         ? `✓ Sampling OK <small>|z| = ${(z * 1e3).toFixed(0)} mm ≤ z_crit = ${(zc * 1e3).toFixed(0)} mm · far field beyond ${(zf * 1e2).toFixed(1)} cm</small>`
-        : `⚠ Aliasing risk <small>|z| = ${(z * 1e3).toFixed(0)} mm &gt; z_crit = ${(zc * 1e3).toFixed(0)} mm — band-limited ASM active (high-angle content dropped)</small>`;
+        : `⚠ Aliasing risk <small>|z| = ${(z * 1e3).toFixed(0)} mm &gt; z_crit = ${(zc * 1e3).toFixed(0)} mm. The steepest light is being discarded to keep the result honest</small>`;
 
       meta.innerHTML =
         `<div>λ <b>${(lam * 1e9).toFixed(0)} nm</b></div>` +

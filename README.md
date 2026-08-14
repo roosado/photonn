@@ -20,8 +20,17 @@ Four more pages read on from it — [the wave optics
 underneath](https://roosado.github.io/photonn/physics.html) with the diffraction explorer
 recomputing scalar diffraction live as you move the controls, [the same machine built as a
 chip](https://roosado.github.io/photonn/chip.html), [how precisely it would have to be
-built](https://roosado.github.io/photonn/tolerance.html) — which is the study — and [how much
-better the optics could be](https://roosado.github.io/photonn/optics.html).
+built](https://roosado.github.io/photonn/tolerance.html) — the study, one section per error
+source, each with a widget showing what that error physically does — and [how much better the
+optics could be](https://roosado.github.io/photonn/optics.html), which measures what depth buys
+and then argues why more of it is not the answer.
+
+**The through-line, stated once.** A stack of phase masks is *one linear operator* no matter how
+tall it is, so depth converges on the best that operator can do rather than compounding the way
+depth does in an ordinary network. Eleven times the masks buys 10.5 points of accuracy and costs
+2× tighter phase control, while the one fabrication error that already fails does not move at
+all. The way past that ceiling is a nonlinearity, which this project characterises and
+deliberately does not try to build.
 
 Two codebases, one project, separated by a one-directional boundary:
 
@@ -33,6 +42,18 @@ Two codebases, one project, separated by a one-directional boundary:
 See [`CLAUDE.md`](CLAUDE.md) for the full architecture, phase roadmap, and scope boundaries.
 
 ## Status
+
+**Site restructured around the linearity argument (2026-08-14, `360161d`).** `/tolerance` became
+one section per error source, each with a purpose-built widget
+([`apps/web/errors.js`](apps/web/errors.js)) showing what that error physically does to a real
+mask — mechanism only, so it never computes an accuracy and cannot contradict the measured curve
+beside it. `/optics` was rebuilt around what depth buys ([`apps/web/scaling.js`](apps/web/scaling.js),
+plotting every training run against mask count) and where it stops, closing on the nonlinearity
+wall and the routes the field is trying through it. Mathematics is now MathML throughout, which
+costs no library. The confusion-matrix stress point is **derived from each model's own measured
+phase edge** rather than hardcoded, which fixed a candidate figure that had been rendering at
+chance because a constant tuned for the 5-mask design is nearly twice past the 56-mask model's
+failure point.
 
 **In-browser D²NN classifier (done).** The trained diffractive network now runs its forward pass
 client-side on its own page: encode a digit into the entrance field, propagate through the five
@@ -157,7 +178,7 @@ in [`docs/handoff_schema.md`](docs/handoff_schema.md); see `photonn/export.py` (
 ```
 photonn/        # Python design side (see CLAUDE.md for per-module responsibilities)
 apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier) · export_analogy_web.py, analogy_demo.py, analogy_figure.py (free-space↔chip correspondence)
-apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · analogy.js, analogy_geom.js (P3 correspondence)
+apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · errors.js (P4 error mechanisms) · scaling.js, optics_sweep.js (depth vs accuracy) · d2nn_compare.js (two models, one digit) · analogy.js, analogy_geom.js (P3 correspondence, demo only)
 site/           # generated, self-contained, GitHub Pages ready: index.html (the live D²NN) · physics.html · chip.html · tolerance.html (the study) · optics.html
 tests/          # pytest suite
 docs/           # handoff schema + parameter-source ledger

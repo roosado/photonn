@@ -10,17 +10,22 @@ They read in order, and the topbar lists all five:
    forward pass in your browser: pick or draw a digit, watch it cross five phase masks onto ten
    detectors, in a **3D view of the optical stack** and as exact per-plane frames. Then what a
    phase mask actually computes, why anyone would build a computer out of light, and why the
-   network is wrong about one digit in four.
+   network is wrong about one digit in four — with the **confusion matrix of the ideal model**
+   showing which digits it actually trades (5→3, 8→3, 9↔4).
 2. **`physics.html`** — the angular-spectrum propagator, the sampling limit `z_crit` that bounds
-   it, the **live diffraction explorer**, and the proof that the whole stack collapses to one
-   linear operator followed by a single `|E|²`.
-3. **`chip.html`** — the MZI mesh, and the **free-space ↔ chip correspondence** figure. Why a
-   phase mask *is* a column of phase shifters, and the one number the two machines differ on.
-4. **`tolerance.html`** — the fabrication error budget. The binding constraint, the seven
-   tolerance curves and the sensitivity map, plus what a deeper network costs in tolerance to
-   buy its accuracy.
-5. **`optics.html`** — live work: the optics sweep, and the shipped 5-mask model running beside
-   the unshipped 56-mask candidate on one digit.
+   it, the **live diffraction explorer** with a reading guide for its controls, and the proof
+   that the whole stack collapses to one linear operator followed by a single `|E|²`.
+3. **`chip.html`** — the MZI mesh, the crosswalk table, and why a phase mask *is* a column of
+   phase shifters. Prose and one figure only; the interactive correspondence widget was removed
+   because the table already made its argument.
+4. **`tolerance.html`** — the fabrication error budget, as **one section per error source**.
+   Each carries a purpose-built widget showing what that error physically does, its measured
+   tolerance curve, and the one number that matters. Closes on the ranking: five sources are
+   comfortable, crosstalk fails by 4×, and geometry is not modelled at all.
+5. **`optics.html`** — what scaling buys, and where it stops. The depth-vs-accuracy chart, the
+   shipped 5-mask model running beside the unshipped 56-mask candidate on one digit, what the
+   extra masks cost in tolerance, and then the wall: a mask stack is one linear operator, so
+   depth converges rather than compounds, and the way through is a nonlinearity.
 
 Plus **`_artifact_body.html`** — a body-only variant of the front page for publishing as a
 claude.ai Artifact (that host supplies its own `<head>`/`<body>`, and needs absolute links since
@@ -34,6 +39,35 @@ None of the physics is precomputed. The browser runs a hand-written FFT ported f
 `photonn.propagate.angular_spectrum` (`apps/web/asm.js`, cross-checked to < 1e-6 by
 `tests/test_asm_crosscheck.py`), and the classifier's predictions match the PyTorch model
 exactly (`tests/test_d2nn_crosscheck.py`).
+
+## Widgets
+
+| File | Page | What it does |
+|---|---|---|
+| `d2nn.js` + `d2nn_demo.js` | index | the live classifier |
+| `d2nn_stage.js` | index, optics | the 3D optical stack |
+| `explorer.js` | physics | the diffraction explorer |
+| `errors.js` | tolerance | **six** error-mechanism widgets, one per source |
+| `scaling.js` | optics | accuracy against mask count |
+| `d2nn_compare.js` | optics | shipped vs candidate, one digit |
+| `analogy.js` | *(none)* | kept for `apps/analogy_demo.py`; the site no longer mounts it |
+
+`errors.js` is **mechanism only**: it never runs the classifier and computes no accuracy, so
+it cannot contradict the measured curve beside it. It shares one real 128² phase mask, cut out
+of `d2nn_weights.js` at build time by `build_site.error_mask_bundle()` — one copy of the
+trained phases in the repo, and this is a slice of it.
+
+## Maths is MathML
+
+Expressions are MathML, which every current browser renders natively, so real notation costs
+no library. `apps/build_site.py` holds a compact token notation (`mrow`, `mfrac`, `msqrt`)
+expanded into a `MATH` dict and substituted as `@@MATH_*@@`, mirroring `@@FIG_*@@`. Code and
+UI identifiers keep the `.q` mono pill; only mathematics becomes MathML.
+
+> **Never set CSS `display` or `overflow` on a `<math>` element.** MathML lays out as
+> `display: math`/`block math`, and overriding it drops the element into ordinary CSS block
+> layout, which puts every child on its own line — a nine-term operator product renders as
+> nine stacked rows. The scroll container lives on the `.eq` wrapper instead.
 
 ## Regenerating
 
@@ -59,6 +93,13 @@ python -m apps.export_d2nn_web      # -> apps/web/d2nn_weights.js, tests/fixture
 python -m apps.export_analogy_web   # -> apps/web/analogy_geom.js
 python -m apps.analogy_figure       # -> docs/figures/phase3_correspondence.png
 python -m apps.build_site
+```
+
+If the **optics sweep** is re-run, regenerate its bundle too — the depth-vs-accuracy chart
+reads its points from there rather than carrying its own copy:
+
+```bash
+python -m apps.sweep_report         # -> apps/web/optics_sweep.js, docs/figures/optics_sweep.png
 ```
 
 `apps/web/d2nn_weights.js` and `apps/web/analogy_geom.js` are **committed on purpose**:

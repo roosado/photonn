@@ -89,6 +89,29 @@ Sources (URLs):
 - M. Reck, A. Zeilinger, H. J. Bernstein & P. Bertani, "Experimental realization of
   any discrete unitary operator," *Phys. Rev. Lett.* **73**, 58 (1994). *(Cited by
   volume/page only; no URL verified.)*
+- C. C. Wanjura & F. Marquardt, "Fully nonlinear neuromorphic computing with linear
+  wave scattering," *Nature Physics* (2024), doi:10.1038/s41567-024-02534-9 —
+  https://www.nature.com/articles/s41567-024-02534-9 · preprint
+  https://arxiv.org/abs/2308.16181. Verified 2026-08-14. *(Volume and page not
+  confirmed: nature.com sits behind an auth redirect, so the page cites it by DOI.)*
+
+### Nonlinearity routes — mostly UNSOURCED, and the page says so
+
+`/optics` closes by naming three ways the field is trying to give an optical network
+the nonlinearity a mask stack cannot have. **Only one of the three is sourced.**
+
+| Route | Status |
+|---|---|
+| Input encoded in the scattering parameters rather than the wave | **Sourced** — Wanjura & Marquardt, above |
+| Optoelectronic conversion loops | `UNSOURCED` — described mechanically, no citation |
+| Intensity-dependent materials (saturable absorbers, phase-change) | `UNSOURCED` — described mechanically, no citation |
+
+This is the one place on the site where a claim runs ahead of its ledger, so it is
+handled the way the convention above requires: the two unsourced routes are stated
+as mechanisms rather than as results, no performance number is attached to either,
+and the page says in its own words that this study tested none of them and vouches
+for none of them. **Anything more than that needs a verified source first.** This is
+the largest open citation task in the project.
 
 **Two derived numbers on that page, for the record.** The 60 ps transit is the
 18 mm stack length divided by `c`. The ~1 fJ per inference is the 1 pW × 1 ms

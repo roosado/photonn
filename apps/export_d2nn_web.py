@@ -11,24 +11,30 @@ torch checkpoint, and writes:
   clone.
 - ``tests/fixtures/d2nn_reference.json`` -- the authoritative torch logits for a
   frozen set of digits, consumed by ``tests/test_d2nn_crosscheck.py``. Written
-  only for the shipped bundle; a candidate is cross-checked against torch from
-  its own committed bundle instead (``tests/test_deep_model.py``), which needs no
-  gitignored file.
+  only for the default 5-mask bundle; any other model is cross-checked against
+  torch from its own committed bundle instead (``tests/test_deep_model.py``),
+  which needs no gitignored file.
 
 Every value comes from the handoff file; nothing about the operating point is
 hardcoded here. Run from the repo root in the project venv::
 
-    # the shipped 5-mask model, float32, with its fixture
-    python -m apps.export_d2nn_web
+    # the 5-mask model the study characterises, 8-bit, with its fixture
+    python -m apps.export_d2nn_web --bits 8 --label "5 masks"
 
-    # the unshipped 56-mask candidate, 8-bit, on the shipped model's gallery
+    # the 56-mask model, 4-bit, on the 5-mask model's gallery
     python -m apps.export_d2nn_web \\
         --h5 exports/sweep/d2nn_L56_60k_e25.h5 \\
         --pt exports/sweep/d2nn_L56_60k_e25.pt \\
         --out apps/web/d2nn_deep_weights.js \\
-        --bits 8 --unshipped --label "56 masks" \\
+        --bits 4 --unshipped --label "56 masks" \\
         --gallery-from apps/web/d2nn_weights.js \\
-        --caveat "not promoted -- it needs 2x tighter phase control to build"
+        --caveat "buying those points costs 2x tighter phase control and 4.7x lower loss per mask"
+
+``--label`` is the column title, and the convention is to name a model by its
+depth ("5 masks", "56 masks") rather than by its status. ``--unshipped`` records
+which model the study characterises; it is provenance metadata and a guard
+against two bundles both claiming to be the headline, not something a caption
+prints. What a reader is told about a non-headline model is its ``--caveat``.
 
 At float32 a 56-mask bundle is ~4.9 MB of base64; at 8 bits it is ~1.2 MB, which
 is why a deep model is exported quantised. See :mod:`apps.web_bundle` for why
@@ -87,11 +93,15 @@ def parse_args(argv=None):
                    help="copy the gallery from an existing bundle instead of picking one. "
                         "Required for any model meant to be compared against another: two "
                         "models shown different digits are not a comparison.")
-    p.add_argument("--label", default="Shipped", help="column title in the comparison widget")
+    p.add_argument("--label", default="5 masks",
+                   help="column title in the comparison widget; name a model by its depth "
+                        "rather than its status (default: the default model's own depth)")
     p.add_argument("--unshipped", action="store_true",
-                   help="mark the bundle as not the shipped model, so every caption says so")
+                   help="record that this is not the model the study characterises. Provenance "
+                        "only: no caption prints it. What a reader is told is --caveat.")
     p.add_argument("--caveat", default=None,
-                   help="why this model's number is not the headline; required with --unshipped")
+                   help="what this model's number costs, rendered into its caption; "
+                        "required with --unshipped")
     args = p.parse_args(argv)
 
     if args.unshipped and not args.caveat:
@@ -203,8 +213,8 @@ def provenance(history, accuracy, n_test, label="Shipped", shipped=True, caveat=
     a default -- a plausible-looking wrong protocol is worse than a crash.
 
     ``scored_on`` is written the same way for every model this exporter touches,
-    which is what lets the widget tell "unshipped and measured differently" from
-    "unshipped but measured identically" without being told which is which.
+    which is what lets the widget tell "measured differently" from "measured
+    identically" without being told which is which.
     """
     missing = [k for k in ("n_samples", "epochs", "seed") if k not in history]
     if missing:
@@ -266,10 +276,10 @@ def gallery_payload(digits28, labels, preds, source=None):
 
     A second model must be shown the *same* digits as the one it is compared
     against, or the board is two demos side by side rather than a comparison --
-    and the shipped gallery is deliberately stocked with digits the shipped model
+    and the default gallery is deliberately stocked with digits the 5-mask model
     gets wrong, which is exactly what makes the contrast visible. Copying is
-    therefore the right default for any candidate, and it is a flag rather than a
-    guess.
+    therefore the right default for any second model, and it is a flag rather
+    than a guess.
     """
     if source is not None:
         other = read_bundle(source)
@@ -287,7 +297,7 @@ def bundle_header(out_path, h5_path, hand, bits, n_gallery, prov, max_err, copie
     """The comment block at the top of a generated bundle."""
     name = os.path.basename(out_path)
     what = ("the trained Phase-2 diffractive network" if prov["shipped"]
-            else "a *candidate* diffractive network")
+            else f"the {hand['n_layers']}-mask diffractive network")
 
     if bits in (4, 8):
         levels = 1 << bits
@@ -311,12 +321,15 @@ def bundle_header(out_path, h5_path, hand, bits, n_gallery, prov, max_err, copie
         gallery_line += (f" *               Copied from {_rel(copied_from)} so both models are shown\n"
                          f" *               the same digits and the comparison is a comparison.\n")
 
-    unshipped = ""
-    if not prov["shipped"]:
-        said = (f"NOT SHIPPED. {prov['accuracy']:.4f} on {prov['scored_on']} "
-                f"({prov['protocol']['n_train']:,} images, {prov['protocol']['epochs']} epochs) "
-                f"-- {prov['caveat']}. It is here to be compared against, not quoted.")
-        unshipped = " *\n" + "".join(f" * {line}\n" for line in textwrap.wrap(said, 74))
+    # What the caption will say, restated for whoever opens the file: the number
+    # and what it cost. Which model the study characterises is provenance
+    # (`shipped`), deliberately not part of how either one is described.
+    note = ""
+    if prov.get("caveat"):
+        said = (f"{prov['accuracy']:.4f} on {prov['scored_on']} "
+                f"({prov['protocol']['n_train']:,} images, {prov['protocol']['epochs']} epochs). "
+                f"{prov['caveat'][0].upper()}{prov['caveat'][1:]}.")
+        note = " *\n" + "".join(f" * {line}\n" for line in textwrap.wrap(said, 74))
 
     return (
         f"/*\n"
@@ -325,7 +338,7 @@ def bundle_header(out_path, h5_path, hand, bits, n_gallery, prov, max_err, copie
         f" * GENERATED by apps/export_d2nn_web.py from {_rel(h5_path)} -- do not edit\n"
         f" * by hand; re-run the exporter instead. This file is committed because the h5 and\n"
         f" * pt exports are gitignored, so it is the repo's only copy of the trained model.\n"
-        f"{unshipped}"
+        f"{note}"
         f" *\n"
         f"{masks_line}"
         f"{gallery_line}"
@@ -333,7 +346,9 @@ def bundle_header(out_path, h5_path, hand, bits, n_gallery, prov, max_err, copie
         f" *               photonn.detect.default_regions.\n"
         f" * provenance  : where this model's number came from. The comparison widget\n"
         f" *               renders its captions from this, so no accuracy is written into\n"
-        f" *               JavaScript and promoting a model is regenerating a bundle.\n"
+        f" *               JavaScript and changing what a model claims is regenerating a\n"
+        f" *               bundle. `shipped` records which model the study characterises;\n"
+        f" *               no caption reads it, and a column is named for its depth.\n"
         f" * All lengths in metres.\n"
         f" */\n"
     )

@@ -371,10 +371,10 @@ run-to-run noise; the ordering across the range is far larger than that.
 
 ### Trained at the deliverable budget: 0.9040
 
-*Unshipped candidate, 2026-08-08.* The 56-mask configuration was retrained at the
-full budget — 60 000 images, 25 epochs, everything electronic held at shipped
-values (same encoding, learning rate, batch size, seed) — and scores **0.9040 on
-the frozen 2 000-image test set**, against the shipped design's 0.7990. That is the
+*The 56-mask network, 2026-08-08.* This configuration was retrained at the
+full budget — 60 000 images, 25 epochs, everything electronic held at the 5-mask
+model's values (same encoding, learning rate, batch size, seed) — and scores
+**0.9040 on the frozen 2 000-image test set**, against the 5-mask design's 0.7990. That is the
 first legitimate test number for this geometry; the sweep deliberately never
 touched the frozen set.
 
@@ -411,40 +411,47 @@ it defers become the binding constraint exactly where accuracy is best. **This i
 flagged, not modelled** — quantifying it needs the plane-spacing error source that is
 still queued.
 
-Nothing downstream has moved. `exports/d2nn_phase2.h5`, the shipped browser bundle,
+Nothing downstream has moved. `exports/d2nn_phase2.h5`, the 5-mask browser bundle,
 the Phase-4 budget and every quoted 0.799 still describe the 5-mask, 3 mm design —
 promoting a new geometry is a separate decision, and because `z` is geometry it
 would also re-derive the Phase-3 correspondence results (`z_min` = 2.967 mm,
 "connected by 0.81 px").
 
-### Operable, and still not shipped
+### Operable, and what it costs
 
-*2026-08-09.* The candidate now **runs in the browser** beside the shipped model on
-the optics page — same digit, same detector layout, both forward passes live —
-because a result you can operate is worth more than a table row. Being operable is
-not being promoted, and the distance between those two is the whole point of this
-project.
+*2026-08-09.* The 56-mask network **runs in the browser** beside the 5-mask model
+on the optics page — same digit, same detector layout, both forward passes live —
+because a result you can operate is worth more than a table row. What it would cost
+to build is the distance this project exists to measure, and it travels with the
+model rather than being left to the prose.
 
 The honesty machinery is in the data, not in the prose:
 
-- `apps/web/d2nn_deep_weights.js` carries `provenance.shipped: false` plus a caveat
-  naming what the extra accuracy costs. Every caption the widget prints is rendered
-  from that block — there is no accuracy literal anywhere in the JavaScript, and
-  `tests/test_web_contract.py` asserts it. **Promoting a model is regenerating a
-  bundle**, never editing a widget.
-- Unshipped does not mean incomparable. This model was scored on the same frozen
-  test set at the same training budget as the headline, so the board says *"Same
-  measurement as the shipped 0.7990"* rather than disclaiming the one honest
-  comparison on the page. A sweep-ranked candidate declares `not_scored_on` and
-  gets the disclaimer instead; the distinction lives in the bundles.
-- Phases ship **8-bit** (one `uint8` code per phase). That is not a download
-  shortcut: `tolerance_d2nn.md` measures this design as holding accuracy to 3-bit
-  phase control and an SLM offers 8, so the quantised model is the *more* faithful
-  one. It is also what keeps 917 504 phases to 1.2 MB instead of 4.9 MB.
+- `apps/web/d2nn_deep_weights.js` carries a caveat naming what the extra accuracy
+  costs, and the caption renders it as a sentence. Every caption the widget prints
+  comes from that block — there is no accuracy literal anywhere in the JavaScript,
+  and `tests/test_web_contract.py` asserts it. **Changing what a model claims is
+  regenerating a bundle**, never editing a widget.
+- A column is named for its depth, never its standing (2026-08-14). The bundle
+  still records `provenance.shipped: false`, which guards against two bundles both
+  claiming to be the headline, but no caption reads it. A reader operating the
+  model is told what it costs to build, which is actionable, rather than where it
+  sits in this project's workflow, which is not.
+  `test_no_caption_describes_a_model_by_its_status` holds that line for every
+  committed bundle.
+- Costing something does not mean incomparable. This model was scored on the same
+  frozen test set at the same training budget as the headline, so the board says
+  *"Same measurement as 5 masks (0.7995)"* rather than disclaiming the one honest
+  comparison on the page. The 14-mask ranking run declares `not_scored_on` and gets
+  *"Not comparable"* instead; the distinction lives in the bundles.
+- Phases ship **4-bit** (two codes per byte). That is not a download shortcut:
+  `tolerance_d2nn.md` measures this design as holding accuracy to 4-bit phase
+  control, so the quantised model is the *more* faithful one. It is also what keeps
+  917 504 phases to 0.6 MB instead of 4.9 MB.
   `tests/test_deep_model.py` rebuilds the torch model from the committed bundle's
   own codes and requires identical predictions through all 57 hops.
 
-So the reason it is marked "not shipped" is not that its number is soft — it is the
+So the reason it has not been promoted is not that its number is soft — it is the
 tolerance trade in [`tolerance_d2nn.md`](tolerance_d2nn.md): +10.5 points costs 2×
 tighter phase, one more DAC bit and 4.7× tighter loss per mask, while **thermal
 crosstalk, the source that already makes this unbuildable on a real SLM, does not
@@ -508,12 +515,12 @@ figure states that factor on its face.
 
 ### What changes at 56 masks
 
-*2026-08-09.* The same widget draws the deep candidate on the optics page, and
+*2026-08-09.* The same widget draws the 56-mask network on the optics page, and
 every assumption above had to be re-derived from the weight bundle rather than
-assumed from the shipped geometry. A 56-mask network is not a 5-mask one eleven
+assumed from the 5-mask geometry. A 56-mask network is not a 5-mask one eleven
 times over:
 
-| | shipped, 5 masks | candidate, 56 masks |
+| | 5 masks | 56 masks |
 |---|---|---|
 | stack | 18 mm / 1.024 mm ≈ 17.6:1 | **30 mm** / 1.024 mm ≈ **29:1** |
 | depth compression | ×5.9 | **×9.8** |
@@ -555,13 +562,13 @@ python -m apps.visualize_d2nn               # render trained masks + example
 python -m apps.d2nn_demo                    # standalone live classifier + 3D stage
 python -m apps.compare_demo                 # standalone two-model board + deep stage
 
-# the shipped browser bundle (no arguments: paths and float32 are the defaults)
-python -m apps.export_d2nn_web
+# the 5-mask browser bundle, 8-bit, with its torch cross-check fixture
+python -m apps.export_d2nn_web --bits 8 --label "5 masks"
 
-# the unshipped 56-mask bundle: 8-bit, on the shipped model's gallery
+# the 56-mask bundle: 4-bit, on the 5-mask model's gallery
 python -m apps.export_d2nn_web \
     --h5 exports/sweep/d2nn_L56_60k_e25.h5 --pt exports/sweep/d2nn_L56_60k_e25.pt \
-    --out apps/web/d2nn_deep_weights.js --bits 8 --unshipped --label Candidate \
+    --out apps/web/d2nn_deep_weights.js --bits 4 --unshipped --label "56 masks" \
     --gallery-from apps/web/d2nn_weights.js \
     --caveat "buying those points costs 2x tighter phase control and 4.7x lower loss per mask"
 

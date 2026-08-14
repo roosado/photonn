@@ -22,7 +22,7 @@
  * about. Travel is conveyed by real slices and by the sweep, not by fiction.
  *
  * The stack is far longer than it is wide -- 18 mm across a 1.02 mm aperture for
- * the shipped design, 30 mm for a 56-mask one -- so drawn to scale it is an
+ * the 5-mask design, 30 mm for a 56-mask one -- so drawn to scale it is an
  * unreadable needle. The depth axis is compressed, and the figure says so on its
  * face.
  *
@@ -46,7 +46,7 @@
  *                                                 // the forward pass as well
  * opts (all optional):
  *   net       -- the network to draw (from d2nn.js:buildNet). Defaults to the
- *                shipped one, so one page can hold a stage per model.
+ *                5-mask one, so one page can hold a stage per model.
  *   mode      -- "live" | "manual". Default: derived from depth.
  *   theta, phi, beam, subSteps -- degrees, degrees, bool, int (all overrides).
  *
@@ -113,7 +113,7 @@
 
   //: Most mask panels drawn. Beyond this the stack is sampled -- six planes
   //: spread through a deep stack tell the same story as fifty-six, and are the
-  //: only version that is legible. The shipped 5-mask model is under the limit,
+  //: only version that is legible. The 5-mask model is under the limit,
   //: so it is drawn whole exactly as before.
   const MAX_MASK_PANELS = 6;
 
@@ -121,7 +121,7 @@
   //: one. This is a *legibility* threshold, not a physical bound: sliceForward is
   //: exact at any subSteps (z stays well under z_crit), but below a few pixels of
   //: spreading consecutive slices are the same picture, so the extra propagations
-  //: buy nothing. At the shipped 12.47 px per hop this yields the historical 4.
+  //: buy nothing. At the 5-mask stack's 12.47 px per hop this yields the historical 4.
   const MIN_SLICE_REACH_PX = 3;
   const MAX_SUB_STEPS = 4;
 
@@ -140,7 +140,7 @@
     return W.separation * W.wavelength / (2 * W.dx * W.dx);
   }
 
-  /** Sub-hops per hop for this geometry: 4 for the shipped stack, 1 for a deep one. */
+  /** Sub-hops per hop for this geometry: 4 for the 5-mask stack, 1 for a deep one. */
   function defaultSubSteps(W) {
     const s = Math.floor(reachPerHopPx(W) / MIN_SLICE_REACH_PX);
     return Math.max(1, Math.min(MAX_SUB_STEPS, s));
@@ -150,7 +150,7 @@
    * Which mask indices to draw, always including the first and the last.
    *
    * Returns every index when the stack is short enough, which is what keeps the
-   * shipped model's figure byte-for-byte what it was. Evenly spread otherwise,
+   * 5-mask model's figure byte-for-byte what it was. Evenly spread otherwise,
    * de-duplicated, so `n` is an upper bound rather than a promise.
    */
   function sampleMaskIndices(nLayers, maxPanels) {
@@ -294,14 +294,14 @@
     opts = opts || {};
     injectStyle();
 
-    // The network being drawn. Defaulting to the module's shipped one keeps every
-    // existing caller working; passing opts.net is what lets one page carry a
-    // stage for the shipped model and another for a candidate.
+    // The network being drawn. Defaulting to the module's default bundle keeps
+    // every existing caller working; passing opts.net is what lets one page carry
+    // a stage for the 5-mask model and another for the 56-mask one.
     const MODEL = opts.net || NET;
     const W = MODEL.weights;
     const N = MODEL.N;
     const HOPS = W.n_layers + 1;
-    const TOTAL_Z = HOPS * W.separation;              // 18 mm shipped, 30 mm at 56 masks
+    const TOTAL_Z = HOPS * W.separation;              // 18 mm at 5 masks, 30 mm at 56
     const APERTURE = N * W.dx;                        // 1.024 mm
     // The drawn stack is DEPTH_SPAN half-apertures long; anything else would be
     // a needle. Report the factor rather than let the reader assume scale.

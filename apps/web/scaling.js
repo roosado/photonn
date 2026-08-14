@@ -8,8 +8,8 @@
  *   ranking protocol   20k images x 12 epochs. Cheap, used to rank geometries
  *                      against each other. Its accuracies are depressed by the
  *                      short budget and must NEVER be read against the headline.
- *   full budget        60k images. Two runs only: the shipped 5-mask design at
- *                      0.7990 and the 56-mask candidate at 0.9040. These two are
+ *   full budget        60k images. Two runs only: the 5-mask design at 0.7990
+ *                      and the 56-mask one at 0.9040. These two are
  *                      the same measurement as each other and as every number
  *                      quoted elsewhere on the site.
  *

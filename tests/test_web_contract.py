@@ -1,11 +1,19 @@
 """The contract between an exported model bundle and the browser widgets.
 
-Two trained models now share one page, and a third will arrive when a promotion
-lands. What keeps that from becoming a maintenance trap is a rule: **a widget
+Two trained models now share one page, and a third would arrive with another
+retrain. What keeps that from becoming a maintenance trap is a rule: **a widget
 holds no model metadata.** Every caption on ``apps/web/d2nn_compare.js`` -- the
-column title, the accuracy, what it was scored on, the unshipped caveat, the
-orange border -- is rendered from the bundle's own ``provenance`` block, so
-promoting a model is regenerating a bundle and nothing else.
+column title, the accuracy, what it was scored on, what that number cost -- is
+rendered from the bundle's own ``provenance`` block, so changing what a model
+claims is regenerating a bundle and nothing else.
+
+A second rule sits on top of it: **a column is described by what it is, never by
+its status inside this project.** Columns are titled by depth ("5 masks", "56
+masks"), and no caption says whether a model is the one the study characterises.
+That fact is still recorded in provenance as ``shipped`` -- it guards against two
+bundles both claiming to be the headline -- but a visitor operating a model is
+told what it costs to build, which is actionable, rather than where it sits in a
+workflow, which is not.
 
 The rule is invisible at runtime: a widget that quietly hardcodes last quarter's
 accuracy looks perfect and is wrong. That has already happened once in this repo
@@ -119,80 +127,106 @@ def captions(cases):
 
 
 @needs_node
-def test_shipped_caption_states_its_accuracy_and_where_it_came_from():
+def test_baseline_caption_states_its_accuracy_and_where_it_came_from():
     prov = read_bundle("d2nn_weights.js")["provenance"]
     note, = captions([{"prov": prov, "reference": None}])
 
     assert f"{prov['accuracy']:.4f}" in note
     assert prov["scored_on"] in note
     assert f"{prov['protocol']['epochs']} epochs" in note
-    assert "Not shipped" not in note, "the shipped model must not carry the unshipped caveat"
+
+
+#: Words that describe a model's standing in this project rather than the machine
+#: itself. A visitor operating a network is owed what it costs to build, not where
+#: it sits in a workflow, so none of these may reach a caption.
+STATUS_WORDS = ("shipped", "unshipped", "promoted", "candidate")
+
+
+def sentence(caveat):
+    """A caveat as the widget renders it: its own sentence, so capitalised."""
+    return caveat[0].upper() + caveat[1:] + "."
 
 
 @needs_node
-def test_candidate_caption_refuses_to_be_read_as_a_test_accuracy():
-    """The number beside an operable model invites being quoted; this disarms it."""
-    shipped = read_bundle("d2nn_weights.js")["provenance"]
-    cand = read_bundle("d2nn_sweep_weights.js")["provenance"]
-    note, = captions([{"prov": cand, "reference": shipped}])
+def test_no_caption_describes_a_model_by_its_status():
+    """The rule the captions were rewritten around, asserted for every bundle.
 
-    assert "Not shipped" in note
-    assert f"{cand['accuracy']:.4f}" in note
-    assert cand["caveat"] in note
-    # The headline it must not be confused with is named, and comes from the
-    # shipped bundle rather than from a literal in the widget.
-    assert f"Not comparable to {shipped['accuracy']:.4f}" in note
+    "Not shipped" used to lead the caption of any model that was not the study's
+    subject. It leaked an internal workflow state to a reader who was operating
+    the model in their browser at the time, and it said nothing they could act
+    on. What replaced it is the cost, which is a property of the machine.
+    """
+    baseline = read_bundle("d2nn_weights.js")["provenance"]
+    for name in BUNDLES:
+        prov = read_bundle(name)["provenance"]
+        note, = captions([{"prov": prov, "reference": baseline}])
+        for word in STATUS_WORDS:
+            assert word not in note.lower(), f"{name} caption says {word!r}: {note}"
 
 
 @needs_node
-def test_the_deep_candidate_is_not_disclaimed_out_of_its_own_comparison():
-    """Unshipped does not mean incomparable, and the caption must tell them apart.
+def test_a_number_that_cost_something_says_so():
+    """The number beside an operable model invites being quoted; this disarms it.
+
+    Not with a status, but with the price. The ranking run is additionally not
+    comparable, and that is a property of the bundles rather than of standing: it
+    declares ``not_scored_on``, so its number and the baseline's were never the
+    same measurement.
+    """
+    baseline = read_bundle("d2nn_weights.js")["provenance"]
+    ranked = read_bundle("d2nn_sweep_weights.js")["provenance"]
+    note, = captions([{"prov": ranked, "reference": baseline}])
+
+    assert f"{ranked['accuracy']:.4f}" in note
+    assert sentence(ranked["caveat"]) in note
+    # The number it must not be confused with is named, and comes from the other
+    # bundle rather than from a literal in the widget.
+    assert f"Not comparable to {baseline['label']} ({baseline['accuracy']:.4f})" in note
+
+
+@needs_node
+def test_the_deep_model_is_not_disclaimed_out_of_its_own_comparison():
+    """Costing something does not mean incomparable, and the caption tells them apart.
 
     The 56-mask model was scored on the same frozen test set, at the same
-    training budget, as the shipped one -- so ``Not comparable to 0.7990`` beside
-    it would be false, and would disclaim away the single honest comparison the
-    board is built to show. The distinguishing fact lives in the bundles (a
-    ranking run declares ``not_scored_on``; this one does not), never in the
-    widget.
+    training budget, as the 5-mask one -- so ``Not comparable`` beside it would be
+    false, and would disclaim away the single honest comparison the board is
+    built to show. The distinguishing fact lives in the bundles (a ranking run
+    declares ``not_scored_on``; this one does not), never in the widget.
     """
-    shipped = read_bundle("d2nn_weights.js")["provenance"]
+    baseline = read_bundle("d2nn_weights.js")["provenance"]
     deep = read_bundle("d2nn_deep_weights.js")["provenance"]
-    ranked = read_bundle("d2nn_sweep_weights.js")["provenance"]
-    note, = captions([{"prov": deep, "reference": shipped}])
+    note, = captions([{"prov": deep, "reference": baseline}])
 
-    assert "Not shipped" in note, "an unshipped model still says so"
     assert f"{deep['accuracy']:.4f}" in note
-    assert deep["caveat"] in note
+    assert sentence(deep["caveat"]) in note
     assert "Not comparable" not in note
-    assert f"{shipped['accuracy']:.4f}" in note, "the number it *is* comparable to is named"
-    # And the ranking candidate on the same board still is disclaimed.
-    ranked_note, = captions([{"prov": ranked, "reference": shipped}])
-    assert f"Not comparable to {shipped['accuracy']:.4f}" in ranked_note
+    assert f"Same measurement as {baseline['label']} ({baseline['accuracy']:.4f})" in note
 
 
 @needs_node
-def test_a_promoted_bundle_changes_the_caption_with_no_javascript_edit():
-    """The acceptance test: fabricate a promotion and watch the captions follow.
+def test_dropping_a_caveat_changes_the_caption_with_no_javascript_edit():
+    """The acceptance test: fabricate a re-export and watch the captions follow.
 
-    No committed bundle can exercise this -- the candidate has never been
-    promoted -- so the provenance is synthetic on purpose. The numbers below are
-    invented *as test fixtures*, never as physics or as results.
+    No committed bundle can exercise this -- every model that costs something
+    still declares it -- so the provenance is synthetic on purpose. The numbers
+    below are invented *as test fixtures*, never as physics or as results.
     """
-    promoted = {
-        "label": "Promoted",
+    base = {
+        "label": "56 masks",
         "accuracy": 0.8642,
         "scored_on": "the frozen 2,000-image MNIST test set",
-        "shipped": True,
+        "shipped": False,
         "protocol": {"n_train": 60000, "epochs": 40, "seed": 1},
     }
-    note, = captions([{"prov": promoted, "reference": None}])
+    priced, = captions([{"prov": dict(base, caveat="it costs a tighter etch"), "reference": None}])
+    free, = captions([{"prov": base, "reference": None}])
 
-    assert "0.8642" in note
-    assert promoted["scored_on"] in note
-    # Promotion removes the caveat by itself; nothing in the widget knows which
-    # model was promoted.
-    assert "Not shipped" not in note
-    assert "Not comparable" not in note
+    assert "0.8642" in priced and "0.8642" in free
+    assert "It costs a tighter etch." in priced, "a caveat is rendered, and as a sentence"
+    assert "costs" not in free, "and drops out by itself when the bundle stops declaring one"
+    # `shipped` is false in both and changes nothing a reader sees.
+    assert "shipped" not in (priced + free).lower()
 
 
 @needs_node

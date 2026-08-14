@@ -1,23 +1,27 @@
 """Cross-check the deep (56-mask) browser model against torch.
 
 ``apps/web/d2nn_deep_weights.js`` ships the optics sweep's deliverable retrain so
-it can run beside the shipped model in ``apps/web/d2nn_compare.js``. It is the
+it can run beside the 5-mask model in ``apps/web/d2nn_compare.js``. It is the
 first bundle that is both **quantised** and **deep**, and either property could
-break quietly: the 8-bit decode in ``d2nn.js:buildNet`` could disagree with
+break quietly: the phase decode in ``d2nn.js:buildNet`` could disagree with
 ``apps.web_bundle.encode_masks``, and 57 hops give a rounding error 11 times as
-long to accumulate as the shipped 5-mask model's 6.
+long to accumulate as the 5-mask model's 6.
 
 This mirrors ``tests/test_sweep_model.py``: rebuild the torch model *from the
 committed bundle itself*, decoding the same uint8 codes the browser decodes, and
 require identical predictions. It needs no gitignored file, so it runs on a
 fresh clone.
 
-The provenance assertions differ from the sweep candidate's on purpose. That one
+The provenance assertions differ from the 14-mask sweep run's on purpose. That one
 was ranked on a validation split and must say it was never tested; this one *was*
 scored on the frozen test set, at the full training budget, so its number and the
-shipped 0.7990 are the same measurement. What it must not claim is that it is
-shipped -- the Phase-4 budget prices its extra accuracy in fabrication tolerance
-(``docs/tolerance_d2nn.md``), and promotion is a separate decision.
+5-mask 0.7990 are the same measurement.
+
+It must also carry a ``caveat``, because the Phase-4 budget prices its extra
+accuracy in fabrication tolerance (``docs/tolerance_d2nn.md``) and that cost is
+what its caption states. ``shipped: false`` stays in the bundle as a guard against
+two models both claiming to be the headline, but no caption reads it -- see
+``test_no_caption_describes_a_model_by_its_status`` in ``test_web_contract.py``.
 
 Requires Node on PATH; skips cleanly if absent.
 """
@@ -122,18 +126,19 @@ def test_deep_geometry_is_the_trained_one(bundle):
     assert len(payload) == expected, f"mask payload is {len(payload)} B, expected {expected} at {bits} bits"
 
 
-def test_deep_is_unshipped_but_states_a_real_test_accuracy(bundle):
-    """Unshipped, yet measured exactly as the headline was -- both must be said.
+def test_deep_states_a_real_test_accuracy_and_what_it_cost(bundle):
+    """Measured exactly as the headline was, and priced -- both must be said.
 
     Calling it incomparable would throw away the comparison the board exists to
-    make; calling it shipped would promote it by accident. The bundle has to
-    carry both facts, because the widget renders captions from nothing else.
+    make; letting it claim to be the headline would promote it by accident. The
+    bundle has to carry both facts, because the widget renders captions from
+    nothing else.
     """
     prov = bundle["provenance"]
     shipped = read_bundle("d2nn_weights.js")["provenance"]
 
     assert prov["shipped"] is False
-    assert prov["caveat"], "an unshipped model must say why its number is not a headline"
+    assert prov["caveat"], "a model that cost something to reach must say what"
     assert "not_scored_on" not in prov, (
         "this model was scored on the frozen test set; declaring otherwise would make "
         "the widget print 'not comparable' about the one honest comparison on the page."
@@ -142,7 +147,7 @@ def test_deep_is_unshipped_but_states_a_real_test_accuracy(bundle):
     assert prov["protocol"]["n_train"] == shipped["protocol"]["n_train"], "not the full training set"
 
 
-def test_deep_shares_the_shipped_gallery(bundle):
+def test_deep_shares_the_5_mask_gallery(bundle):
     """Both models must be shown the same digits or the comparison is not one."""
     shipped = read_bundle("d2nn_weights.js")
     assert bundle["gallery_b64"] == shipped["gallery_b64"]

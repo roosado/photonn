@@ -51,7 +51,7 @@ beside it. `/optics` was rebuilt around what depth buys ([`apps/web/scaling.js`]
 plotting every training run against mask count) and where it stops, closing on the nonlinearity
 wall and the routes the field is trying through it. Mathematics is now MathML throughout, which
 costs no library. The confusion-matrix stress point is **derived from each model's own measured
-phase edge** rather than hardcoded, which fixed a candidate figure that had been rendering at
+phase edge** rather than hardcoded, which fixed a 56-mask figure that had been rendering at
 chance because a constant tuned for the 5-mask design is nearly twice past the 56-mask model's
 failure point.
 

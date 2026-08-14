@@ -39,7 +39,7 @@
    * depend on the bundle, so they live per network rather than per module --
    * which is what lets one page hold two trained models at once and run the same
    * digit through both. The default export is still a single ready-built network
-   * around window.D2NN_WEIGHTS, so callers that only ever want the shipped model
+   * around window.D2NN_WEIGHTS, so callers that only ever want the 5-mask model
    * (the front page, the torch cross-check) are unaffected.
    */
   function buildNet(W) {

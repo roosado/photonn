@@ -7,9 +7,9 @@
  * column shows that network's detector plane, where it thinks the light landed,
  * and how much of the output power it put in the winning box.
  *
- * The interesting panel is the detector plane. The shipped 5-mask network throws
- * a diffuse interference pattern across the whole plane and reads a weak maximum
- * off it; a deeper candidate gathers light into the detector boxes themselves.
+ * The interesting panel is the detector plane. The 5-mask network throws a
+ * diffuse interference pattern across the whole plane and reads a weak maximum
+ * off it; a deeper one gathers light into the detector boxes themselves.
  * Same physics, same reach, more masks.
  *
  * Two structural rules hold this widget together:
@@ -24,19 +24,25 @@
  *      columns dim while that is true. Nothing here picks a delay from a mask
  *      count -- it is measured, so it adapts to the machine.
  *   2. **No model metadata in this file.** Every caption -- the column title,
- *      the accuracy, what it was scored on, the unshipped caveat, even the
- *      orange border -- is rendered from the bundle's own `provenance` block.
- *      Promoting a model is regenerating a bundle; this widget does not change.
- *      There is deliberately no accuracy literal anywhere below, and a test
- *      enforces that.
+ *      the accuracy, what it was scored on, what that number cost -- is
+ *      rendered from the bundle's own `provenance` block. Changing what a model
+ *      claims is regenerating a bundle; this widget does not change. There is
+ *      deliberately no accuracy literal anywhere below, and a test enforces
+ *      that.
+ *   2a. **A column is named for its depth, never its status.** Which model the
+ *      study characterises is recorded in provenance as `shipped`, and nothing
+ *      here reads it: a model a visitor can operate is described by what it is
+ *      and what it costs, not by where it sits in the project's workflow. The
+ *      accent colour marks the board's baseline column (the first) against the
+ *      rest, which is a layout distinction, not a verdict.
  *
  * Models are built by d2nn.js:buildNet from their own weight bundles, and each
  * is cross-checked against torch (< 1e-3 on logits) by tests/.
  *
  * Usage:  window.PhotonnD2NNCompare.mount(containerElement, opts)
  * opts (all optional):
- *   models  -- array of weight bundles, in column order. Defaults to the shipped
- *              bundle plus the deep candidate.
+ *   models  -- array of weight bundles, in column order. The first is the
+ *              board's baseline. Defaults to the 5-mask bundle plus the 56-mask.
  *   gallery -- index of the digit selected on mount
  */
 (function () {
@@ -71,12 +77,12 @@
   const STYLE_ID = "dc-style";
   const CSS = `
 .dc-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
-  --pe-accent:#3b6ea5;--pe-ok:#3f8f4e;--pe-warn:#c14a3d;--dc-cand:#c9701f;
+  --pe-accent:#3b6ea5;--pe-ok:#3f8f4e;--pe-warn:#c14a3d;--dc-alt:#c9701f;
   color:var(--pe-fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   display:flex;flex-direction:column;gap:16px;}
 @media (prefers-color-scheme:dark){.dc-root{--pe-fg:#e6eaf0;--pe-muted:#9aa6b5;
   --pe-panel:#1c2128;--pe-border:#30363d;--pe-accent:#6ea8e0;--pe-ok:#5cc06e;
-  --pe-warn:#e0705f;--dc-cand:#f2994a;}}
+  --pe-warn:#e0705f;--dc-alt:#f2994a;}}
 .dc-box{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
   padding:14px 16px;}
 .dc-box h4{margin:0 0 3px;font-size:12px;color:var(--pe-muted);font-weight:600;
@@ -85,10 +91,10 @@
 .dc-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;}
 .dc-col{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
   padding:13px 15px;display:flex;flex-direction:column;gap:9px;}
-.dc-col.cand{border-color:color-mix(in srgb,var(--dc-cand) 45%,var(--pe-border));}
+.dc-col.alt{border-color:color-mix(in srgb,var(--dc-alt) 45%,var(--pe-border));}
 .dc-col .name{font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace;}
-.dc-col.ship .name{color:var(--pe-accent);}
-.dc-col.cand .name{color:var(--dc-cand);}
+.dc-col.base .name{color:var(--pe-accent);}
+.dc-col.alt .name{color:var(--dc-alt);}
 .dc-col .geom{font-size:11.5px;color:var(--pe-muted);}
 .dc-col canvas.plane{width:100%;image-rendering:pixelated;border-radius:6px;background:#000;
   border:1px solid var(--pe-border);}
@@ -102,7 +108,7 @@
 .dc-note b{color:var(--pe-warn);}
 .dc-truth{font-size:13px;color:var(--pe-muted);margin:12px 0 0;}
 .dc-truth b{color:var(--pe-fg);}
-.dc-wait{font-size:12px;color:var(--dc-cand);margin:6px 0 0;min-height:1.2em;
+.dc-wait{font-size:12px;color:var(--dc-alt);margin:6px 0 0;min-height:1.2em;
   opacity:0;transition:opacity .12s;}
 .dc-root.waiting .dc-wait{opacity:1;}
 .dc-root.waiting .dc-col .big{opacity:.4;}
@@ -189,18 +195,13 @@
   }
 
   /**
-   * The caption under a column's verdict.
+   * Whether two columns' numbers can be read against each other.
    *
-   * A model a visitor can operate invites its number being read as an accuracy,
-   * so an unshipped model states what its number is not. `reference` is the
-   * shipped model in the same board, if there is one -- that is where the number
-   * it is or is not comparable to comes from, rather than from a literal.
-   *
-   * Whether the two numbers *are* comparable is a property of the bundles, not
-   * of shipping: a sweep candidate ranked on a validation split is not
-   * comparable to the headline, while a candidate scored on the same frozen test
-   * set under the same protocol is exactly comparable and saying otherwise would
-   * throw away the comparison the board exists to make. The rule is that the
+   * This is a property of the bundles, not of anything about how the project
+   * regards them: a run ranked on a validation split is not comparable to a
+   * number from the frozen test set, while a model scored on that same set under
+   * the same protocol is exactly comparable, and saying otherwise would throw
+   * away the comparison the board exists to make. The rule is that the
    * measurements match and neither bundle declares itself measured elsewhere.
    */
   function comparable(prov, reference) {
@@ -209,26 +210,33 @@
       && prov.scored_on && prov.scored_on === reference.scored_on);
   }
 
+  /**
+   * The caption under a column's verdict: the number, what it was measured on,
+   * what it cost, and whether it can be read against the baseline column.
+   *
+   * Every column is captioned the same way. A model a visitor can operate still
+   * invites its number being over-read, so a bundle that costs something to
+   * reach states that cost here -- but as a property of the machine, which is
+   * what a reader can act on, rather than as a status inside this project.
+   * `reference` is the board's first column, and is captioned without a
+   * comparison line because it is the thing being compared to.
+   */
   function noteFor(prov, reference) {
     if (!prov || prov.accuracy == null) return "";
     const run = protocolPhrase(prov);
     const on = prov.scored_on ? ` on ${prov.scored_on}` : "";
 
-    if (prov.shipped === false) {
-      let s = `<b>Not shipped.</b> ${fmtAcc(prov.accuracy)}${on}`;
-      if (run) s += ` (${run})`;
-      if (prov.caveat) s += `. ${prov.caveat}`;
-      s += ".";
-      if (comparable(prov, reference)) {
-        s += ` Same measurement as the shipped ${fmtAcc(reference.accuracy)}.`;
-      } else if (reference && reference.accuracy != null) {
-        s += ` Not comparable to ${fmtAcc(reference.accuracy)}.`;
-      }
-      return s;
-    }
     let s = `Accuracy <b style="color:inherit">${fmtAcc(prov.accuracy)}</b>${on}`;
     if (run) s += ` (${run})`;
-    return s + ".";
+    s += ".";
+    if (prov.caveat) {
+      s += ` ${prov.caveat.charAt(0).toUpperCase()}${prov.caveat.slice(1)}.`;
+    }
+    if (reference && reference !== prov && reference.accuracy != null) {
+      const how = comparable(prov, reference) ? "Same measurement as" : "Not comparable to";
+      s += ` ${how} ${reference.label || "the baseline"} (${fmtAcc(reference.accuracy)}).`;
+    }
+    return s;
   }
 
   function mount(container, opts) {
@@ -244,18 +252,20 @@
     }
 
     const models = bundles.map((W, i) => {
-      // The default export is already built around the shipped bundle; reusing
+      // The default export is already built around the 5-mask bundle; reusing
       // it saves rebuilding a megabyte of precomputed cos/sin for no reason.
       const net = (W === NET.weights) ? NET : NET.buildNet(W);
       const prov = W.provenance || {};
       return {
         net, prov,
         name: prov.label || `Model ${i + 1}`,
-        cls: prov.shipped === false ? "cand" : "ship",
+        // Position, not status: the board's first column is its baseline and the
+        // rest are set against it. Nothing here reads `shipped`.
+        cls: i === 0 ? "base" : "alt",
       };
     });
-    // "Not comparable to X" needs an X: the shipped model on this board, if any.
-    const reference = (models.find((m) => m.prov.shipped) || {}).prov || null;
+    // "Same measurement as X" needs an X, and it is the baseline column.
+    const reference = models.length ? models[0].prov : null;
     const lead = models[0].net;
 
     const root = document.createElement("div");
@@ -264,8 +274,8 @@
       <div class="dc-box">
         <h4>Pick a digit</h4>
         <p class="sub">${lead.nGallery} from the held-back MNIST test set, deliberately stocked
-        with ones the shipped network gets <em>wrong</em>, which are the interesting
-        ones. Or draw your own and watch both machines follow the stroke.</p>
+        with ones the ${models[0].name} column gets <em>wrong</em>, which are the
+        interesting ones. Or draw your own and watch both machines follow the stroke.</p>
         <div class="dc-source"></div>
         <p class="dc-truth"></p>
         <p class="dc-wait">Still drawing. Both machines run when you pause.</p>

@@ -35,7 +35,7 @@ BUDGET = {
     "physics.html": 70,       # prose + the diffraction explorer; the cheap one
     "chip.html": 150,         # the mesh topology plate; the analogy widget is gone
     "tolerance.html": 200,    # six error widgets sharing one mask, seven figures
-    "optics.html": 1150,      # two models (one 56 masks at 4 bits) + the candidate budget
+    "optics.html": 1150,      # two models (one 56 masks at 4 bits) + the 56-mask budget
 }
 
 #: The whole site, as a reader walking the sequential path would meet it. Five

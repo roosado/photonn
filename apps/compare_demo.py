@@ -1,10 +1,10 @@
 """Inline the multi-model comparison widget for embedding.
 
 Mirrors :mod:`apps.d2nn_demo`, but carries *several* trained networks at once:
-by default the shipped 5-mask model and the 56-mask candidate from the optics
-sweep's deliverable retrain. The candidate's phases are 8-bit (see
+by default the 5-mask model and the 56-mask one from the optics sweep's
+deliverable retrain. The 56-mask model's phases are 4-bit (see
 :mod:`apps.web_bundle`), which is what keeps a network with eleven times the
-parameters to under three times the download.
+parameters to under six times the download.
 
 Which bundles a board carries is a page-level choice, so it is a parameter here
 rather than a fact baked into the widget: ``models`` names keys of
@@ -27,16 +27,19 @@ from apps.diffraction_explorer import mount_script, read_web_asset
 
 #: Weight bundles a board can carry: key -> (web asset, the window global it sets).
 #: The globals are derived from the filenames by ``apps.web_bundle.js_global``.
+#: Keys are internal handles; what a reader sees is the bundle's own ``label``,
+#: which names a model by its depth.
 BUNDLES = {
     "shipped": ("d2nn_weights.js", "D2NN_WEIGHTS"),
     "sweep": ("d2nn_sweep_weights.js", "D2NN_SWEEP_WEIGHTS"),
     "deep": ("d2nn_deep_weights.js", "D2NN_DEEP_WEIGHTS"),
 }
 
-#: The shipped model against the deepest trained one -- the sharpest contrast the
+#: The 5-mask model against the deepest trained one -- the sharpest contrast the
 #: sweep supports, and the only pair whose two accuracies were measured the same
-#: way. The 14-mask ``sweep`` bundle stays available for a fuller three-column
-#: telling of the sweep itself.
+#: way. The first key is the board's baseline: it is captioned without a
+#: comparison line, and the others are read against it. The 14-mask ``sweep``
+#: bundle stays available for a fuller three-column telling of the sweep itself.
 DEFAULT_MODELS = ("shipped", "deep")
 
 
@@ -126,7 +129,7 @@ _PAGE = """<!doctype html>
 <body>
 <div class="wrap">
   <h1>Two machines, one digit</h1>
-  <p class="sub">The shipped diffractive network and the sweep's deeper candidate, both running
+  <p class="sub">The 5-mask diffractive network and the sweep's 56-mask one, both running
   live on the digit you pick.</p>
   <div id="compare"></div>
 </div>

@@ -23,7 +23,7 @@ They read in order, and the topbar lists all five:
    tolerance curve, and the one number that matters. Closes on the ranking: five sources are
    comfortable, crosstalk fails by 4×, and geometry is not modelled at all.
 5. **`optics.html`** — what scaling buys, and where it stops. The depth-vs-accuracy chart, the
-   shipped 5-mask model running beside the unshipped 56-mask candidate on one digit, what the
+   5-mask model running beside the 56-mask one on one digit, what the
    extra masks cost in tolerance, and then the wall: a mask stack is one linear operator, so
    depth converges rather than compounds, and the way through is a nonlinearity.
 
@@ -49,7 +49,7 @@ exactly (`tests/test_d2nn_crosscheck.py`).
 | `explorer.js` | physics | the diffraction explorer |
 | `errors.js` | tolerance | **six** error-mechanism widgets, one per source |
 | `scaling.js` | optics | accuracy against mask count |
-| `d2nn_compare.js` | optics | shipped vs candidate, one digit |
+| `d2nn_compare.js` | optics | 5 masks vs 56 masks, one digit |
 | `analogy.js` | *(none)* | kept for `apps/analogy_demo.py`; the site no longer mounts it |
 
 `errors.js` is **mechanism only**: it never runs the classifier and computes no accuracy, so

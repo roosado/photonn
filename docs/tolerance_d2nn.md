@@ -90,7 +90,7 @@ curves, a confusion matrix, and a spatial sensitivity map.
    did not.
 
    > **Retracted as a general claim, 2026-08-08.** It holds for *more training*
-   > and does not generalise to *more optics*. A 56-mask candidate scoring 0.9040
+   > and does not generalise to *more optics*. A 56-mask network scoring 0.9040
    > is measurably more fragile on three of six sources — see
    > [A deeper network is a more fragile one](#a-deeper-network-is-a-more-fragile-one)
    > below. The distinction is that the 12k → 60k retrain changed only the fitting,
@@ -101,17 +101,17 @@ loss (coupled) ≫ wavelength ≈ quantization.** Unchanged from the 12k model.
 
 ## A deeper network is a more fragile one
 
-*Measured 2026-08-08 against an unshipped candidate; nothing below describes the
-shipped design.* The optics sweep found that spending a fixed diffractive reach
+*Measured 2026-08-08 against the 56-mask network; nothing below describes the
+5-mask design.* The optics sweep found that spending a fixed diffractive reach
 budget on more masks buys a great deal of accuracy (`phase2_dnn.md`), and a
 **56-mask, 0.5263 mm** network trained on the full 60 000 for 25 epochs reaches
-**0.9040** on the frozen test set against the shipped 5-mask model's 0.7990. The
+**0.9040** on the frozen test set against the 5-mask model's 0.7990. The
 budget was re-run against it — via `run_error_budget(opts)` with `opts.handoffPath`,
-so the shipped handoff was never touched — to ask what that accuracy costs.
+so the 5-mask handoff was never touched — to ask what that accuracy costs.
 
-Every edge re-measured against the candidate's own stricter bar (0.8588):
+Every edge re-measured against the 56-mask network's own stricter bar (0.8588):
 
-| Source | Shipped, 5 masks | Candidate, 56 masks | Change |
+| Source | 5 masks | 56 masks | Change |
 |---|---|---|---|
 | **Thermal / pixel crosstalk** | holds 0.25 px, fails 0.5 | holds **0.25 px**, fails 0.5 | unchanged — still binding |
 | Per-pixel phase error | holds 0.3 rad, fails 0.5 | holds **0.15 rad**, fails 0.2 | **2× tighter** |
@@ -124,13 +124,13 @@ Every edge re-measured against the candidate's own stricter bar (0.8588):
 tighter per-element loss.** That is the trade this project exists to quantify, and
 it is a more useful result than a clean win would have been.
 
-**This table is why the candidate is labelled "not shipped" in the browser.** Since
-2026-08-09 it runs live on the optics page beside the shipped model, on the same
+**This table is the caveat the browser carries beside the 56-mask number.** Since
+2026-08-09 it runs live on the optics page beside the 5-mask model, on the same
 digits — so its number is easy to read as a straight upgrade. It is not one. The
 accuracy is real and measured the same way as the headline; what it costs is a
-build tolerance this project has no evidence anyone can hit. See
-[`phase2_dnn.md`](phase2_dnn.md) for how that caveat is carried in the bundle
-rather than written into the page.
+build tolerance this project has no evidence anyone can hit. That cost, not any
+status, is what its caption states. See [`phase2_dnn.md`](phase2_dnn.md) for how
+it is carried in the bundle rather than written into the page.
 
 Three readings worth separating:
 
@@ -146,14 +146,14 @@ Three readings worth separating:
    it already passed by nine orders of magnitude.
 
 3. **Loss points opposite ways in its two units, and the per-element one governs.**
-   In total the candidate tolerates *more* attenuation — 12 dB against 5 dB, again
+   In total the 56-mask network tolerates *more* attenuation — 12 dB against 5 dB, again
    from the lower knee — but that larger budget is divided among 11× more elements,
    so the per-mask requirement tightens to 0.214 dB. A datasheet quotes per element,
    and 0.214 dB/mask sits at the optimistic end of the 0.2–1 dB realistic range in
    [`parameter_sources.md`](parameter_sources.md). Loss moves from comfortable to
    marginal.
 
-**Required precision for the candidate**, to hold ≥ 0.8588: crosstalk ≤ 0.25 px,
+**Required precision for the 56-mask network**, to hold ≥ 0.8588: crosstalk ≤ 0.25 px,
 phase ≤ 0.15 rad (λ/42), ≥ 4-bit phase control, ≤ 0.214 dB per mask if operating at
 the shot-noise knee, ≥ 0.1 pW × 1 ms, wavelength ≤ 20 nm.
 
@@ -171,7 +171,7 @@ queued as error sources — plausibly bind this design before anything above doe
   total — a factor of 400 000 in power — so every point sat far below the
   shot-noise knee and read chance. It now spans a fixed 0–30 dB of **total** loss
   and divides by mask count, which is meaningful at any depth. The earlier reading
-  of "1 dB/mask" for the candidate was an artifact and is not quoted anywhere.
+  of "1 dB/mask" for the 56-mask network was an artifact and is not quoted anywhere.
 - **The operating point stayed at 1 pW, and that took checking.** The knee moved
   down to 0.1 pW, and the note in `run_error_budget.m` said to follow it. Following
   it would have been wrong: at 0.1 pW the zero-loss baseline is already 0.8851
@@ -214,15 +214,15 @@ that behaviour.
 
 The stressed matrix's σ is **derived from the model's own measured phase edge** (7/6 of
 the largest σ that still holds), not fixed. It reproduces 0.35 rad exactly on the shipped
-design, whose edge is 0.3, so that figure is unchanged. On the 56-mask candidate, whose
+design, whose edge is 0.3, so that figure is unchanged. On the 56-mask network, whose
 edge is 0.15, it gives 0.175 rad and an accuracy of 0.7915. The previous hardcoded
-0.35 rad put the candidate nearly twice past its failure point, where it read 0.108 —
+0.35 rad put the 56-mask network nearly twice past its failure point, where it read 0.108 —
 chance — and the matrix showed only collapse onto classes 5 and 6.
 
 **The site uses the ideal matrix for both models.** `/` shows the shipped design's
-(0.7990) and `/optics` shows the candidate's (0.9040), so the two are directly
+(0.7990) and `/optics` shows the 56-mask network's (0.9040), so the two are directly
 comparable and the figure is answering "what did depth buy?" rather than duplicating
-the tolerance curves printed beside it. The candidate's stressed matrix stays in
+the tolerance curves printed beside it. The 56-mask stressed matrix stays in
 `figures_candidate_L56/` as a record of the run; it is no longer published.
 
 ## Caveats
@@ -244,10 +244,10 @@ cd photonn-hw
 addpath(pwd)
 run_error_budget                    % full run (~30 min on a laptop CPU)
 run_error_budget(struct('quick',true))   % fast reduced run
-run_error_budget(struct('handoffPath', '../exports/other.h5'))   % a candidate model
+run_error_budget(struct('handoffPath', '../exports/other.h5'))   % any other model
 ```
 
 Deterministic given the recorded seeds; the ideal baseline must read **0.7990** or
 the forward model is misaligned with the handoff. `handoffPath` lets a retrained
-candidate be scored *before* it is promoted, which is how the 0.7990 masks were
-checked while `exports/d2nn_phase2.h5` still held the previous ones.
+model be scored without touching `exports/d2nn_phase2.h5`, which is how the 0.7990
+masks were checked while that file still held the previous ones.

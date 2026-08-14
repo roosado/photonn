@@ -110,9 +110,9 @@ PAGES = (
         "optics", "optics.html", "Going deeper",
         "photonn &middot; how much better could the optics be?",
         "How much better could the optics be?",
-        "Live work: what the shipped optical design leaves on the table, and what a "
+        "Live work: what the 5-mask optical design leaves on the table, and what a "
         "fifty-six-mask network costs in fabrication tolerance to collect it.",
-        "Live work, not a result: what the shipped design leaves on the table, and what a "
+        "Live work, not a result: what the 5-mask design leaves on the table, and what a "
         "fifty-six-mask network costs in fabrication tolerance to collect it.",
     ),
 )
@@ -133,11 +133,11 @@ FIGURES = {
     "confusion_ideal": "photonn-hw/figures/confusion_ideal.png",
     "confusion": "photonn-hw/figures/confusion_phase.png",
     "sensitivity": "photonn-hw/figures/sensitivity_map.png",
-    # The same budget re-run against the unshipped 56-mask candidate. These make
+    # The same budget re-run against the 56-mask network. These make
     # "depth costs tolerance" showable rather than merely argued -- 91 KB for all
     # seven, because AVIF wins on every one of them.
     #
-    # The candidate's sensitivity map is deliberately absent. It is one panel per
+    # The 56-mask sensitivity map is deliberately absent. It is one panel per
     # mask in a single row, so at 56 masks the PNG is 16139 x 341 -- an aspect
     # ratio of 47:1, which is 15 px tall inside a grid cell and 30 px tall
     # full-width. There is no web size at which it can be read, so the page says
@@ -1381,7 +1381,7 @@ CHIP_BODY = r"""
 
 # ---------------------------------------------------------------------- TOLERANCE
 # The destination. The project's central question gets its own page, and the eight
-# candidate-L56 figures put the "depth costs tolerance" trade beside the shipped
+# 56-mask figures put the "depth costs tolerance" trade beside the 5-mask
 # curves -- the first time that argument is shown rather than only asserted.
 TOLERANCE_BODY = r"""
 <div class="spectral-rule"></div>
@@ -1627,8 +1627,8 @@ TOLERANCE_BODY = r"""
         line where the number is defined. Anything that is a modelling choice is labelled as
         one.</p></div>
       <div><h3>Reproducible</h3><p>The same seeds give the same answers. The error-free baseline must
-        come out at 0.7990 or the two models have drifted apart. A new candidate can be scored
-        without disturbing the shipped one.</p></div>
+        come out at 0.7990 or the two models have drifted apart. A new model can be scored
+        without disturbing the 5-mask one.</p></div>
     </div>
     <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
     Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
@@ -1656,13 +1656,13 @@ OPTICS_BODY = r"""
     <p class="eyebrow">Live work &middot; not a result</p>
     <h1>How much better could the <em>optics</em> be?</h1>
     <div class="underbar"></div>
-    <p class="standfirst">The shipped network scores 0.799 and cannot be pushed further by training.
+    <p class="standfirst">The 5-mask network scores 0.799 and cannot be pushed further by training.
     After 40 passes through 60,000 images it still cannot pull ahead even on the images it trained
     on. So the remaining levers are physical: <b>how far apart the masks sit</b>, and <b>how many
-    there are</b>. This page is the running record of measuring them. <b>Nothing here is shipped
-    yet.</b></p>
+    there are</b>. This page is the running record of measuring them. <b>The numbers here move as more
+    arrangements finish.</b></p>
     <div class="stat-strip">
-      <div class="stat"><span class="v">0.771</span><span class="l">the shipped 5-mask layout, re-run under the quick comparison protocol below</span></div>
+      <div class="stat"><span class="v">0.771</span><span class="l">the 5-mask layout, re-run under the quick comparison protocol below</span></div>
       <div class="stat"><span class="v">0.852</span><span class="l">14 masks, same quick protocol, so directly comparable to 0.771</span></div>
       <div class="stat"><span class="v">0.904</span><span class="l">56 masks trained in full, so directly comparable to the 0.799 headline</span></div>
     </div>
@@ -1673,7 +1673,7 @@ OPTICS_BODY = r"""
       <div><p class="eyebrow">What scaling actually looks like</p>
       <h2>Eleven times the masks, ten points of accuracy</h2></div></div>
     <div class="prose col">
-      <p>The shipped network uses five masks. The obvious question is what happens with more, and
+      <p>The network on the front page uses five masks. The obvious question is what happens with more, and
       the honest way to ask it is to hold everything else fixed: same total amount of light
       spreading, same grid, same task, only the number of plates changing. That sweep has been run
       from 2 masks up to 80.</p>
@@ -1709,21 +1709,21 @@ OPTICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">See both machines run</p>
-      <h2>The shipped network and the deep candidate, same digit</h2></div></div>
+      <h2>The 5-mask and 56-mask networks, same digit</h2></div></div>
     <div class="prose col">
       <p>Since more masks keep paying, the deepest arrangement worth the computer time was trained
       properly rather than merely ranked: <strong>56 masks</strong> at 0.53&nbsp;mm gaps, the full
-      60,000 images, then scored once against the same held-back test images the shipped model is
+      60,000 images, then scored once against the same held-back test images the 5-mask model is
       quoted from. It reaches <strong>0.9040</strong> against <strong>0.7990</strong>. Both machines
       run here, live, on whichever digit you pick or one you draw, using the same physics as the
       Python original and checked against PyTorch to better than 10<sup>&minus;3</sup>.</p>
       <p>The gallery is the one the front page uses, deliberately stocked with <strong>six digits the
-      shipped network gets wrong</strong>. The deep network gets three of those right and breaks none
-      of the ten the shipped one already had. The three it still misses, it misses <em>in the same
-      way</em>, calling them the same wrong digit as the shipped model does, which hints that those
+      5-mask network gets wrong</strong>. The 56-mask network gets three of those right and breaks none
+      of the ten the 5-mask one already had. The three it still misses, it misses <em>in the same
+      way</em>, calling them the same wrong digit as the 5-mask model does, which hints that those
       images are hard for optics in general rather than for this particular set of masks.</p>
       <p>Both machines are fed from <em>one</em> input, so the two columns differ in their optics and
-      nothing else. Watch the detector plane rather than the answer. The shipped network spreads
+      nothing else. Watch the detector plane rather than the answer. The 5-mask network spreads
       light across the whole plane and picks a weak winner out of it, while the deep stack drops the
       light inside the boxes. That is the difference between about 60% and <strong>79%</strong> of
       the incoming photons reaching a detector at all, and it is the same steering that the accuracy
@@ -1750,10 +1750,10 @@ OPTICS_BODY = r"""
 
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="compare"></div></div>
-      <p class="cap">Live. The shipped 5-mask network and the unshipped 56-mask candidate, one digit,
+      <p class="cap">Live. The 5-mask and 56-mask networks, one digit,
       both computed here. Every caption in the board is generated from the model files&rsquo; own
-      records of how they were trained, so promoting a model means regenerating a file rather than
-      editing this page.</p>
+      records of how they were trained, so changing what a model claims means regenerating a file
+      rather than editing this page.</p>
     </div>
 
     <h3 class="sub-h">What 56 masks actually looks like</h3>
@@ -1768,7 +1768,7 @@ OPTICS_BODY = r"""
       pictures. And it does not follow your pen: redrawing means a full pass through
       <strong>57 gaps</strong>, so it waits for you to press <span class="q">Refresh</span> rather
       than making the whole page stutter for a picture nobody studies mid-stroke.</p>
-      <p>The proportions are the point. The shipped design is 18&nbsp;mm of optics across an opening
+      <p>The proportions are the point. The 5-mask design is 18&nbsp;mm of optics across an opening
       of 1.02&nbsp;mm; this one is <strong>30&nbsp;mm across the same opening</strong>, a 29:1 needle
       that has to be squashed almost tenfold just to fit on a screen. Past about forty plates at this
       spacing, calling it a stack of separate masks is already a stretch. It is closer to a solid
@@ -1778,7 +1778,7 @@ OPTICS_BODY = r"""
 
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="stage3d"></div></div>
-      <p class="cap">Live. The 56-mask candidate, fed the same digit as the board above. A sample of
+      <p class="cap">Live. The 56-mask network, fed the same digit as the board above. A sample of
       the planes, refreshed on demand; the haze between plates is the real light at those in-between
       depths, computed rather than shaded in.</p>
     </div>
@@ -1787,15 +1787,15 @@ OPTICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">What the extra masks cost</p>
-      <h2>The same budget, re-run against the deep candidate</h2></div></div>
+      <h2>The same budget, re-run against the 56-mask network</h2></div></div>
     <div class="prose col">
       <p>The <a class="link" href="@@HREF_tolerance@@">error budget &rarr;</a> was re-run in full
-      against the 56-mask candidate, scored against its own correspondingly stricter pass mark of
-      0.8588. Every number below is measured the same way as the shipped design&rsquo;s.</p>
+      against the 56-mask network, scored against its own correspondingly stricter pass mark of
+      0.8588. Every number below is measured the same way as the 5-mask design&rsquo;s.</p>
     </div>
     <div class="tbl-wrap col">
       <table class="tbl">
-        <thead><tr><th>Error source</th><th>Shipped &middot; 5 masks</th><th>Candidate &middot; 56 masks</th><th>Change</th></tr></thead>
+        <thead><tr><th>Error source</th><th>5 masks</th><th>56 masks</th><th>Change</th></tr></thead>
         <tbody>
           <tr><td><strong>Crosstalk between pixels</strong></td><td>holds 0.25&nbsp;px, fails 0.5</td><td>holds <strong>0.25&nbsp;px</strong>, fails 0.5</td><td><strong>unchanged, still binding</strong></td></tr>
           <tr><td>Each pixel&rsquo;s delay set wrong</td><td>holds 0.3&nbsp;rad, fails 0.5</td><td>holds <strong>0.15&nbsp;rad</strong>, fails 0.2</td><td>2&times; tighter</td></tr>
@@ -1815,7 +1815,7 @@ OPTICS_BODY = r"""
       by the same steering the accuracy gain comes from. More light means more tolerance for dimming
       and for drift. It got sturdier exactly where it already had nine orders of magnitude in hand.</p>
       <p><strong>Lost light points in opposite directions depending on how you count.</strong> Totalled
-      over the machine the candidate tolerates <em>more</em>, 12&nbsp;dB against 5. But that budget is
+      over the machine the 56-mask network tolerates <em>more</em>, 12&nbsp;dB against 5. But that budget is
       divided among eleven times as many surfaces, so the per-plate requirement tightens to
       0.214&nbsp;dB, which sits at the optimistic end of a realistic 0.2&ndash;1&nbsp;dB range.
       Datasheets quote per surface, so the per-surface number is the one that governs.</p>
@@ -1824,9 +1824,8 @@ OPTICS_BODY = r"""
         <p class="body">Ten and a half points of accuracy cost <strong>twice the precision on every
         delay, one more bit per pixel, and 4.7&times; less tolerance for lost light</strong>, while
         the one error that already fails against real hardware <strong>does not move at all</strong>.
-        This is why the deep model is labelled &ldquo;not shipped&rdquo; wherever it appears. Its
-        number is real and measured exactly like the headline, but what it asks of the manufacturing
-        is something this project has no evidence anyone can deliver.</p>
+        Its number is real and measured exactly like the headline, but what it asks of the
+        manufacturing is something this project has no evidence anyone can deliver.</p>
       </div>
       <p>There is also something the budget cannot say. At 0.53&nbsp;mm spacing a
       &plusmn;10&nbsp;&micro;m positioning error goes from 0.33% of the gap to 1.9% of it, and past
@@ -1835,13 +1834,13 @@ OPTICS_BODY = r"""
       the budget covers component errors only.</p>
     </div>
     <div class="plate-grid reveal">
-      <figure class="plate"><img src="@@FIG_cand_crosstalk@@" alt="Deep model: accuracy against crosstalk" loading="lazy"><figcaption><span class="fign">Fig 1</span>Deep model, crosstalk. The same limit as the shipped design.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_crosstalk@@" alt="Deep model: accuracy against crosstalk" loading="lazy"><figcaption><span class="fign">Fig 1</span>Deep model, crosstalk. The same limit as the 5-mask design.</figcaption></figure>
       <figure class="plate"><img src="@@FIG_cand_phase@@" alt="Deep model: accuracy against per-pixel delay error" loading="lazy"><figcaption><span class="fign">Fig 2</span>Deep model, delay error. Twice as demanding.</figcaption></figure>
       <figure class="plate"><img src="@@FIG_cand_detector@@" alt="Deep model: accuracy against detector noise" loading="lazy"><figcaption><span class="fign">Fig 3</span>Deep model, detector noise. Ten times more forgiving.</figcaption></figure>
       <figure class="plate"><img src="@@FIG_cand_loss@@" alt="Deep model: accuracy against optical loss" loading="lazy"><figcaption><span class="fign">Fig 4</span>Deep model, lost light, totalled across 56 plates.</figcaption></figure>
       <figure class="plate"><img src="@@FIG_cand_wavelength@@" alt="Deep model: accuracy against wavelength drift" loading="lazy"><figcaption><span class="fign">Fig 5</span>Deep model, wavelength drift. Twice as forgiving.</figcaption></figure>
       <figure class="plate"><img src="@@FIG_cand_quant@@" alt="Deep model: accuracy against bits of control" loading="lazy"><figcaption><span class="fign">Fig 6</span>Deep model, delay steps. One bit more demanding.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_confusion_ideal@@" alt="Deep model: confusion matrix with no error applied, accuracy 0.904" loading="lazy"><figcaption><span class="fign">Fig 7</span>Deep model at its best, nothing perturbed. Accuracy <strong>0.9040</strong>, against 0.7990 for the shipped design on the same 2,000 digits.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_confusion_ideal@@" alt="Deep model: confusion matrix with no error applied, accuracy 0.904" loading="lazy"><figcaption><span class="fign">Fig 7</span>Deep model at its best, nothing perturbed. Accuracy <strong>0.9040</strong>, against 0.7990 for the 5-mask design on the same 2,000 digits.</figcaption></figure>
     </div>
     <div class="prose col">
       <p>Fig&nbsp;7 is the odd one out in that grid: no error is applied to it. The six curves
@@ -1850,7 +1849,7 @@ OPTICS_BODY = r"""
       the same way as the
       <a class="link" href="@@HREF_index@@">front page&rsquo;s matrix &rarr;</a> so the two can be
       set side by side.</p>
-      <p><strong>What depth fixes is the digits that were collapsing onto 3.</strong> On the shipped
+      <p><strong>What depth fixes is the digits that were collapsing onto 3.</strong> On the 5-mask
       design a 5 is called a 3 forty-one times and an 8 is called a 3 thirty-seven times; those are
       its two worst cells by a wide margin. Deep, they fall to <strong>6 and 11</strong>, and 5 goes
       from right 109 times out of 186 to <strong>164</strong>. Nearly the whole ten-point gain is
@@ -1863,7 +1862,7 @@ OPTICS_BODY = r"""
       roughly where it was. That is the shape of a better approximation of the same limited
       operation, which is the subject of the next section.</p>
       <p>None of that says anything about fragility, and the figure is not evidence either way.
-      For the record, at the 0.35&nbsp;rad of delay error the shipped design merely degrades under,
+      For the record, at the 0.35&nbsp;rad of delay error the 5-mask design merely degrades under,
       this model is at <strong>chance</strong>, predicting almost nothing but 5 and 6 for every
       input. The table above is where that lives.</p>
     </div>
@@ -1938,7 +1937,7 @@ OPTICS_BODY = r"""
       <p>The sweep accuracies come from a deliberately <strong>short protocol</strong>, 20,000
       images for 12 passes, because the question there is which arrangement wins rather than what
       final accuracy it would reach. They are <strong>not comparable to the 0.799 headline</strong>,
-      which came from 60,000 images and 40 passes. The fair comparison for the shipped geometry
+      which came from 60,000 images and 40 passes. The fair comparison for the 5-mask geometry
       under the short protocol is <strong>0.771</strong>. The 56-mask model is the exception: it was
       trained at the full budget and scored on the held-back test images, so its 0.9040 and the
       headline 0.7990 are the same measurement.</p>
@@ -1993,8 +1992,7 @@ OPTICS_BODY = r"""
         saves a checkpoint per arrangement; <span class="q">apps/sweep_report.py</span> writes the
         figure and the data this page plots. Fixed random seeds throughout.</p></div>
       <div><h3>Status</h3><p>Live work, not a result. The numbers here move as more arrangements
-        finish. The shipped design and everything downstream of it stay exactly where they are until
-        a promotion is actually decided.</p></div>
+        finish. The 5-mask design and everything downstream of it stay exactly where they are.</p></div>
     </div>
     <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
     Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
@@ -2087,7 +2085,7 @@ def render() -> dict:
     opt = opt.replace("@@SCALING_MOUNT@@", mount_script(
         "scaling", "window.PhotonnScaling.mount(el);"))
     opt = opt.replace("@@COMPARE_BUNDLE@@", compare_bundle(stage=True))
-    # Open on a digit the shipped model gets wrong and the candidate does not.
+    # Open on a digit the 5-mask model gets wrong and the 56-mask one does not.
     # The stage draws the deep column as a machine; it is fed the same digit the
     # board is, and decides for itself when to run the forward pass.
     opt = opt.replace("@@COMPARE_MOUNT@@", compare_mount(

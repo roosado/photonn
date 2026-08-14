@@ -326,12 +326,12 @@ var OPTICS_SWEEP = {
     {
       "layers": 5,
       "acc": 0.799,
-      "label": "shipped"
+      "label": "5 masks"
     },
     {
       "layers": 56,
       "acc": 0.904,
-      "label": "deep candidate"
+      "label": "56 masks"
     }
   ]
 };

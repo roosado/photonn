@@ -312,8 +312,8 @@ def build_js(doc, out=OUT_JS):
         # makes the scaling curve legible, because the sweep's own accuracies are
         # depressed by its short protocol and must never be compared to them.
         "full": [
-            {"layers": 5, "acc": 0.7990, "label": "shipped"},
-            {"layers": 56, "acc": 0.9040, "label": "deep candidate"},
+            {"layers": 5, "acc": 0.7990, "label": "5 masks"},
+            {"layers": 56, "acc": 0.9040, "label": "56 masks"},
         ],
     }
 

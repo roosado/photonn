@@ -29,15 +29,21 @@ from __future__ import annotations
 import base64
 import functools
 import io
+import json
 import os
 from typing import NamedTuple
 
 from PIL import Image
 
-from apps.analogy_demo import analogy_bundle, analogy_mount
 from apps.compare_demo import compare_bundle, compare_mount
 from apps.d2nn_demo import d2nn_bundle, d2nn_mount
-from apps.diffraction_explorer import explorer_bundle, explorer_mount, mount_queue_bundle
+from apps.diffraction_explorer import (
+    explorer_bundle,
+    explorer_mount,
+    mount_queue_bundle,
+    mount_script,
+    read_web_asset,
+)
 from apps.optics_demo import optics_bundle, optics_mount
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -124,7 +130,8 @@ FIGURES = {
     "tol_crosstalk": "photonn-hw/figures/tolerance_crosstalk.png",
     "tol_detector": "photonn-hw/figures/tolerance_detector.png",
     "tol_loss": "photonn-hw/figures/tolerance_loss.png",
-    "confusion": "photonn-hw/figures/confusion_phase035.png",
+    "confusion_ideal": "photonn-hw/figures/confusion_ideal.png",
+    "confusion": "photonn-hw/figures/confusion_phase.png",
     "sensitivity": "photonn-hw/figures/sensitivity_map.png",
     # The same budget re-run against the unshipped 56-mask candidate. These make
     # "depth costs tolerance" showable rather than merely argued -- 91 KB for all
@@ -141,7 +148,7 @@ FIGURES = {
     "cand_crosstalk": "photonn-hw/figures_candidate_L56/tolerance_crosstalk.png",
     "cand_detector": "photonn-hw/figures_candidate_L56/tolerance_detector.png",
     "cand_loss": "photonn-hw/figures_candidate_L56/tolerance_loss.png",
-    "cand_confusion": "photonn-hw/figures_candidate_L56/confusion_phase035.png",
+    "cand_confusion": "photonn-hw/figures_candidate_L56/confusion_phase.png",
 }
 
 # A figure is encoded at roughly 2x the CSS width it is actually displayed at,
@@ -343,6 +350,21 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .q{font-family:var(--mono);font-size:.92em;background:var(--surface-2);
   border:1px solid var(--border);border-radius:5px;padding:.05em .38em;color:var(--ink);
   white-space:nowrap;}
+/* Mathematics is MathML, rendered by the browser itself. Inline expressions sit in
+   the run of the sentence; display ones get their own centred line and a rule-free
+   band so a long operator product is not competing with the prose around it. */
+   Identifier styling is left to the browser on purpose: MathML already italicises a
+   single-letter <mi> and leaves a multi-letter one upright, which is exactly the
+   convention wanted here (M is a matrix, exp is a function name).
+
+   NEVER set `display` on a <math> element. MathML lays out as `display: math` (or
+   `block math`), and overriding it with plain `block` drops the element back into CSS
+   block layout, which puts every child on its own line -- a nine-term operator product
+   becomes nine stacked rows. The scroll container therefore lives on a wrapper. */
+math{font-size:1.06em;color:var(--ink);}
+.eq{margin:1.15rem 0;text-align:center;overflow-x:auto;overflow-y:hidden;max-width:100%;
+  padding:.1rem 0;}
+.eq math{font-size:1.2em;}
 a.link{color:var(--beam);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--beam) 40%,transparent);}
 a.link:hover{border-bottom-color:var(--beam);}
 a.link:focus-visible{outline:2px solid var(--beam);outline-offset:2px;border-radius:2px;}
@@ -486,6 +508,177 @@ def next_link(key: str, kicker: str = "Next") -> str:
     )
 
 
+# --------------------------------------------------------------------------- MATH
+# Mathematics is MathML. Every browser in use renders it natively (Chromium 109+,
+# Firefox and Safari all ship MathML Core), so real notation -- stacked fractions,
+# actual roots, proper sub- and superscripts -- costs a dependency of exactly
+# nothing. KaTeX would be ~300 KB to render fifteen short expressions.
+#
+# What MathML does cost is verbosity: written out by hand it is unreadable at any
+# length. So expressions are written below in a compact notation and expanded by
+# `mrow`. Tokens are space-separated; `a_b` is a subscript, `a^b` a superscript,
+# anything in _MATH_OPS is an operator, a leading digit makes a number, and
+# everything else is an identifier. Fractions and roots nest, which a flat token
+# stream cannot express, so they take the explicit helpers.
+#
+# Note this is *only* for mathematics. Code and UI identifiers keep the mono pill
+# (`.q`): `check_sampling` is a function name, not a variable, and italicising it
+# as though it were one would be wrong.
+
+_MATH_OPS = {
+    "=", "+", "&minus;", "&middot;", "&times;", "(", ")", "|", "&dagger;",
+    "&#8827;", "&gt;", "&lt;", ",", "&hellip;", "/",
+}
+
+
+def _mtok(token: str) -> str:
+    """Expand one compact token into one MathML element."""
+    if token in _MATH_OPS:
+        return f"<mo>{token}</mo>"
+    if "_" in token:
+        base, sub = token.split("_", 1)
+        return f"<msub>{_mtok(base)}{_mtok(sub)}</msub>"
+    if "^" in token:
+        base, sup = token.split("^", 1)
+        return f"<msup>{_mtok(base)}{_mtok(sup)}</msup>"
+    if token[0].isdigit():
+        return f"<mn>{token}</mn>"
+    return f"<mi>{token}</mi>"
+
+
+def mrow(spec: str) -> str:
+    """Expand a compact expression into MathML, with no <math> wrapper."""
+    return "".join(_mtok(t) for t in spec.split())
+
+
+def mfrac(num: str, den: str) -> str:
+    return f"<mfrac>{mrow(num)}{mrow(den)}</mfrac>"
+
+
+def msqrt(*parts: str) -> str:
+    return "<msqrt>" + "".join(parts) + "</msqrt>"
+
+
+def mathml(body: str, display: bool = False) -> str:
+    """Wrap already-expanded MathML in a <math> element.
+
+    ``display=True`` gives the expression its own centred line, which is what the
+    long ones need; the default sits inline in the run of the sentence.
+
+    A display expression is wrapped in ``div.eq`` rather than styled directly,
+    because the horizontal scroll a wide equation needs on a narrow screen cannot
+    go on the <math> element itself: any `display` or `overflow` set there costs
+    MathML its own layout mode. The wrapper carries both.
+    """
+    if not display:
+        return f"<math>{body}</math>"
+    return f'<div class="eq"><math display="block">{body}</math></div>'
+
+
+#: name -> rendered MathML, substituted into page bodies as @@MATH_name@@.
+MATH = {
+    # /physics -- the propagator
+    "asm": mathml(
+        mrow("H = exp ( i 2 &pi; z")
+        + msqrt(mfrac("1", "&lambda;^2") + mrow("&minus; f^2"))
+        + mrow(")"),
+        display=True,
+    ),
+    "evanescent": mathml(mrow("f^2 &gt;") + mfrac("1", "&lambda;^2")),
+    "zcrit": mathml(mrow("z_crit = N &middot; dx^2 / &lambda;")),
+    "additive": mathml(mrow("H ( z_1 ) &middot; H ( z_2 ) = H ( z_1 + z_2 )")),
+    # /physics -- the linearity argument
+    "linear": mathml(mrow("E_out = M &middot; E_in"), display=True),
+    # "L-1" is a whole expression, not an identifier, so the subscript is a row.
+    "operator": mathml(
+        mrow("M =")
+        + "<msub><mi>P</mi><mi>L</mi></msub><msub><mi>D</mi><mi>L</mi></msub>"
+        + "<msub><mi>P</mi><mrow><mi>L</mi><mo>&minus;</mo><mn>1</mn></mrow></msub>"
+        + "<msub><mi>D</mi><mrow><mi>L</mi><mo>&minus;</mo><mn>1</mn></mrow></msub>"
+        + mrow("&hellip; D_1 P_0"),
+        display=True,
+    ),
+    "score": mathml(mrow("s_c = E_in &dagger; A_c E_in"), display=True),
+    "psd": mathml(
+        mrow("A_c = M &dagger; R_c M &#8827; 0"), display=True
+    ),
+    "psd_sign": mathml(mrow("&#8827; 0")),
+    "intensity": mathml("<msup><mrow><mo>|</mo><mi>E</mi><mo>|</mo></mrow><mn>2</mn></msup>"),
+    "encode": mathml(mrow("exp ( i &middot; &pi; &middot; image )")),
+    "maskphase": mathml(mrow("exp ( i &phi; ( x , y ) )")),
+    # /chip
+    "mzi": mathml(mrow("B &middot; P ( &theta; ) &middot; B &middot; P ( &phi; )")),
+    "svd": mathml(mrow("U &middot; &Sigma; &middot; V &dagger;")),
+    "nmzi": mathml(mrow("n ( n &minus; 1 ) / 2")),
+    "sigma": mathml(mrow("&Sigma;")),
+    "theta": mathml(mrow("&theta;")),
+    "phi": mathml(mrow("&phi;")),
+    # bare symbols carried through the prose
+    "H": mathml(mrow("H")),
+    "M": mathml(mrow("M")),
+    "P": mathml(mrow("P")),
+    "D": mathml(mrow("D")),
+    "z": mathml(mrow("z")),
+    "zcrit_sym": mathml(mrow("z_crit")),
+    # /optics
+    "reach": mathml(mrow("reach = z &middot; &lambda; / ( 2 &middot; dx^2 )")),
+    # /tolerance -- the 95%-of-ideal pass mark
+    "bar": mathml("<mo>&ge;</mo><mn>0.7591</mn>"),
+}
+
+
+def _math(html: str) -> str:
+    """Substitute every @@MATH_name@@ token."""
+    for name, rendered in MATH.items():
+        html = html.replace(f"@@MATH_{name}@@", rendered)
+    return html
+
+
+def error_mask_bundle() -> str:
+    """One real phase mask, for the error widgets on /tolerance.
+
+    Cut out of the committed weights bundle at build time rather than exported to
+    a file of its own, so it cannot drift from the model that ships: there is one
+    copy of the trained phases in the repo and this is a slice of it. Mask 0 of 5,
+    16 KB of 8-bit codes, which decode exactly as ``d2nn.js`` decodes them.
+
+    The widgets need a *real* surface. A synthetic stand-in would blur and
+    quantise differently, and the whole point of them is to show what these errors
+    do to the thing actually being built.
+    """
+    from apps.web_bundle import read_bundle
+
+    w = read_bundle(os.path.join(REPO, "apps", "web", "d2nn_weights.js"))
+    if w["masks_bits"] != 8:
+        raise SystemExit(
+            f"error_mask_bundle expects 8-bit codes, bundle has {w['masks_bits']}"
+        )
+    n = int(w["n"])
+    codes = base64.b64decode(w["masks_b64"])[: n * n]
+    payload = json.dumps({"n": n, "mask_b64": base64.b64encode(codes).decode("ascii")})
+    js = (
+        "(function(){var M=" + payload + ";"
+        "if(typeof window!=='undefined')window.PHOTONN_ERR_MASK=M;"
+        "if(typeof module!=='undefined'&&module.exports)module.exports=M;})();"
+    )
+    return f"<script>\n{js}\n</script>\n<script>\n{read_web_asset('errors.js')}\n</script>"
+
+
+def scaling_bundle() -> str:
+    """The sweep data plus the depth-versus-accuracy chart, inlined."""
+    parts = [read_web_asset("optics_sweep.js"), read_web_asset("scaling.js")]
+    return "\n".join(f"<script>\n{p}\n</script>" for p in parts)
+
+
+def error_mount(container_id: str, kind: str) -> str:
+    """Mount one error-mechanism widget, deferred until the reader nears it."""
+    return mount_script(
+        container_id,
+        f"window.PhotonnErrors.mount(el, {{kind: {json.dumps(kind)}}});",
+        defer=True,
+    )
+
+
 # --------------------------------------------------------------------------- BODY
 # Placeholder tokens (@@...@@) are substituted in render(); avoids CSS/JS brace escaping.
 BODY = r"""
@@ -557,14 +750,8 @@ BODY = r"""
       <strong>linear</strong>: double the input and the output doubles, add two inputs together and
       you get the sum of what each would have produced alone. Exactly one step in the machine breaks
       that rule, and it is the detector, which measures brightness. Brightness is the square of the
-      wave&rsquo;s height (<span class="q">|E|&sup2;</span>), and squaring is not linear. That is
+      wave&rsquo;s height (@@MATH_intensity@@), and squaring is not linear. That is
       the whole computation, and it is also the ceiling on what the computation can do.</p>
-    </div>
-    <div class="stats col">
-      <div class="s"><div class="v">0.799</div><div class="l">test accuracy (chance 0.10)</div></div>
-      <div class="s"><div class="v">5 masks</div><div class="l">81,920 trained phases</div></div>
-      <div class="s"><div class="v">6 gaps</div><div class="l">3&nbsp;mm each, 532&nbsp;nm green light, 128&times;128 grid</div></div>
-      <div class="s"><div class="v">&lt;10<sup>&minus;3</sup></div><div class="l">agreement with the trained PyTorch model</div></div>
     </div>
   </section>
 
@@ -635,7 +822,7 @@ BODY = r"""
       the beam, and it is the step mathematicians call a <em>convolution</em>. <strong>Passing
       through a plate</strong> does the opposite. It touches each point on its own, holding it back
       by the depth etched at that spot and leaving its neighbours alone, which amounts to
-      multiplying each point by <span class="q">exp(i&thinsp;&phi;(x,y))</span>, one delay per
+      multiplying each point by @@MATH_maskphase@@, one delay per
       pixel. Those delays are the only thing training ever adjusts. Alternating the two, spread then
       delay, spread then delay, is exactly what a hologram does. This stack is five holograms that
       training wrote.</p>
@@ -702,7 +889,21 @@ BODY = r"""
       bits of precision, 256 possible settings per pixel, which is what a real device offers anyway,
       and that costs <strong>nothing</strong> measurable: 0.7995 against 0.7990 across 2,000
       digits.</p>
+      <p>The mistakes are not spread evenly, and the pattern below is worth a look before you go
+      hunting for one in the gallery. <strong>1 is almost never missed</strong>, at 240 of 242. The
+      hard class is <strong>5</strong>, which is right only 109 times and is called a <strong>3</strong>
+      on 41 of the rest. <strong>8</strong> goes the same way, landing on 3 thirty-seven times, and
+      <strong>9 and 4</strong> trade places in both directions. Those are shape confusions rather
+      than random ones: light routed by a surface cannot easily separate digits that share a closed
+      loop in the same place.</p>
     </div>
+    <figure class="plate reveal">
+      <img src="@@FIG_confusion_ideal@@" alt="Confusion matrix of the trained network on the held-back test set, accuracy 0.799" loading="lazy">
+      <figcaption><span class="fign">Fig 2</span>Every one of the 2,000 held-back test digits, sorted
+      by what it actually is (rows) against what the optics called it (columns). A perfect machine
+      would put every digit on the diagonal. The bright off-diagonal cells are where this one loses
+      its 20%.</figcaption>
+    </figure>
   </section>
 
   <section class="phase reveal">
@@ -734,7 +935,8 @@ BODY = r"""
     <div class="foot-grid">
       <div><h3>The physics</h3><p>The same diffraction calculation as the Python original, rewritten
         for the browser with no libraries and checked against it to better than
-        10<sup>&minus;6</sup>. Six gaps of air and five plates per answer.</p></div>
+        10<sup>&minus;6</sup>. Six gaps of air and five plates per answer, in 532&nbsp;nm green
+        light on a 128&times;128 grid.</p></div>
       <div><h3>The parameters</h3><p>Exported straight from the trained PyTorch model: 81,920
         delays, stored at the 8&nbsp;bits of precision a real device offers. Nothing is retrained or
         tuned to make the browser version look better.</p></div>
@@ -804,32 +1006,56 @@ PHYSICS_BODY = r"""
       a plane wave and simply falls behind by an amount set by its direction. So the recipe is to
       split the light into plane waves with a Fourier transform, hold each one back by its own
       amount, and add them all back together. That is the whole <strong>angular-spectrum
-      method</strong>: transform, multiply by
-      <span class="q">H = exp(i&thinsp;2&pi;z&thinsp;&radic;(1/&lambda;&sup2; &minus; f&sup2;))</span>,
-      transform back. It makes <strong>no small-angle approximation</strong>, the simplification most
+      method</strong>: transform, multiply by</p>
+      @@MATH_asm@@
+      <p>and transform back. It makes <strong>no small-angle approximation</strong>, the simplification most
       textbook diffraction formulas lean on and the one usually called <em>paraxial</em>, so it stays
       exact even for steeply travelling light. That is
       why Fresnel, Fraunhofer and the differentiable PyTorch layer are all checked against it rather
       than the other way round. Against a Gaussian beam with a known closed-form answer it agrees to
       <strong>~2&times;10<sup>&minus;8</sup></strong>.</p>
       <p>Two behaviours fall straight out of that square root. Where
-      <span class="q">f&sup2; &gt; 1/&lambda;&sup2;</span> the quantity under it goes negative, which
+      @@MATH_evanescent@@ the quantity under it goes negative, which
       corresponds to light angled so steeply it cannot actually travel. Computing the root over the
       complex numbers makes those components <strong>die away</strong> with distance instead, which
       is the correct physics: these are <em>evanescent</em> waves, which cling to the surface rather
       than propagating. No special case is needed. And over a long enough distance the multiplier
-      <span class="q">H</span> starts <strong>spinning faster than the grid has points to follow
+      @@MATH_H@@ starts <strong>spinning faster than the grid has points to follow
       it</strong>. A grid that cannot keep up with a wave reports a slower one that happens to match
       at the sample points, which is <em>aliasing</em>, and the answer silently becomes wrong.
-      Setting <span class="q">H</span> to zero past the point where the grid can still track it
+      Setting @@MATH_H@@ to zero past the point where the grid can still track it
       keeps the method honest at long range, at the cost of throwing away the steepest light.</p>
       <p>The edge is a single criterion,
-      <span class="q">z_crit = N&middot;dx&sup2;/&lambda;</span>, which is 15.4&nbsp;mm here against
+      @@MATH_zcrit@@, which is 15.4&nbsp;mm here against
       3&nbsp;mm gaps. It is checked every time the code runs, not only in the tests. Note what it
       does <em>not</em> contain. It depends on the wavelength, the pixel size and the number of
       pixels, but <strong>not on the width of the opening the light passes through</strong>, which
       is why the aperture control below does not move the sampling threshold no matter how far you
       drag it.</p>
+    </div>
+    <div class="prose col">
+      <p>Below is that calculation, running. It is worth knowing what you are looking at before you
+      start dragging, because the picture is less obvious than it appears.</p>
+      <p>Light enters through a hole, the <strong>aperture</strong>, and you are shown what it looks
+      like <strong>after travelling a distance <em>z</em></strong>. <strong>Aperture shape</strong>
+      decides the pattern&rsquo;s symmetry: a round hole gives concentric rings, a square one gives a
+      cross, because the edges are what bend the light and their orientation survives all the way to
+      the far end. <strong>Aperture width</strong> works backwards from intuition, and this is the
+      single most surprising control here: <em>narrowing</em> the hole makes the pattern
+      <em>wider</em>. Squeezing a wave in space forces it to spread in angle.
+      <strong>Distance</strong> and <strong>wavelength</strong> both scale that spreading up,
+      so a longer wavelength or a longer flight both blur the pattern outward.</p>
+      <p><strong>Grid N</strong> is the only control that is not physics. It is how many samples the
+      simulation uses across the window, and it changes nothing about the light. What it changes is
+      whether the computer can still faithfully represent that light. Coarse grids cannot hold
+      steeply angled waves, which is what the amber flag is about: past
+      <span style="white-space:nowrap">z &gt; z_crit</span> the method starts throwing away the
+      steepest content rather than failing outright, so it is flagged instead of trusted. Raise
+      <strong>N</strong> and the flag clears, because a finer grid can carry more angle.</p>
+      <p>Two things to actually try. Drag <strong>aperture width</strong> to its smallest and watch
+      the rings swell to fill the window. Then push <strong>distance</strong> to its maximum and
+      watch the flag turn amber, which is the moment the simulation stops being trustworthy and
+      says so.</p>
     </div>
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="explorer"></div></div>
@@ -848,12 +1074,12 @@ PHYSICS_BODY = r"""
       <p>The light drawn <em>between</em> the mask planes on the front page is not decoration. One
       3&nbsp;mm gap can be cut into several shorter steps and re-run, because propagating a distance
       and then another gives exactly the same answer as propagating the sum in one go:
-      <span class="q">H(z&#8321;)&middot;H(z&#8322;) = H(z&#8321;+z&#8322;)</span>. The one thing that
+      @@MATH_additive@@. The one thing that
       would break that equality is the band limit described above, and below
-      <span class="q">z_crit</span> it is <strong>switched off entirely</strong>. At 3&nbsp;mm
+      @@MATH_zcrit_sym@@ it is <strong>switched off entirely</strong>. At 3&nbsp;mm
       against 15.4&nbsp;mm it is switched off, so those in-between planes are <strong>the real
       light</strong>, not an interpolation between the planes on either side. Above
-      <span class="q">z_crit</span> the equality genuinely does break, and the test suite asserts
+      @@MATH_zcrit_sym@@ the equality genuinely does break, and the test suite asserts
       both halves of that.</p>
       <p><strong>No rays are drawn, deliberately.</strong> Light here is treated as a wave, not as
       travelling arrows, and drawing straight lines from digit to detector would misrepresent the one
@@ -875,30 +1101,33 @@ PHYSICS_BODY = r"""
       <p>Crossing a gap is linear in the light. Passing through a mask is linear in the light. Doing
       one after the other is therefore still linear, and the whole stack collapses into a
       <em>single</em> multiplication by one big matrix:</p>
-      <p><span class="q">E_out = M &middot; E_in</span>, where
-      <span class="q">M = P_L D_L P_{L&minus;1} D_{L&minus;1} &hellip; D&#8321; P&#8320;</span>, each
-      <span class="q">P</span> a gap and each <span class="q">D</span> a mask.</p>
+      @@MATH_linear@@
+      @@MATH_operator@@
+      <p>Each @@MATH_P@@ is one gap of air the light crosses, and each @@MATH_D@@ is one mask it
+      passes through.</p>
       <p>This matters more than it sounds. No matter how many masks and gaps are stacked up, the
       map from input light to output light is one matrix. Extra layers add adjustable numbers, and
-      they let <span class="q">M</span> come closer to whatever matrix you wanted, <em>subject to
+      they let @@MATH_M@@ come closer to whatever matrix you wanted, <em>subject to
       the physical constraint</em> that it be buildable out of delay-only masks separated by air.
       What they do not add is any of the compounding power that stacking layers gives an ordinary
       neural network, where each layer bends the result before the next one sees it.
       <strong>Depth here is not depth in that sense at all.</strong></p>
       <p>The single exception is the detection. The score for class <em>c</em> is the brightness
       added up over its detector region, and brightness is the square of the wave&rsquo;s height. Work
-      that through and the score is
-      <span class="q">s_c = E_in&dagger; A_c E_in</span> with
-      <span class="q">A_c = M&dagger; R_c M &#8827; 0</span>. In words: each score is a
+      that through and the score comes out as</p>
+      @@MATH_score@@
+      <p>with</p>
+      @@MATH_psd@@
+      <p>In words: each score is a
       <strong>quadratic form</strong>, meaning the inputs enter multiplied together in pairs rather
-      than one at a time, and the <span class="q">&#8827; 0</span> says the resulting score can never
+      than one at a time, and the @@MATH_psd_sign@@ says the resulting score can never
       go negative. The classifier computes one of these per class and picks the largest. That is
       strictly more powerful than a plain linear classifier, and it is exactly <em>one</em> nonlinear
       step: linear optics, square the magnitude, add up.</p>
       <p>One consequence is worth pulling out, because it is the only other place anything nonlinear
       touches the raw pixels: <strong>how the image is written into the beam</strong>. Encoding it as
       delays rather than brightness passes the pixel values through
-      <span class="q">exp(i&middot;&pi;&middot;image)</span> before the optics ever sees them, and
+      @@MATH_encode@@ before the optics ever sees them, and
       that step is not linear. This is why the choice of encoding measurably changes the accuracy
       that can be reached. It is quietly doing work the linear optics downstream cannot do.</p>
       <p>By the project&rsquo;s own scope this limit is <strong>measured and described, not
@@ -906,18 +1135,11 @@ PHYSICS_BODY = r"""
       exotic materials, and no larger electronic network bolted on the end to compensate. If a
       bigger electronic stage would lift the accuracy, that is a result worth reporting, not a bug
       to fix.</p>
-      <div class="finding">
-        <p class="tag">Correction &middot; kept on the record</p>
-        <p class="body">An earlier version of this project read the shipped network&rsquo;s
-        <strong>0.799 plateau</strong> as this ceiling being reached, and presented it as measured
-        rather than merely asserted. <strong>That inference was wrong,</strong> and it is left here
-        rather than quietly removed. The argument above is untouched: the stack really is one matrix.
-        What did not follow was concluding that five masks had already wrung everything out of it.
-        They had not, by at least eight points. The plateau belonged to <em>that particular
-        arrangement of the optics</em>, and
-        <a class="link" href="@@HREF_optics@@">sweeping that arrangement is a page of its own
-        &rarr;</a></p>
-      </div>
+      <p>One thing this argument does <em>not</em> settle is how close any particular stack gets to
+      the best operator its masks could implement. Five masks score 0.799, and it would be easy to
+      read that as the ceiling above being reached. It is not:
+      <a class="link" href="@@HREF_optics@@">stacking far more of them keeps paying, and that is a
+      page of its own &rarr;</a></p>
     </div>
   </section>
 
@@ -931,7 +1153,7 @@ PHYSICS_BODY = r"""
         gives the classic bullseye pattern with its first dark ring exactly where theory puts it.</p></div>
       <div><h3>Enforced, not assumed</h3><p>The sampling limit is checked whenever the code runs, not
         only in the tests: <span class="q">check_sampling</span> returns a report, and the explorer
-        flags the crossing live. Past <span class="q">z_crit</span> the method does not crash or
+        flags the crossing live. Past @@MATH_zcrit_sym@@ the method does not crash or
         obviously misbehave, which is precisely why it has to be flagged.</p></div>
       <div><h3>Scope</h3><p>Light is treated as a single wave with no direction of vibration, which
         rules out polarisation effects, and there is no full electromagnetic solver anywhere. If real
@@ -981,15 +1203,15 @@ CHIP_BODY = r"""
       <strong>directional coupler</strong>: run two channels close enough and light leaks between
       them, and at the right length exactly half crosses over.</p>
       <p>A <strong>Mach&ndash;Zehnder interferometer</strong> is not exotic hardware. It is two of
-      those 50:50 couplers with an adjustable delay <span class="q">&theta;</span> in between and
-      another delay <span class="q">&phi;</span> in front, which written out is
-      <span class="q">B&middot;P(&theta;)&middot;B&middot;P(&phi;)</span>. Split the light, hold one
+      those 50:50 couplers with an adjustable delay @@MATH_theta@@ in between and
+      another delay @@MATH_phi@@ in front, which written out is
+      @@MATH_mzi@@. Split the light, hold one
       arm back, recombine: how much the two halves reinforce or cancel decides how much leaves by
       each output. That combination is <strong>unitary</strong> for any setting of the two delays,
       meaning it only ever redistributes light between the outputs and never creates or destroys
       any, which is exactly what passive hardware can do. Tile these across neighbouring pairs of
       channels and you get a <strong>Clements rectangle</strong> of
-      <span class="q">n(n&minus;1)/2</span> of them.</p>
+      @@MATH_nmzi@@ of them.</p>
       <p>Such a mesh can produce <em>any</em> unitary operation at all, and the proof is a recipe
       rather than an existence argument. You take the target operation and use one interferometer at
       a time to <strong>zero out its entries</strong> one by one, until nothing is left but the
@@ -998,7 +1220,7 @@ CHIP_BODY = r"""
       <strong>Clements</strong> rectangle, which is half as deep and loses less light. Put a row of
       simple brightness adjustments between two such meshes and you can build <em>any</em> real
       matrix, not just a unitary one, using the <strong>singular-value decomposition</strong>
-      <span class="q">U&middot;&Sigma;&middot;V&dagger;</span>, the standard factorisation that
+      @@MATH_svd@@, the standard factorisation that
       splits any matrix into a rotation, a stretch along each axis, and another rotation. Both recipes rebuild randomly drawn target
       operations to <strong>~10<sup>&minus;15</sup></strong>, which is this side&rsquo;s
       correctness anchor.</p>
@@ -1012,7 +1234,7 @@ CHIP_BODY = r"""
       chip area and input size is the central structural difference between the two processors.</p>
       <p>One finding falls out of the physics rather than the training. A mesh with no power source
       <strong>cannot amplify</strong>, since at best it passes all the light through and in practice
-      loses some, so a buildable <span class="q">&Sigma;</span> needs every one of its stretch
+      loses some, so a buildable @@MATH_sigma@@ needs every one of its stretch
       factors to be 1 or less. Several of the trained ones come out above 1. A real device would
       need an amplifier, or would have to scale everything down and pay for it in lost light.</p>
     </div>
@@ -1025,10 +1247,21 @@ CHIP_BODY = r"""
     </div>
     <figure class="plate reveal">
       <img src="@@FIG_mesh_topology@@" alt="MZI mesh topology and the learned singular-value spectrum" loading="lazy">
-      <figcaption><span class="fign">Fig 1</span>Left: how the interferometers are tiled across the
-      channels. Right: the size of each of the 36 stretch factors the training settled on. Only about
-      15&ndash;20 of them carry any real weight, which makes the operation <em>low-rank</em>: it is
-      effectively using far fewer channels than it has, and that is why so few adjustable numbers
+      <figcaption><span class="fign">Fig 1</span><b>Why there are two meshes.</b> Building an
+      arbitrary matrix takes the three-part factorisation @@MATH_svd@@ above, and
+      <em>U</em> and <em>V</em> are each a full mesh of their own. The two large panels are those two
+      meshes, drawn as they are physically tiled: each small rectangle is one interferometer, sitting
+      at its position across the 36 channels (vertical) and along the 36 columns of depth
+      (horizontal). <b>Colour is the phase that interferometer was trained to hold</b>, from 0 to
+      &pi; on the scale between the panels, so the panels are a picture of the trained settings
+      themselves rather than a schematic.
+      <b>The right panel is the stretch factors</b>, one per channel, sorted largest first. Two
+      things to read there. The <b>red dashed line at 1.0 is the passivity limit</b>: a chip with no
+      power source can only redistribute light, never add any, so every bar must sit at or below it
+      to be buildable. <b>Several do not</b>, reaching almost 4, which is the finding above made
+      visible. And most of the bars are near zero, with only about 15&ndash;20 of the 36 carrying
+      real weight. That is what <em>low-rank</em> means here: the trained operation is quietly using
+      far fewer channels than the chip provides, which is why so few adjustable numbers
       suffice.</figcaption>
     </figure>
   </section>
@@ -1073,26 +1306,20 @@ CHIP_BODY = r"""
       steer.</strong> The rest is packaging.</p>
     </div>
 
-    <div class="explorer-band reveal">
-      <div class="pe-host"><div id="analogy"></div></div>
-      <p class="cap">Live. Every number here is read out of the trained models, not typed into the
-      figure. The mesh drawn is the real tiling the model uses, and the cone is
-      <span style="white-space:nowrap">z&middot;&lambda;/(2&middot;dx&sup2;)</span> per gap.</p>
-    </div>
-
     <div class="finding col reveal">
-      <p class="tag">Finding &middot; the glass stack is connected by 0.8 px</p>
+      <p class="tag">Finding &middot; connectivity is a bound the geometry has to clear</p>
       <p class="body">Six gaps of 3&nbsp;mm let each pixel&rsquo;s light spread
       <strong>74.8&nbsp;px</strong> sideways in total. The hardest case the design has to cover is a
       pixel at one edge of the entrance influencing the detector pixel farthest from it, and that
-      distance is <strong>74&nbsp;px</strong>. So every input pixel <em>can</em> reach every
-      detector, with <strong>0.81&nbsp;px to spare, about 1%</strong>. Push the plates closer than
-      <strong>2.967&nbsp;mm</strong> apart and parts of the input become physically invisible to
-      parts of the readout, no matter what the masks are set to. Nothing in the training knew this
-      limit existed; the design happens to clear it. The mesh has no such fragility, because 36
-      columns for 36 channels is exactly the bound Clements proves you need, so everything reaching
-      everything is guaranteed by the layout. <strong>One machine&rsquo;s connectivity is an
-      accident that holds by 1%. The other&rsquo;s is a theorem.</strong></p>
+      distance is <strong>74&nbsp;px</strong>. Every input pixel can therefore reach every detector,
+      which is the precondition for the network being able to compute anything at all. Push the
+      plates closer than <strong>2.967&nbsp;mm</strong> apart and it stops being true: parts of the
+      input become physically invisible to parts of the readout, whatever the masks are set to.
+      <strong>The 3&nbsp;mm separation was chosen to sit above that bound</strong>, which is why it
+      does. Training never sees this constraint and could not have satisfied it; it is settled by the
+      geometry before any mask is fitted. The mesh arrives at the same guarantee from the other
+      direction, since 36 columns for 36 channels is exactly the bound Clements proves you need, so
+      there full connectivity follows from the layout rather than from a spacing choice.</p>
     </div>
 
     <div class="prose col">
@@ -1124,33 +1351,14 @@ CHIP_BODY = r"""
     </div>
   </section>
 
-  <section class="phase planned reveal">
-    <div class="phase-head col"><span class="ph-num next">next</span>
-      <div><span class="badge-next">Planned</span>
-      <p class="eyebrow">Quantum branch &middot; Boson sampling</p>
-      <h2>Same mesh, single photons instead of a beam</h2></div></div>
-    <div class="prose col">
-      <p>The interferometer mesh has a second life. Everything above treats light as a bright beam.
-      Send it through instead <strong>one photon at a time</strong>, with the photons identical
-      enough that there is no way even in principle to tell which took which path, and the machine
-      stops behaving like a beam splitter and starts behaving quantum mechanically. The odds of each
-      possible output pattern are then governed by a quantity called the <em>permanent</em> of the
-      matrix, which is famously hard to compute, and that difficulty is the whole point of
-      <strong>boson sampling</strong>. The planned deliverable computes those odds, shows the
-      <strong>Hong&ndash;Ou&ndash;Mandel dip</strong> (send two identical photons into a 50:50
-      coupler and they always leave together, never one each way, which has no classical
-      explanation), and contrasts it with what ordinary distinguishable particles would do. Only the
-      light going in changes. The mesh itself is identical.</p>
-    </div>
-  </section>
-
   @@NEXT@@
 
   <footer class="reveal">
     <div class="foot-grid">
-      <div><h3>Derived, never typed</h3><p>The figure above reads how far light spreads from the
-        propagation code, its detector layout from the detector code and its tiling from the mesh
-        itself. A test recomputes all of it and fails if the exported design drifts.</p></div>
+      <div><h3>Derived, never typed</h3><p>Every number in the table above is exported from the
+        trained models rather than chosen. A test re-derives each one from the physics and the model
+        code, so how far light spreads, the detector layout and the mesh tiling all fail loudly if
+        the design drifts away from them.</p></div>
       <div><h3>Verified</h3><p>That an interferometer conserves light at every setting; that both
         recipes rebuild a target operation to ~10<sup>&minus;15</sup>; that the arbitrary-real-matrix
         layer works; and that the PyTorch mesh matches the plain NumPy one.</p></div>
@@ -1166,8 +1374,6 @@ CHIP_BODY = r"""
 </main>
 
 @@PAGE_SCRIPT@@
-@@ANALOGY_BUNDLE@@
-@@ANALOGY_MOUNT@@
 """
 
 # ---------------------------------------------------------------------- TOLERANCE
@@ -1192,7 +1398,6 @@ TOLERANCE_BODY = r"""
     <div class="stat-strip">
       <div class="stat"><span class="v">0.25<small> px</small></span><span class="l">is how far one pixel&rsquo;s delay may bleed into its neighbours before accuracy goes</span></div>
       <div class="stat"><span class="v">&asymp;1<small> px</small></span><span class="l">is how far it bleeds on a real display chip. That is four times too much</span></div>
-      <div class="stat"><span class="v">0.7990</span><span class="l">reproduced exactly by the second model when no error is injected at all</span></div>
     </div>
   </section>
 
@@ -1220,7 +1425,7 @@ TOLERANCE_BODY = r"""
       to the last digit means any drop below it is caused by the injected error and nothing else.
       That anchor has held through every change in the project.</p>
       <p>The pass mark throughout is <strong>95% of the ideal accuracy</strong>, which works out to
-      <span class="q">&ge; 0.7591</span>. Limits are quoted as the bracket the sweep actually
+      @@MATH_bar@@. Limits are quoted as the bracket the sweep actually
       resolves, <em>holds at X, fails at Y</em>, rather than interpolating a crossing point between
       two tested values, so they stay comparable from one model to the next.</p>
     </div>
@@ -1236,157 +1441,173 @@ TOLERANCE_BODY = r"""
       <strong>would not work on one</strong>. The ranking is unambiguous: crosstalk is far worse than
       delay error, which beats detector power and lost light, which in turn are far worse than
       wavelength drift and coarse delay steps. To stay above
-      <span class="q">&ge; 0.7591</span>, the design needs delays accurate to
+      @@MATH_bar@@, the design needs delays accurate to
       <strong>0.3&nbsp;rad</strong>, a twenty-first of a wavelength (&lambda;/21), at least
       <strong>3 bits</strong> of control per pixel, laser drift under <strong>10&nbsp;nm</strong>,
       and at least <strong>1&nbsp;pW</strong> of light over 1&nbsp;ms. What decides whether this is
       buildable is not the precision of each delay or how finely it can be set. It is how sharply
       each pixel&rsquo;s delay can be kept away from its neighbours.</p>
     </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 1 of 6 &middot; the one that fails</p>
+      <h2>Crosstalk: pixels will not stay out of each other</h2></div></div>
     <div class="prose col">
-      <p>Read the ranking rather than the individual numbers. <strong>Delay accuracy and bit depth
-      are comfortable.</strong> A well-calibrated device sets delays to about a hundredth of a
-      wavelength (&lambda;/100, roughly 0.05&nbsp;rad), which is ten times better than the
-      0.3&nbsp;rad that still holds, and 3 bits of control is enough against a hardware standard
-      of 8.
-      <strong>Wavelength drift is a non-issue</strong> for any laser with its temperature held steady.
-      <strong>Detection has nine orders of magnitude in hand</strong> at the intended operating
-      point, before the graininess of counting individual photons, known as <em>shot noise</em>,
-      starts to matter.</p>
-      <p><strong>Lost light is the interesting one</strong>, because it never acts alone. Dimming
-      everything by the same factor cancels out exactly, since the readout compares the ten boxes
-      against each other rather than against an absolute brightness, so when photons are plentiful
-      losing light has <em>zero</em> effect on accuracy. It only bites by leaving too few photons to
-      count reliably, which is why it is swept right at the point where photon counting starts to
-      break down, where every 3&nbsp;dB lost halves the photons arriving. Lost light and the light
-      budget have to be reasoned about together or the sweep measures nothing at all.</p>
-      <p>And <strong>a better-trained network was not a more fragile one</strong>, which is worth
-      stating because the opposite is a reasonable thing to expect. Retraining on five times more
-      data lifted the ideal accuracy from 0.7695 to 0.7990, and every limit was re-measured against a
-      correspondingly stricter pass mark. Five of the six landed in the same bracket as before. Masks
-      fitted to more data did not come out finer and more brittle. But that result belongs to
-      <em>training</em>, and the next section is what happened when the <em>optics</em> changed
-      instead.</p>
+      <p>A phase mask is only a mask because neighbouring pixels can hold different delays. Set one
+      pixel and its neighbours shift too, because heat spreads through the substrate and the
+      electric field that addresses one cell spills into the next. The pattern the design wants
+      sharp comes out smeared, and the mask stops being able to express what training asked of it.</p>
+      <p>Drag the bleed and watch the close-up. <strong>Accuracy holds at 0.25&nbsp;px and fails by
+      0.5&nbsp;px</strong>; three quarters of a pixel leaves the network little better than
+      guessing. A standard LCoS device, the liquid-crystal display chip these masks would be
+      written to, bleeds about <strong>1&nbsp;px</strong>. That is four times more than the design
+      survives, and it is why this one source decides the whole question.</p>
     </div>
-    <div class="plate-grid reveal">
-      <figure class="plate"><img src="@@FIG_tol_crosstalk@@" alt="Accuracy vs thermal/pixel crosstalk" loading="lazy"><figcaption><span class="fign">Fig 1</span>Crosstalk between pixels, the constraint that binds.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_phase@@" alt="Accuracy vs per-pixel phase error" loading="lazy"><figcaption><span class="fign">Fig 2</span>Each pixel&rsquo;s delay set slightly wrong.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_detector@@" alt="Accuracy vs detector noise / input power" loading="lazy"><figcaption><span class="fign">Fig 3</span>Detector noise as the light is dimmed.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_loss@@" alt="Accuracy vs optical insertion loss" loading="lazy"><figcaption><span class="fign">Fig 4</span>Light lost at each surface, swept where it bites.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_wavelength@@" alt="Accuracy vs wavelength drift" loading="lazy"><figcaption><span class="fign">Fig 5</span>The laser drifting off its colour.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_tol_quant@@" alt="Accuracy vs DAC bit resolution" loading="lazy"><figcaption><span class="fign">Fig 6</span>Delays available only in coarse steps.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_confusion@@" alt="As-built confusion matrix at phase sigma 0.35 rad" loading="lazy"><figcaption><span class="fign">Fig 7</span>Which digits get confused for which, at &sigma;=0.35&nbsp;rad.</figcaption></figure>
-    </div>
+    <div class="pe-host reveal"><div id="err-crosstalk"></div></div>
     <figure class="plate reveal">
-      <img src="@@FIG_sensitivity@@" alt="Per-mask spatial sensitivity map" loading="lazy">
-      <figcaption><span class="fign">Fig 8</span>Where on each mask an error costs the most accuracy.
-      Some regions matter far more than others, and it is that unevenness that makes a per-pixel
-      tolerance a meaningful thing to quote.</figcaption>
+      <img src="@@FIG_tol_crosstalk@@" alt="Accuracy against crosstalk between neighbouring pixels" loading="lazy">
+      <figcaption><span class="fign">Fig 1</span>Measured. Accuracy against how far one pixel&rsquo;s
+      delay bleeds into its neighbours. The cliff between 0.25 and 0.5&nbsp;px is the tightest
+      requirement in the whole budget.</figcaption>
     </figure>
   </section>
 
   <section class="phase reveal">
     <div class="phase-head col">
-      <div><p class="eyebrow">The result this project actually has</p>
-      <h2>What depth costs</h2></div></div>
+      <div><p class="eyebrow">Source 2 of 6</p>
+      <h2>Delay error: every pixel a little bit wrong</h2></div></div>
     <div class="prose col">
-      <p>A deeper network is <strong>a lot</strong> more accurate. Splitting the same total amount
-      of light-spreading across 56 masks instead of 5 reaches <strong>0.9040</strong> on the same
-      test images, against 0.7990, and it is
-      <a class="link" href="@@HREF_optics@@">running live, beside the shipped model &rarr;</a> so the
-      improvement is easy to see and easy to mistake for a straightforward upgrade.</p>
-      <p>It is not one. The whole budget above was re-run against that deeper candidate, scored
-      against its own correspondingly stricter pass mark of 0.8588, and <strong>those extra 10.5
-      points are paid for in how precisely the thing would have to be built</strong>:</p>
+      <p>Nothing sets a phase exactly. Etch depth varies across a plate, and a modulator addressed
+      by a voltage lands near the value it was asked for rather than on it. The error is
+      independent from pixel to pixel, which makes it scattered rather than structured, and that
+      turns out to matter: the large-scale pattern the masks rely on survives a surprising amount
+      of speckle.</p>
+      <p>Accuracy holds to <strong>0.3&nbsp;rad</strong>, a twenty-first of a wavelength
+      (&lambda;/21), and fails by 0.5. A well-calibrated device sits near
+      &lambda;/100, about 0.05&nbsp;rad, which is <strong>an order of magnitude inside the
+      requirement</strong>. This source is comfortable.</p>
     </div>
-    <div class="tbl-wrap col">
-      <table class="tbl">
-        <thead><tr><th>Error source</th><th>Shipped &middot; 5 masks</th><th>Candidate &middot; 56 masks</th><th>Change</th></tr></thead>
-        <tbody>
-          <tr><td><strong>Crosstalk between pixels</strong></td><td>holds 0.25&nbsp;px, fails 0.5</td><td>holds <strong>0.25&nbsp;px</strong>, fails 0.5</td><td><strong>unchanged, still binding</strong></td></tr>
-          <tr><td>Each pixel&rsquo;s delay set wrong</td><td>holds 0.3&nbsp;rad, fails 0.5</td><td>holds <strong>0.15&nbsp;rad</strong>, fails 0.2</td><td>2&times; tighter</td></tr>
-          <tr><td>How finely a delay can be set</td><td>holds 3 bits, fails 2</td><td>holds <strong>4 bits</strong>, fails 3</td><td>1 bit tighter</td></tr>
-          <tr><td>Light lost, where it bites</td><td>holds 1&nbsp;dB/mask (5&nbsp;dB total)</td><td>holds <strong>0.214&nbsp;dB/mask</strong> (12&nbsp;dB total)</td><td>4.7&times; tighter per mask</td></tr>
-          <tr><td>Detector noise, dimming the light</td><td>holds 1&nbsp;pW, fails 0.1</td><td>holds <strong>0.1&nbsp;pW</strong>, fails 0.01</td><td>10&times; looser</td></tr>
-          <tr><td>Wavelength drift</td><td>holds 10&nbsp;nm, fails 20</td><td>holds <strong>20&nbsp;nm</strong>, fails 30</td><td>2&times; looser</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="prose col">
-      <p>Three readings are worth separating. <strong>The constraint that binds does not move at
-      all.</strong> Crosstalk fails at the same 0.25&nbsp;px, and the roughly 1&nbsp;px of blur a
-      real device delivers destroys either design. Depth neither helps nor hurts the one thing that
-      already made this unbuildable.</p>
-      <p><strong>The two that loosened both come from catching more light.</strong> The deep stack
-      lands <strong>79.1%</strong> of the incoming photons inside the detector boxes, against about
-      60% for the shipped design, by the same steering rather than scattering that the accuracy gain
-      comes from. More light at the readout means the design tolerates ten times more dimming before
-      photon counting breaks down, and it gains room on wavelength too. In other words it became
-      sturdier precisely where it already had nine orders of magnitude in hand.</p>
-      <p><strong>Lost light points in opposite directions depending on how you count it, and the
-      per-plate figure is the one that governs.</strong> Added up over the whole machine the deep
-      candidate tolerates <em>more</em> loss, 12&nbsp;dB against 5. But that larger allowance is
-      divided among eleven times as many surfaces, so the requirement per plate tightens to
-      0.214&nbsp;dB. Component datasheets quote loss per surface, and 0.214&nbsp;dB sits at the
-      optimistic end of the realistic 0.2&ndash;1&nbsp;dB range. Lost light moves from comfortable to
-      marginal.</p>
-      <div class="finding">
-        <p class="tag">Finding &middot; depth adds a constraint without relieving one</p>
-        <p class="body">Ten and a half points of accuracy cost <strong>twice the precision on every
-        delay, one more bit of control per pixel, and 4.7&times; less tolerance for lost light at
-        each surface</strong>, while the one error that already fails against real hardware
-        <strong>does not move at all</strong>. This is why the deep model is labelled &ldquo;not
-        shipped&rdquo; wherever it appears. Its number is real, and measured exactly the way the
-        headline number was, but what it asks of the manufacturing is something this project has no
-        evidence anyone can deliver. <strong>The trade is a more useful result than a clean win
-        would have been.</strong></p>
-      </div>
-      <p>There is also something this budget <em>cannot</em> say. At 56 masks the plates sit
-      0.53&nbsp;mm apart instead of 3&nbsp;mm, so being &plusmn;10&nbsp;&micro;m out of position goes
-      from 0.33% of the gap to 1.9% of it. Past roughly forty plates the stack is better described as
-      a <strong>solid block of glass</strong> than as separate sheets with air between them, and that
-      is a different thing to manufacture. This budget covers <strong>errors in the components
-      only</strong> and says nothing about getting them into position. Aligning and calibrating the
-      machine, meaning plate spacing, sideways registration, delays that all read systematically high
-      or low, and detectors reading slightly off zero, plausibly binds the deep design before
-      anything in the table above does. <strong>That is flagged, not measured</strong>, and those are
-      the next error sources to be written.</p>
-    </div>
+    <div class="pe-host reveal"><div id="err-phase"></div></div>
     <div class="plate-grid reveal">
-      <figure class="plate"><img src="@@FIG_cand_crosstalk@@" alt="Candidate 56-mask network: accuracy vs thermal/pixel crosstalk" loading="lazy"><figcaption><span class="fign">Fig 9</span>Deep model, crosstalk. The same limit as the shipped design.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_phase@@" alt="Candidate 56-mask network: accuracy vs per-pixel phase error" loading="lazy"><figcaption><span class="fign">Fig 10</span>Deep model, delay error. Twice as demanding.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_detector@@" alt="Candidate 56-mask network: accuracy vs detector noise" loading="lazy"><figcaption><span class="fign">Fig 11</span>Deep model, detector noise. Ten times more forgiving.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_loss@@" alt="Candidate 56-mask network: accuracy vs optical loss" loading="lazy"><figcaption><span class="fign">Fig 12</span>Deep model, lost light, totalled across all 56 plates.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_wavelength@@" alt="Candidate 56-mask network: accuracy vs wavelength drift" loading="lazy"><figcaption><span class="fign">Fig 13</span>Deep model, wavelength drift. Twice as forgiving.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_quant@@" alt="Candidate 56-mask network: accuracy vs DAC bit resolution" loading="lazy"><figcaption><span class="fign">Fig 14</span>Deep model, delay steps. One bit more demanding.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_confusion@@" alt="Candidate 56-mask network: as-built confusion matrix" loading="lazy"><figcaption><span class="fign">Fig 15</span>Deep model, which digits get confused for which.</figcaption></figure>
-    </div>
-    <div class="prose col">
-      <p>There is no deep-model version of Fig&nbsp;8. That map puts one panel per mask in a single
-      row, so at 56 masks it comes out <strong>16,139&nbsp;pixels wide and 341 tall</strong>, a ratio
-      of 47:1, which works out to fifteen pixels high in a grid cell and thirty across the full
-      column. There is no size at which it can be read, so it is left out rather than shown as a
-      smear. It also costs <strong>2,016 separate evaluations</strong> to compute against 36 for the
-      shipped design, roughly four hours and most of a full run. Both of those are the same fact seen
-      from different sides: past about forty plates, anything quoted per mask stops being something
-      you can look at.</p>
+      <figure class="plate"><img src="@@FIG_tol_phase@@" alt="Accuracy against per-pixel delay error" loading="lazy"><figcaption><span class="fign">Fig 2</span>Measured. Accuracy against the spread of per-pixel delay error.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_confusion@@" alt="As-built confusion matrix at phase sigma 0.35 rad" loading="lazy"><figcaption><span class="fign">Fig 3</span>The damage, digit by digit, at &sigma;=0.35&nbsp;rad. Accuracy 0.769, and the errors stay spread across classes rather than collapsing onto one.</figcaption></figure>
     </div>
   </section>
 
-  <section class="phase planned reveal">
-    <div class="phase-head col"><span class="ph-num next">next</span>
-      <div><span class="badge-next">Planned</span>
-      <p class="eyebrow">Error budget &middot; MZI mesh</p>
-      <h2>Fabrication tolerance for the interferometer mesh</h2></div></div>
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 3 of 6</p>
+      <h2>Detector noise: light arrives in countable lumps</h2></div></div>
     <div class="prose col">
-      <p>The same framework extends to the chip, switching on the two error sources unique to it:
-      <strong>couplers that do not split light exactly in half</strong>, deviating from the intended
-      50:50, and <strong>light lost in every interferometer</strong>, which leaves the mesh delivering less than it received. That
-      second one genuinely changes the answer on a chip, unlike in the glass stack, where dimming
-      everything equally cancels out of the readout. The interesting comparison is how each machine
-      fails: <strong>errors piling up in sequence down 72 layers of interferometers</strong> against
-      the glass stack&rsquo;s crosstalk between neighbouring pixels. Two optical computers, two
-      different ways to lose the computation to fabrication.</p>
+      <p>The readout is ten sums of brightness, and brightness is a number of photons. Dim the beam
+      far enough and those counts get noisy in a way no amount of care in the optics can fix, since
+      it comes from the light itself. On top of that the sensor adds its own read noise, and the
+      converter rounds whatever survives to a fixed number of steps.</p>
+      <p>Accuracy holds down to <strong>1&nbsp;pW over a 1&nbsp;ms exposure</strong> and fails at
+      0.1&nbsp;pW. The design&rsquo;s nominal operating point is 1&nbsp;mW, which is
+      <strong>nine orders of magnitude</strong> brighter than the edge. There is an enormous amount
+      of room here.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-detector"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_detector@@" alt="Accuracy against input power, with detector and shot noise" loading="lazy">
+      <figcaption><span class="fign">Fig 4</span>Measured. Accuracy as the input power falls. Flat
+      across nine decades, then a cliff once photons become too few to count reliably.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 4 of 6 &middot; the subtle one</p>
+      <h2>Lost light: no effect at all, until suddenly it is fatal</h2></div></div>
+    <div class="prose col">
+      <p>Every surface reflects a little and every millimetre of glass absorbs a little. The
+      intuition is that this must degrade the answer, and the intuition is <em>wrong</em>. The
+      readout compares the ten detector boxes against each other, so dimming all of them by the
+      same factor leaves the ranking untouched. Uniform loss cancels exactly.</p>
+      <p>It bites only through the source above it. Lost light means fewer photons, and few enough
+      photons means the noise in the previous section. That coupling is why loss cannot be swept on
+      its own: measured at the nominal 1&nbsp;mW it would read as no effect at any magnitude, which
+      is true and useless. It is swept instead at the edge of the photon budget, where every
+      3&nbsp;dB lost halves what arrives, and there it holds to <strong>1&nbsp;dB per
+      mask</strong>.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-loss"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_loss@@" alt="Accuracy against optical loss per mask, swept at the photon-budget edge" loading="lazy">
+      <figcaption><span class="fign">Fig 5</span>Measured, at the photon-budget edge rather than at
+      the nominal operating point. Swept anywhere brighter, this curve is flat everywhere and
+      measures nothing.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 5 of 6</p>
+      <h2>Wavelength drift: the colour the design assumed</h2></div></div>
+    <div class="prose col">
+      <p>The whole machine is built around one colour of light, 532&nbsp;nm green. Let the laser
+      drift and two things go wrong at once. The plates are a fixed depth of glass, so the delay
+      they impose is no longer the delay that was trained. And diffraction is itself
+      colour-dependent, so the light spreads a different distance in each gap and lands somewhere
+      slightly different.</p>
+      <p>Accuracy holds to <strong>10&nbsp;nm</strong> of drift and fails by 20. Any laser with its
+      temperature controlled holds far tighter than that, so this source is a non-issue in
+      practice.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-wavelength"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_wavelength@@" alt="Accuracy against laser wavelength drift" loading="lazy">
+      <figcaption><span class="fign">Fig 6</span>Measured. Accuracy as the source drifts off
+      532&nbsp;nm.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 6 of 6</p>
+      <h2>Coarse control: only so many settings per pixel</h2></div></div>
+    <div class="prose col">
+      <p>The design asks each pixel for a phase anywhere in a continuous range. Real hardware offers
+      a fixed number of steps, set by the resolution of whatever drives it. The continuum collapses
+      onto a comb, and every pixel moves to the nearest tooth.</p>
+      <p>This is the most forgiving source in the budget. Accuracy holds at <strong>3 bits</strong>,
+      which is eight settings per pixel, and fails only at 2. Real devices offer 8 bits, or 256
+      settings. The design has <strong>five bits of margin</strong> it does not need.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-quant"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_quant@@" alt="Accuracy against the number of bits of control per pixel" loading="lazy">
+      <figcaption><span class="fign">Fig 7</span>Measured. Accuracy against bits of control per
+      pixel, coarsest to the right.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What the six add up to</p>
+      <h2>One source decides it, and it is not a close call</h2></div></div>
+    <div class="prose col">
+      <p>Five of the six are comfortable, several by orders of magnitude. Delay accuracy has a
+      factor of ten in hand, bit depth has five bits, detection has nine decades, wavelength is a
+      non-issue for any controlled source, and lost light does not act on its own at all. If
+      crosstalk did not exist, this design would be buildable today with ordinary components.</p>
+      <p><strong>Crosstalk does exist, and it fails by a factor of four.</strong> Everything else in
+      this budget is a detail beside that. It is worth being precise about what that does and does
+      not mean: it is a statement about <em>this</em> design on <em>today&rsquo;s</em> modulators,
+      not a proof that free-space optical inference cannot be built. Bigger pixels, a different
+      addressing scheme or a fabricated plate rather than a programmable one would all move it.
+      What the number does settle is that the binding constraint is a <em>hardware</em> problem
+      rather than a training one, and no amount of retraining touches it.</p>
+      <p>There is also something this budget does not cover at all. Every source here is a
+      <strong>device</strong> error, something that goes wrong inside a component. None of them is
+      a <strong>geometry</strong> error: plates a few microns out of position, rotated a fraction of
+      a degree, or registered slightly off against each other. Nobody assembles a five-plane optical
+      stack with the planes exactly 3.000&nbsp;mm apart. For a free-space build that is very
+      plausibly the harder problem, and this study has <strong>nothing measured</strong> to say
+      about it.</p>
     </div>
   </section>
 
@@ -1413,6 +1634,8 @@ TOLERANCE_BODY = r"""
 </main>
 
 @@PAGE_SCRIPT@@
+@@ERRORS_BUNDLE@@
+@@ERRORS_MOUNT@@
 """
 
 # ------------------------------------------------------------------------ OPTICS
@@ -1444,76 +1667,46 @@ OPTICS_BODY = r"""
 
   <section class="phase reveal">
     <div class="phase-head col">
-      <div><p class="eyebrow">The constraint</p>
-      <h2>A detector can only be reached by light that gets to it</h2></div></div>
+      <div><p class="eyebrow">What scaling actually looks like</p>
+      <h2>Eleven times the masks, ten points of accuracy</h2></div></div>
     <div class="prose col">
-      <p>Crossing one gap spreads light sideways by a fixed amount,
-      <span class="q">reach = z&middot;&lambda;/(2&middot;dx&sup2;)</span>, which is about
-      12.5&nbsp;px per 3&nbsp;mm gap in this design. Call that total spread the <strong>reach</strong>.
-      For the network to be able to compute anything at all, every input pixel has to be able to
-      influence every detector, and the hardest pair to connect here is <strong>74&nbsp;px</strong>
-      apart. The shipped design clears that by <strong>0.8&nbsp;px</strong>.</p>
-      <p>Fall below the bound and the failure is not a matter of degree, it is a matter of geometry.
-      Part of the digit simply cannot reach the detector that needs to see it, no matter what the
-      masks were trained to do. Drag the separation and watch the cone fall short.</p>
+      <p>The shipped network uses five masks. The obvious question is what happens with more, and
+      the honest way to ask it is to hold everything else fixed: same total amount of light
+      spreading, same grid, same task, only the number of plates changing. That sweep has been run
+      from 2 masks up to 80.</p>
+      <p>It never turns over. More masks keep helping, all the way to the deepest configuration
+      tested. But look at the shape of the help.</p>
     </div>
 
     <div class="explorer-band reveal">
-      <div class="pe-host"><div id="optics"></div></div>
-      <p class="cap">Live. The cone is recomputed from the formula as you drag, the same expression
-      the simulation itself uses in <span class="q">propagate.diffraction_reach_px</span>. The
-      plotted points are real training runs, not a fitted curve.</p>
+      <div class="pe-host"><div id="scaling"></div></div>
+      <p class="cap">Live. Every point is a training run, read from the sweep&rsquo;s own output
+      rather than typed into the figure. Note the two colours: the cheap ranking runs and the two
+      full-budget runs are not comparable to each other, and only the orange pair is comparable to
+      the numbers quoted on the rest of this site.</p>
+    </div>
+
+    <div class="prose col">
+      <p>Take the two full-budget runs, which are the only ones measured the same way as everything
+      else here. Going from <strong>5 masks to 56</strong>, an eleven-fold increase in the amount of
+      hardware, moves accuracy from <strong>0.7990 to 0.9040</strong>. Ten and a half points.</p>
+      <p>Put that next to what it costs. Eleven times the plates, and because the total spreading
+      budget is fixed they have to be packed eleven times closer, at 0.53&nbsp;mm apart instead of
+      3&nbsp;mm. The stack grows from 18&nbsp;mm to 30&nbsp;mm. And, from the previous page, the
+      fabrication tolerance tightens by <strong>2&times; on every delay</strong>, needs
+      <strong>one more bit</strong> of control per pixel, and allows <strong>4.7&times; less lost
+      light</strong> per surface, while the one error that already fails does not move at all.</p>
+      <p><strong>That is a bad exchange rate, and it gets worse.</strong> The ranking curve is
+      flattening hard: the last doubling of depth, 40 masks to 80, buys under half a point. There is
+      no plausible number of masks that turns this into a competitive classifier. Something other
+      than more of the same is required, and the rest of this page is about what.</p>
     </div>
   </section>
 
   <section class="phase reveal">
     <div class="phase-head col">
-      <div><p class="eyebrow">The trade</p>
-      <h2>Separation and depth spend the same budget</h2></div></div>
-    <div class="prose col">
-      <p>The simulation grid is finite, and the Fourier method underneath it treats that grid as
-      repeating forever, so light running off one edge quietly reappears on the opposite one. Call
-      that <strong>wrap-around</strong>. It is an artefact of the simulation, not of any real optics,
-      and it turns out to depend only on the <em>total</em> reach, not on how that reach is divided
-      up: 2&nbsp;mm across 9 gaps and 3&nbsp;mm across 6 gaps both reach 74.8&nbsp;px and are both
-      wrong by an identical 6.2&times;10<sup>&minus;4</sup>. So separation and mask count draw on
-      <strong>one shared budget</strong>, about 150&nbsp;px, past which the simulation stops
-      describing open air.</p>
-      <p>Which makes the interesting question not &ldquo;more of which?&rdquo; but <strong>how to
-      spend a fixed budget</strong>. Holding the total reach at 125&nbsp;px and trading distance for
-      masks, so that every arrangement has identical reach <em>and</em> identical wrap-around error
-      and the comparison is genuinely like for like, accuracy runs <strong>0.706 &rarr; 0.790 &rarr;
-      0.831 &rarr; 0.852</strong> going from 2 masks to 14.</p>
-
-      <div class="finding">
-        <p class="tag">Finding</p>
-        <p class="body"><strong>The plateau belonged to this particular arrangement of optics, not
-        to the whole idea.</strong> This project used to read the shipped network&rsquo;s 0.799 as
-        the ceiling that comes from being
-        <a class="link" href="@@HREF_physics@@">one linear operation and one brightness reading
-        &rarr;</a> That first part is true. The ceiling part was not. Fourteen masks reach
-        <strong>0.852</strong> on a third of the data and under a third of the training, and they
-        were still improving when the run stopped.</p>
-      </div>
-    </div>
-
-    <figure class="plate reveal">
-      <img src="@@FIG_optics_sweep@@" alt="Optics sweep: accuracy against diffractive reach, the reach-budget trade, and detector planes per configuration" loading="lazy">
-      <figcaption><span class="fign">Fig 1</span>Left: accuracy against total reach at the shipped 5
-      masks, with the 74&nbsp;px bound marked. Ringed points are arrangements whose
-      <em>simulation</em> was corrupted by wrap-around, not designs that lost a fair fight. Right: the
-      same 125&nbsp;px of reach spent on different numbers of masks. Below: the spreading cone and
-      the detector plane for one fixed digit, worst to best.</figcaption>
-    </figure>
-
-    <div class="prose col">
-      <p>The detector planes are the clearest part. At 2 and 5 masks the light arrives as a vague
-      smear; at 9 and 14 it is gathered into <strong>distinct bright squares sitting right on the
-      detector patches</strong>. Same reach, same physics. What the extra masks buy is the ability to
-      <em>steer</em> light into the readout rather than merely scatter it in that direction.</p>
-    </div>
-
-    <h3 class="sub-h">See it for yourself</h3>
+      <div><p class="eyebrow">See both machines run</p>
+      <h2>The shipped network and the deep candidate, same digit</h2></div></div>
     <div class="prose col">
       <p>Since more masks keep paying, the deepest arrangement worth the computer time was trained
       properly rather than merely ranked: <strong>56 masks</strong> at 0.53&nbsp;mm gaps, the full
@@ -1590,40 +1783,182 @@ OPTICS_BODY = r"""
 
   <section class="phase reveal">
     <div class="phase-head col">
-      <div><p class="eyebrow">What this does not show</p>
-      <h2>Reading it honestly</h2></div></div>
+      <div><p class="eyebrow">What the extra masks cost</p>
+      <h2>The same budget, re-run against the deep candidate</h2></div></div>
     <div class="prose col">
-      <p>The accuracies from the sweep come from a deliberately <strong>short comparison
-      protocol</strong>, 20,000 images for 12 passes, because the question being asked there is which
-      arrangement wins, not what the final accuracy would be. They are <strong>not comparable to the
-      0.799 headline</strong>, which came from 60,000 images and 40 passes. The fair comparison is
-      the shipped arrangement re-run under the same short protocol, which gives
-      <strong>0.771</strong>. The 56-mask model in the board above is the exception. It was trained
-      at the full budget and scored on the held-back test images, so its <strong>0.9040</strong> and
-      the headline <strong>0.7990</strong> really are the same measurement.</p>
-      <p>There is a confound to rule out. Adding a mask adds 128&sup2; more delays, so
-      <strong>more masks also means more adjustable numbers</strong>, and the sweep alone cannot tell
-      &ldquo;depth helps&rdquo; apart from &ldquo;more numbers help&rdquo;. Two pairs matched to have
-      exactly the same count settle it. 56 masks on a 128&sup2; grid and 14 masks on a 256&sup2; grid
-      both carry 917,504 delays, and they score <strong>0.889 against 0.856</strong>; the 80-versus-20
-      pair, both at 1,310,720, gives 0.891 against 0.870. With the number of adjustable values held
-      equal, <strong>depth wins</strong>. Each arrangement was run once, so trust the trend across the
-      whole range, which is far larger than run-to-run noise, and not the gap between neighbours.</p>
-      <p>The sweep never touched the held-back test images. That set is handed to the MATLAB model
-      and every downstream number is quoted from it, so allowing the sweep to see it would quietly
-      contaminate everything. A separate slice was carved out of the training data instead, and it
-      was used once, at the very end, to score the single arrangement that had already won.</p>
-      <p><strong>Nothing here is shipped, and the deep model is not simply better.</strong> The
-      trained model, the <a class="link" href="@@HREF_index@@">browser classifier &rarr;</a> and the
-      <a class="link" href="@@HREF_tolerance@@">error budget &rarr;</a> all still describe the
-      5-mask, 3&nbsp;mm design. Running the full budget against the 56-mask candidate puts a price on
-      those 10.5 points: <strong>twice the precision on every delay</strong> (0.3 down to
-      0.15&nbsp;rad), <strong>one more bit of control per pixel</strong>, and <strong>4.7&times; less
-      tolerance for light lost at each plate</strong>. Detector power and wavelength drift both get
-      easier, for the same photon-catching reason the accuracy rose. But crosstalk between
-      neighbouring pixels, the one error that already made this unbuildable on a real display chip,
-      does not move at all. Depth adds a second binding constraint without relieving the first, and
-      that trade, rather than the accuracy, is the result.</p>
+      <p>The <a class="link" href="@@HREF_tolerance@@">error budget &rarr;</a> was re-run in full
+      against the 56-mask candidate, scored against its own correspondingly stricter pass mark of
+      0.8588. Every number below is measured the same way as the shipped design&rsquo;s.</p>
+    </div>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>Error source</th><th>Shipped &middot; 5 masks</th><th>Candidate &middot; 56 masks</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Crosstalk between pixels</strong></td><td>holds 0.25&nbsp;px, fails 0.5</td><td>holds <strong>0.25&nbsp;px</strong>, fails 0.5</td><td><strong>unchanged, still binding</strong></td></tr>
+          <tr><td>Each pixel&rsquo;s delay set wrong</td><td>holds 0.3&nbsp;rad, fails 0.5</td><td>holds <strong>0.15&nbsp;rad</strong>, fails 0.2</td><td>2&times; tighter</td></tr>
+          <tr><td>How finely a delay can be set</td><td>holds 3 bits, fails 2</td><td>holds <strong>4 bits</strong>, fails 3</td><td>1 bit tighter</td></tr>
+          <tr><td>Light lost, where it bites</td><td>holds 1&nbsp;dB/mask (5&nbsp;dB total)</td><td>holds <strong>0.214&nbsp;dB/mask</strong> (12&nbsp;dB total)</td><td>4.7&times; tighter per mask</td></tr>
+          <tr><td>Detector noise, dimming the light</td><td>holds 1&nbsp;pW, fails 0.1</td><td>holds <strong>0.1&nbsp;pW</strong>, fails 0.01</td><td>10&times; looser</td></tr>
+          <tr><td>Wavelength drift</td><td>holds 10&nbsp;nm, fails 20</td><td>holds <strong>20&nbsp;nm</strong>, fails 30</td><td>2&times; looser</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p>Three readings. <strong>The constraint that binds does not move.</strong> Crosstalk fails
+      at the same 0.25&nbsp;px, and a real device&rsquo;s ~1&nbsp;px of bleed destroys either design.
+      Depth neither helps nor hurts the one thing that already made this unbuildable.</p>
+      <p><strong>The two that loosened both come from catching more light.</strong> The deep stack
+      lands <strong>79.1%</strong> of incoming photons inside the detector boxes against about 60%,
+      by the same steering the accuracy gain comes from. More light means more tolerance for dimming
+      and for drift. It got sturdier exactly where it already had nine orders of magnitude in hand.</p>
+      <p><strong>Lost light points in opposite directions depending on how you count.</strong> Totalled
+      over the machine the candidate tolerates <em>more</em>, 12&nbsp;dB against 5. But that budget is
+      divided among eleven times as many surfaces, so the per-plate requirement tightens to
+      0.214&nbsp;dB, which sits at the optimistic end of a realistic 0.2&ndash;1&nbsp;dB range.
+      Datasheets quote per surface, so the per-surface number is the one that governs.</p>
+      <div class="finding">
+        <p class="tag">Finding &middot; depth adds a constraint without relieving one</p>
+        <p class="body">Ten and a half points of accuracy cost <strong>twice the precision on every
+        delay, one more bit per pixel, and 4.7&times; less tolerance for lost light</strong>, while
+        the one error that already fails against real hardware <strong>does not move at all</strong>.
+        This is why the deep model is labelled &ldquo;not shipped&rdquo; wherever it appears. Its
+        number is real and measured exactly like the headline, but what it asks of the manufacturing
+        is something this project has no evidence anyone can deliver.</p>
+      </div>
+      <p>There is also something the budget cannot say. At 0.53&nbsp;mm spacing a
+      &plusmn;10&nbsp;&micro;m positioning error goes from 0.33% of the gap to 1.9% of it, and past
+      roughly forty plates the stack is better described as a <strong>solid block of glass</strong>
+      than as separate sheets with air between them. That is a different thing to manufacture, and
+      the budget covers component errors only.</p>
+    </div>
+    <div class="plate-grid reveal">
+      <figure class="plate"><img src="@@FIG_cand_crosstalk@@" alt="Deep model: accuracy against crosstalk" loading="lazy"><figcaption><span class="fign">Fig 1</span>Deep model, crosstalk. The same limit as the shipped design.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_phase@@" alt="Deep model: accuracy against per-pixel delay error" loading="lazy"><figcaption><span class="fign">Fig 2</span>Deep model, delay error. Twice as demanding.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_detector@@" alt="Deep model: accuracy against detector noise" loading="lazy"><figcaption><span class="fign">Fig 3</span>Deep model, detector noise. Ten times more forgiving.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_loss@@" alt="Deep model: accuracy against optical loss" loading="lazy"><figcaption><span class="fign">Fig 4</span>Deep model, lost light, totalled across 56 plates.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_wavelength@@" alt="Deep model: accuracy against wavelength drift" loading="lazy"><figcaption><span class="fign">Fig 5</span>Deep model, wavelength drift. Twice as forgiving.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_quant@@" alt="Deep model: accuracy against bits of control" loading="lazy"><figcaption><span class="fign">Fig 6</span>Deep model, delay steps. One bit more demanding.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_confusion@@" alt="Deep model: as-built confusion matrix" loading="lazy"><figcaption><span class="fign">Fig 7</span>Deep model, which digits get confused for which, at its own stress point of &sigma;=0.175&nbsp;rad. Accuracy 0.7915.</figcaption></figure>
+    </div>
+    <div class="prose col">
+      <p>One detail in Fig&nbsp;7 is worth stating rather than hiding. Each model&rsquo;s confusion
+      matrix is drawn at <em>its own</em> phase-error edge, because a single fixed stress level is
+      not a fair comparison between designs of different fragility. At the 0.35&nbsp;rad the shipped
+      design merely degrades under, the deep model is already at <strong>chance</strong>, predicting
+      almost nothing but 5 and 6 for every input. That is the fragility in the table, seen from a
+      different angle.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Why more of the same runs out</p>
+      <h2>Depth cannot fix what depth is not the problem with</h2></div></div>
+    <div class="prose col">
+      <p>The flattening curve is not bad luck, and it is not a training failure. It follows from
+      what this machine is. <a class="link" href="@@HREF_physics@@">The physics page shows &rarr;</a>
+      that crossing a gap is linear in the light and passing through a mask is linear in the light,
+      so a stack of them, however tall, collapses into a <strong>single</strong> linear operation:
+      one matrix, applied once. Adding masks adds adjustable numbers, and those numbers let the
+      matrix land closer to whatever matrix you wanted, under the constraint that it be buildable
+      out of delay-only plates separated by air. What they do not add is a second <em>kind</em> of
+      step.</p>
+      <p>That is the whole difference from an ordinary neural network. There, depth compounds:
+      each layer bends its input through a nonlinearity before the next layer sees it, and stacking
+      them builds up functions no single layer could express. Here nothing bends between the plates.
+      Fifty-six masks and five masks are both one linear map followed by one squaring at the
+      detector. <strong>Adding plates buys a better approximation of the same limited thing.</strong>
+      The curve flattens because it is converging on the best that thing can do.</p>
+      <p>So the answer is not more masks. It is a nonlinear step somewhere in the middle, which is
+      exactly what this design does not have and, per its scope, does not try to build.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">How the field is trying to get one</p>
+      <h2>Putting a nonlinearity into the light</h2></div></div>
+    <div class="prose col">
+      <p>This is an active research problem, and the approaches split by where the nonlinearity is
+      made to come from. Three families, and a note on what this project can and cannot vouch for.</p>
+      <p><strong>Convert to electronics and back.</strong> Detect the light part-way through, apply
+      the nonlinearity in a circuit, then re-modulate a fresh beam. It certainly works, since the
+      detector&rsquo;s squaring is already a nonlinearity and this simply uses it more than once. What
+      it costs is the thing optics was supposed to avoid: a conversion, and its energy and latency,
+      at every layer.</p>
+      <p><strong>Use a material that responds to intensity.</strong> Saturable absorbers, which
+      become more transparent as light gets brighter, and phase-change materials, which switch state.
+      The optics stays optical. The difficulty is that these effects are weak at the power levels an
+      efficient inference engine wants to run at, which is the tension the whole approach lives
+      inside.</p>
+      <p><strong>Change where the input enters.</strong> The most interesting of the three, because
+      it sidesteps the problem rather than paying for it. Wanjura and Marquardt show that if the
+      input is encoded not in the incoming wave but in <em>the physical parameters that control how
+      the wave scatters</em>, the map from input to output is genuinely nonlinear even though the
+      wave physics stays perfectly linear.<sup class="r">1</sup> The nonlinearity comes from the
+      encoding, not from any material. They propose an integrated-photonics implementation and show
+      the gradients needed for training can be measured directly in scattering experiments.</p>
+      <p><strong>What this project can vouch for stops at the wall itself.</strong> The measurement
+      here is that a stack of phase masks is one linear operator and that scaling it has sharply
+      diminishing returns. Which of the routes above is the right one is not something this study
+      tested, and nothing on this page should be read as evidence for any of them.</p>
+      <ol class="refs">
+        <li><b>1</b>C. C. Wanjura and F. Marquardt, &ldquo;Fully nonlinear neuromorphic computing
+        with linear wave scattering,&rdquo; <em>Nature Physics</em> (2024).
+        <a href="https://doi.org/10.1038/s41567-024-02534-9">doi:10.1038/s41567-024-02534-9</a>
+        &middot; preprint <a href="https://arxiv.org/abs/2308.16181">arXiv:2308.16181</a></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Reading the numbers on this page honestly</p>
+      <h2>Two protocols, and a confound worth ruling out</h2></div></div>
+    <div class="prose col">
+      <p>The sweep accuracies come from a deliberately <strong>short protocol</strong>, 20,000
+      images for 12 passes, because the question there is which arrangement wins rather than what
+      final accuracy it would reach. They are <strong>not comparable to the 0.799 headline</strong>,
+      which came from 60,000 images and 40 passes. The fair comparison for the shipped geometry
+      under the short protocol is <strong>0.771</strong>. The 56-mask model is the exception: it was
+      trained at the full budget and scored on the held-back test images, so its 0.9040 and the
+      headline 0.7990 are the same measurement.</p>
+      <p>There is a confound to rule out. Adding a mask adds 128&sup2; more delays, so more masks
+      also means more adjustable numbers, and the sweep alone cannot separate &ldquo;depth
+      helps&rdquo; from &ldquo;more numbers help&rdquo;. Two parameter-matched pairs settle it. 56
+      masks on a 128&sup2; grid and 14 on a 256&sup2; grid both carry 917,504 delays and score
+      <strong>0.889 against 0.856</strong>; the 80-versus-20 pair, both at 1,310,720, gives 0.891
+      against 0.870. At equal parameter count, <strong>depth wins</strong>. Each arrangement was run
+      once, so trust the trend across the whole range rather than the gap between neighbours.</p>
+      <p>The sweep never touched the held-back test images, since that set is handed to the as-built
+      model and every downstream number is quoted from it. A separate slice was carved out of the
+      training data instead and used once, at the end, to score the arrangement that had already
+      won.</p>
+    </div>
+  </section>
+
+  <section class="phase planned reveal">
+    <div class="phase-head col"><span class="ph-num next">next</span>
+      <div><span class="badge-next">Planned</span>
+      <p class="eyebrow">Not built yet</p>
+      <h2>What comes next</h2></div></div>
+    <div class="prose col">
+      <p><strong>Alignment and calibration tolerances.</strong> The error budget covers component
+      errors only. Plate spacing, sideways registration, delays reading systematically high or low,
+      and detector offsets are all unmodelled, and for a free-space build they are plausibly the
+      harder problem. Four new error sources, the same framework.</p>
+      <p><strong>The mesh&rsquo;s own error budget.</strong> Extending the same treatment to the
+      chip switches on the two sources that mean nothing for phase masks: couplers that do not split
+      light exactly in half, and light lost in each of 72 interferometers. The interesting question
+      is the failure mode, since errors there accumulate <em>in sequence</em> rather than in
+      parallel.</p>
+      <p><strong>Single photons through the same mesh.</strong> Send light through the trained chip
+      one photon at a time, with the photons indistinguishable, and the output statistics stop being
+      classical. The odds of each pattern are then governed by a quantity called the permanent of
+      the matrix, which is famously hard to compute, and that difficulty is the point of
+      <strong>boson sampling</strong>. The planned work computes those odds and shows the
+      Hong&ndash;Ou&ndash;Mandel dip, where two identical photons entering a 50:50 coupler always
+      leave together. Only the light going in changes; the mesh is identical.</p>
     </div>
   </section>
 
@@ -1649,8 +1984,8 @@ OPTICS_BODY = r"""
 </main>
 
 @@PAGE_SCRIPT@@
-@@OPTICS_BUNDLE@@
-@@OPTICS_MOUNT@@
+@@SCALING_BUNDLE@@
+@@SCALING_MOUNT@@
 @@COMPARE_BUNDLE@@
 @@COMPARE_MOUNT@@
 """
@@ -1687,7 +2022,7 @@ def _chrome(body: str, key: str, next_key: str, kicker: str = "Next") -> str:
     html = body.replace("@@TOPBAR@@", topbar(key))
     html = html.replace("@@NEXT@@", next_link(next_key, kicker))
     html = html.replace("@@PAGE_SCRIPT@@", mount_queue_bundle() + PAGE_SCRIPT)
-    return _figures(html)
+    return _figures(_math(html))
 
 
 def render() -> dict:
@@ -1710,17 +2045,28 @@ def render() -> dict:
     phys = _chrome(phys, "physics", "chip")
     out["physics.html"] = _document(resolve_links(phys), PAGE_BY_KEY["physics"])
 
-    chip = CHIP_BODY.replace("@@ANALOGY_BUNDLE@@", analogy_bundle())
-    # Open on the finished machines: the "0.8 px to spare" reading is the point.
-    chip = chip.replace("@@ANALOGY_MOUNT@@", analogy_mount("analogy", t=1))
-    chip = _chrome(chip, "chip", "tolerance")
+    # No widget here any more. The crosswalk table makes the correspondence argument on
+    # its own, and dragging the slider added nothing the prose had not already said.
+    # analogy.js and analogy_geom.js stay in the repo for apps/analogy_demo.py.
+    chip = _chrome(CHIP_BODY, "chip", "tolerance")
     out["chip.html"] = _document(resolve_links(chip), PAGE_BY_KEY["chip"])
 
-    tol = _chrome(TOLERANCE_BODY, "tolerance", "optics")
+    # One widget per error source. They share a bundle and a mask, and each is
+    # deferred until the reader nears it, so six of them on one page cost one
+    # download and never six simultaneous starts.
+    tol = TOLERANCE_BODY.replace("@@ERRORS_BUNDLE@@", error_mask_bundle())
+    tol = tol.replace("@@ERRORS_MOUNT@@", "\n".join(
+        error_mount(f"err-{kind}", kind) for kind in
+        ("crosstalk", "phase", "detector", "loss", "wavelength", "quant")
+    ))
+    tol = _chrome(tol, "tolerance", "optics")
     out["tolerance.html"] = _document(resolve_links(tol), PAGE_BY_KEY["tolerance"])
 
-    opt = OPTICS_BODY.replace("@@OPTICS_BUNDLE@@", optics_bundle())
-    opt = opt.replace("@@OPTICS_MOUNT@@", optics_mount("optics", zMm=3))
+    # The reach widget is gone with the reach argument; this page is about depth
+    # now. scaling.js reads the same sweep bundle optics.js used to.
+    opt = OPTICS_BODY.replace("@@SCALING_BUNDLE@@", scaling_bundle())
+    opt = opt.replace("@@SCALING_MOUNT@@", mount_script(
+        "scaling", "window.PhotonnScaling.mount(el);"))
     opt = opt.replace("@@COMPARE_BUNDLE@@", compare_bundle(stage=True))
     # Open on a digit the shipped model gets wrong and the candidate does not.
     # The stage draws the deep column as a machine; it is fed the same digit the

@@ -131,13 +131,26 @@ function results = run_error_budget(opts)
     results.loss.nMasks = nMasks;
 
     % ---------------- confusion matrix at a representative degradation ----
-    cfgC = struct('phase_sigma_rad', 0.35);
+    % The stress point is derived from THIS model's own measured phase edge, not
+    % fixed, so every model is shown at matched *relative* stress.
+    %
+    % It used to be a hardcoded 0.35 rad. That was representative for the shipped
+    % 5-mask design (holds 0.3, fails 0.5) but is nearly twice past the 56-mask
+    % candidate's failure point (holds 0.15, fails 0.2), where the matrix reads
+    % 0.108 -- chance -- and shows nothing but total collapse. CONFUSION_STRESS
+    % reproduces 0.35 exactly on the shipped design, so that figure is unchanged,
+    % and scales to 0.175 rad on the candidate.
+    CONFUSION_STRESS = 7 / 6;                    % just past the edge that still holds
+    holdEdge = max(results.phase.magnitudes(results.phase.accMean >= thresh));
+    sigmaC = CONFUSION_STRESS * holdEdge;
+    cfgC = struct('phase_sigma_rad', sigmaC);
     pC = err.phase_shifter_error(struct('phase_masks', h.parameters.phase_masks, ...
-        'wavelength_m', lambda0), 0.35, 1);
+        'wavelength_m', lambda0), sigmaC, 1);
     oC = model.evaluate(h, struct('params', pC));
     f = viz.confusion_matrix(oC.labels, oC.predictions);
-    saveFig(f, figDir, 'confusion_phase035.png');
+    saveFig(f, figDir, 'confusion_phase.png');
     results.confusion.config = cfgC; results.confusion.accuracy = oC.accuracy;
+    results.confusion.sigma_rad = sigmaC;
 
     % ---------------- spatial sensitivity map ----------------------------
     % Cost is nMasks x gBlocks^2 evaluations, so it scales with depth in a way

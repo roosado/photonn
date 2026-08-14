@@ -31,11 +31,11 @@ KB = 1024
 #: page -> ceiling in KB. Measured after the 2026-08-10 redesign, with roughly 15%
 #: headroom over what each page actually weighs.
 BUDGET = {
-    "index.html": 430,        # the live classifier (8-bit) + the 3D stage + one plate
+    "index.html": 430,        # the live classifier (8-bit) + the 3D stage + two plates
     "physics.html": 70,       # prose + the diffraction explorer; the cheap one
-    "chip.html": 190,         # the analogy widget + the mesh topology plate
-    "tolerance.html": 270,    # 16 tolerance figures, no widgets
-    "optics.html": 1150,      # two models, one of them 56 masks at 4 bits
+    "chip.html": 150,         # the mesh topology plate; the analogy widget is gone
+    "tolerance.html": 200,    # six error widgets sharing one mask, seven figures
+    "optics.html": 1150,      # two models (one 56 masks at 4 bits) + the candidate budget
 }
 
 #: The whole site, as a reader walking the sequential path would meet it. Five

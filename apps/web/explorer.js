@@ -74,8 +74,9 @@
 .pe-plots{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
 .pe-panelbox{background:var(--pe-panel);border:1px solid var(--pe-border);
   border-radius:10px;padding:10px;}
-.pe-panelbox h4{margin:0 0 6px;font-size:12px;color:var(--pe-muted);font-weight:600;
+.pe-panelbox h4{margin:0 0 2px;font-size:12px;color:var(--pe-muted);font-weight:600;
   text-transform:uppercase;letter-spacing:.04em;}
+.pe-hint{margin:0 0 8px;font-size:11.5px;line-height:1.4;color:var(--pe-muted);max-width:46ch;}
 .pe-field-wrap{display:flex;gap:8px;align-items:stretch;}
 .pe-field{width:320px;height:320px;max-width:100%;image-rendering:auto;
   border-radius:6px;display:block;background:#000;}
@@ -191,6 +192,11 @@
 
     const fieldBox = el("div", "pe-panelbox");
     fieldBox.appendChild(el("h4", null, "Brightness |E|² (scaled to its own peak)"));
+    fieldBox.appendChild(el("p", "pe-hint",
+      "The beam seen face-on after travelling distance <b>z</b>, as a camera there would "
+      + "see it. Bright means more light arriving. Every frame is rescaled to its own "
+      + "brightest point, so this shows the <em>shape</em> of the pattern, not how much "
+      + "light is left."));
     const fieldWrap = el("div", "pe-field-wrap");
     const fieldCanvas = el("canvas", "pe-field");
     const colorbar = el("div", "pe-colorbar");
@@ -201,6 +207,10 @@
 
     const crossBox = el("div", "pe-panelbox");
     crossBox.appendChild(el("h4", null, "Horizontal cross-section (mid-row)"));
+    crossBox.appendChild(el("p", "pe-hint",
+      "One straight line of pixels taken across the middle of the panel on the left, "
+      + "plotted as a graph. The panel shows you the pattern; this shows you its "
+      + "numbers, so the faint outer rings are actually readable."));
     const crossCanvas = el("canvas", "pe-cross");
     crossBox.appendChild(crossCanvas);
     crossBox.appendChild(el("div", "pe-axis", "x in mm"));

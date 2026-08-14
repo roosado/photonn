@@ -122,6 +122,21 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .q{font-family:var(--mono);font-size:.92em;background:var(--surface-2);
   border:1px solid var(--border);border-radius:5px;padding:.05em .38em;color:var(--ink);
   white-space:nowrap;}
+/* Mathematics is MathML, rendered by the browser itself. Inline expressions sit in
+   the run of the sentence; display ones get their own centred line and a rule-free
+   band so a long operator product is not competing with the prose around it. */
+   Identifier styling is left to the browser on purpose: MathML already italicises a
+   single-letter <mi> and leaves a multi-letter one upright, which is exactly the
+   convention wanted here (M is a matrix, exp is a function name).
+
+   NEVER set `display` on a <math> element. MathML lays out as `display: math` (or
+   `block math`), and overriding it with plain `block` drops the element back into CSS
+   block layout, which puts every child on its own line -- a nine-term operator product
+   becomes nine stacked rows. The scroll container therefore lives on a wrapper. */
+math{font-size:1.06em;color:var(--ink);}
+.eq{margin:1.15rem 0;text-align:center;overflow-x:auto;overflow-y:hidden;max-width:100%;
+  padding:.1rem 0;}
+.eq math{font-size:1.2em;}
 a.link{color:var(--beam);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--beam) 40%,transparent);}
 a.link:hover{border-bottom-color:var(--beam);}
 a.link:focus-visible{outline:2px solid var(--beam);outline-offset:2px;border-radius:2px;}
@@ -247,32 +262,56 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       a plane wave and simply falls behind by an amount set by its direction. So the recipe is to
       split the light into plane waves with a Fourier transform, hold each one back by its own
       amount, and add them all back together. That is the whole <strong>angular-spectrum
-      method</strong>: transform, multiply by
-      <span class="q">H = exp(i&thinsp;2&pi;z&thinsp;&radic;(1/&lambda;&sup2; &minus; f&sup2;))</span>,
-      transform back. It makes <strong>no small-angle approximation</strong>, the simplification most
+      method</strong>: transform, multiply by</p>
+      <div class="eq"><math display="block"><mi>H</mi><mo>=</mo><mi>exp</mi><mo>(</mo><mi>i</mi><mn>2</mn><mi>&pi;</mi><mi>z</mi><msqrt><mfrac><mn>1</mn><msup><mi>&lambda;</mi><mn>2</mn></msup></mfrac><mo>&minus;</mo><msup><mi>f</mi><mn>2</mn></msup></msqrt><mo>)</mo></math></div>
+      <p>and transform back. It makes <strong>no small-angle approximation</strong>, the simplification most
       textbook diffraction formulas lean on and the one usually called <em>paraxial</em>, so it stays
       exact even for steeply travelling light. That is
       why Fresnel, Fraunhofer and the differentiable PyTorch layer are all checked against it rather
       than the other way round. Against a Gaussian beam with a known closed-form answer it agrees to
       <strong>~2&times;10<sup>&minus;8</sup></strong>.</p>
       <p>Two behaviours fall straight out of that square root. Where
-      <span class="q">f&sup2; &gt; 1/&lambda;&sup2;</span> the quantity under it goes negative, which
+      <math><msup><mi>f</mi><mn>2</mn></msup><mo>&gt;</mo><mfrac><mn>1</mn><msup><mi>&lambda;</mi><mn>2</mn></msup></mfrac></math> the quantity under it goes negative, which
       corresponds to light angled so steeply it cannot actually travel. Computing the root over the
       complex numbers makes those components <strong>die away</strong> with distance instead, which
       is the correct physics: these are <em>evanescent</em> waves, which cling to the surface rather
       than propagating. No special case is needed. And over a long enough distance the multiplier
-      <span class="q">H</span> starts <strong>spinning faster than the grid has points to follow
+      <math><mi>H</mi></math> starts <strong>spinning faster than the grid has points to follow
       it</strong>. A grid that cannot keep up with a wave reports a slower one that happens to match
       at the sample points, which is <em>aliasing</em>, and the answer silently becomes wrong.
-      Setting <span class="q">H</span> to zero past the point where the grid can still track it
+      Setting <math><mi>H</mi></math> to zero past the point where the grid can still track it
       keeps the method honest at long range, at the cost of throwing away the steepest light.</p>
       <p>The edge is a single criterion,
-      <span class="q">z_crit = N&middot;dx&sup2;/&lambda;</span>, which is 15.4&nbsp;mm here against
+      <math><msub><mi>z</mi><mi>crit</mi></msub><mo>=</mo><mi>N</mi><mo>&middot;</mo><msup><mi>dx</mi><mn>2</mn></msup><mo>/</mo><mi>&lambda;</mi></math>, which is 15.4&nbsp;mm here against
       3&nbsp;mm gaps. It is checked every time the code runs, not only in the tests. Note what it
       does <em>not</em> contain. It depends on the wavelength, the pixel size and the number of
       pixels, but <strong>not on the width of the opening the light passes through</strong>, which
       is why the aperture control below does not move the sampling threshold no matter how far you
       drag it.</p>
+    </div>
+    <div class="prose col">
+      <p>Below is that calculation, running. It is worth knowing what you are looking at before you
+      start dragging, because the picture is less obvious than it appears.</p>
+      <p>Light enters through a hole, the <strong>aperture</strong>, and you are shown what it looks
+      like <strong>after travelling a distance <em>z</em></strong>. <strong>Aperture shape</strong>
+      decides the pattern&rsquo;s symmetry: a round hole gives concentric rings, a square one gives a
+      cross, because the edges are what bend the light and their orientation survives all the way to
+      the far end. <strong>Aperture width</strong> works backwards from intuition, and this is the
+      single most surprising control here: <em>narrowing</em> the hole makes the pattern
+      <em>wider</em>. Squeezing a wave in space forces it to spread in angle.
+      <strong>Distance</strong> and <strong>wavelength</strong> both scale that spreading up,
+      so a longer wavelength or a longer flight both blur the pattern outward.</p>
+      <p><strong>Grid N</strong> is the only control that is not physics. It is how many samples the
+      simulation uses across the window, and it changes nothing about the light. What it changes is
+      whether the computer can still faithfully represent that light. Coarse grids cannot hold
+      steeply angled waves, which is what the amber flag is about: past
+      <span style="white-space:nowrap">z &gt; z_crit</span> the method starts throwing away the
+      steepest content rather than failing outright, so it is flagged instead of trusted. Raise
+      <strong>N</strong> and the flag clears, because a finer grid can carry more angle.</p>
+      <p>Two things to actually try. Drag <strong>aperture width</strong> to its smallest and watch
+      the rings swell to fill the window. Then push <strong>distance</strong> to its maximum and
+      watch the flag turn amber, which is the moment the simulation stops being trustworthy and
+      says so.</p>
     </div>
     <div class="explorer-band reveal">
       <div class="pe-host"><div id="explorer"></div></div>
@@ -291,12 +330,12 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <p>The light drawn <em>between</em> the mask planes on the front page is not decoration. One
       3&nbsp;mm gap can be cut into several shorter steps and re-run, because propagating a distance
       and then another gives exactly the same answer as propagating the sum in one go:
-      <span class="q">H(z&#8321;)&middot;H(z&#8322;) = H(z&#8321;+z&#8322;)</span>. The one thing that
+      <math><mi>H</mi><mo>(</mo><msub><mi>z</mi><mn>1</mn></msub><mo>)</mo><mo>&middot;</mo><mi>H</mi><mo>(</mo><msub><mi>z</mi><mn>2</mn></msub><mo>)</mo><mo>=</mo><mi>H</mi><mo>(</mo><msub><mi>z</mi><mn>1</mn></msub><mo>+</mo><msub><mi>z</mi><mn>2</mn></msub><mo>)</mo></math>. The one thing that
       would break that equality is the band limit described above, and below
-      <span class="q">z_crit</span> it is <strong>switched off entirely</strong>. At 3&nbsp;mm
+      <math><msub><mi>z</mi><mi>crit</mi></msub></math> it is <strong>switched off entirely</strong>. At 3&nbsp;mm
       against 15.4&nbsp;mm it is switched off, so those in-between planes are <strong>the real
       light</strong>, not an interpolation between the planes on either side. Above
-      <span class="q">z_crit</span> the equality genuinely does break, and the test suite asserts
+      <math><msub><mi>z</mi><mi>crit</mi></msub></math> the equality genuinely does break, and the test suite asserts
       both halves of that.</p>
       <p><strong>No rays are drawn, deliberately.</strong> Light here is treated as a wave, not as
       travelling arrows, and drawing straight lines from digit to detector would misrepresent the one
@@ -318,30 +357,33 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <p>Crossing a gap is linear in the light. Passing through a mask is linear in the light. Doing
       one after the other is therefore still linear, and the whole stack collapses into a
       <em>single</em> multiplication by one big matrix:</p>
-      <p><span class="q">E_out = M &middot; E_in</span>, where
-      <span class="q">M = P_L D_L P_{L&minus;1} D_{L&minus;1} &hellip; D&#8321; P&#8320;</span>, each
-      <span class="q">P</span> a gap and each <span class="q">D</span> a mask.</p>
+      <div class="eq"><math display="block"><msub><mi>E</mi><mi>out</mi></msub><mo>=</mo><mi>M</mi><mo>&middot;</mo><msub><mi>E</mi><mi>in</mi></msub></math></div>
+      <div class="eq"><math display="block"><mi>M</mi><mo>=</mo><msub><mi>P</mi><mi>L</mi></msub><msub><mi>D</mi><mi>L</mi></msub><msub><mi>P</mi><mrow><mi>L</mi><mo>&minus;</mo><mn>1</mn></mrow></msub><msub><mi>D</mi><mrow><mi>L</mi><mo>&minus;</mo><mn>1</mn></mrow></msub><mo>&hellip;</mo><msub><mi>D</mi><mn>1</mn></msub><msub><mi>P</mi><mn>0</mn></msub></math></div>
+      <p>Each <math><mi>P</mi></math> is one gap of air the light crosses, and each <math><mi>D</mi></math> is one mask it
+      passes through.</p>
       <p>This matters more than it sounds. No matter how many masks and gaps are stacked up, the
       map from input light to output light is one matrix. Extra layers add adjustable numbers, and
-      they let <span class="q">M</span> come closer to whatever matrix you wanted, <em>subject to
+      they let <math><mi>M</mi></math> come closer to whatever matrix you wanted, <em>subject to
       the physical constraint</em> that it be buildable out of delay-only masks separated by air.
       What they do not add is any of the compounding power that stacking layers gives an ordinary
       neural network, where each layer bends the result before the next one sees it.
       <strong>Depth here is not depth in that sense at all.</strong></p>
       <p>The single exception is the detection. The score for class <em>c</em> is the brightness
       added up over its detector region, and brightness is the square of the wave&rsquo;s height. Work
-      that through and the score is
-      <span class="q">s_c = E_in&dagger; A_c E_in</span> with
-      <span class="q">A_c = M&dagger; R_c M &#8827; 0</span>. In words: each score is a
+      that through and the score comes out as</p>
+      <div class="eq"><math display="block"><msub><mi>s</mi><mi>c</mi></msub><mo>=</mo><msub><mi>E</mi><mi>in</mi></msub><mo>&dagger;</mo><msub><mi>A</mi><mi>c</mi></msub><msub><mi>E</mi><mi>in</mi></msub></math></div>
+      <p>with</p>
+      <div class="eq"><math display="block"><msub><mi>A</mi><mi>c</mi></msub><mo>=</mo><mi>M</mi><mo>&dagger;</mo><msub><mi>R</mi><mi>c</mi></msub><mi>M</mi><mo>&#8827;</mo><mn>0</mn></math></div>
+      <p>In words: each score is a
       <strong>quadratic form</strong>, meaning the inputs enter multiplied together in pairs rather
-      than one at a time, and the <span class="q">&#8827; 0</span> says the resulting score can never
+      than one at a time, and the <math><mo>&#8827;</mo><mn>0</mn></math> says the resulting score can never
       go negative. The classifier computes one of these per class and picks the largest. That is
       strictly more powerful than a plain linear classifier, and it is exactly <em>one</em> nonlinear
       step: linear optics, square the magnitude, add up.</p>
       <p>One consequence is worth pulling out, because it is the only other place anything nonlinear
       touches the raw pixels: <strong>how the image is written into the beam</strong>. Encoding it as
       delays rather than brightness passes the pixel values through
-      <span class="q">exp(i&middot;&pi;&middot;image)</span> before the optics ever sees them, and
+      <math><mi>exp</mi><mo>(</mo><mi>i</mi><mo>&middot;</mo><mi>&pi;</mi><mo>&middot;</mo><mi>image</mi><mo>)</mo></math> before the optics ever sees them, and
       that step is not linear. This is why the choice of encoding measurably changes the accuracy
       that can be reached. It is quietly doing work the linear optics downstream cannot do.</p>
       <p>By the project&rsquo;s own scope this limit is <strong>measured and described, not
@@ -349,18 +391,11 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       exotic materials, and no larger electronic network bolted on the end to compensate. If a
       bigger electronic stage would lift the accuracy, that is a result worth reporting, not a bug
       to fix.</p>
-      <div class="finding">
-        <p class="tag">Correction &middot; kept on the record</p>
-        <p class="body">An earlier version of this project read the shipped network&rsquo;s
-        <strong>0.799 plateau</strong> as this ceiling being reached, and presented it as measured
-        rather than merely asserted. <strong>That inference was wrong,</strong> and it is left here
-        rather than quietly removed. The argument above is untouched: the stack really is one matrix.
-        What did not follow was concluding that five masks had already wrung everything out of it.
-        They had not, by at least eight points. The plateau belonged to <em>that particular
-        arrangement of the optics</em>, and
-        <a class="link" href="optics.html">sweeping that arrangement is a page of its own
-        &rarr;</a></p>
-      </div>
+      <p>One thing this argument does <em>not</em> settle is how close any particular stack gets to
+      the best operator its masks could implement. Five masks score 0.799, and it would be easy to
+      read that as the ceiling above being reached. It is not:
+      <a class="link" href="optics.html">stacking far more of them keeps paying, and that is a
+      page of its own &rarr;</a></p>
     </div>
   </section>
 
@@ -374,7 +409,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
         gives the classic bullseye pattern with its first dark ring exactly where theory puts it.</p></div>
       <div><h3>Enforced, not assumed</h3><p>The sampling limit is checked whenever the code runs, not
         only in the tests: <span class="q">check_sampling</span> returns a report, and the explorer
-        flags the crossing live. Past <span class="q">z_crit</span> the method does not crash or
+        flags the crossing live. Past <math><msub><mi>z</mi><mi>crit</mi></msub></math> the method does not crash or
         obviously misbehave, which is precisely why it has to be flagged.</p></div>
       <div><h3>Scope</h3><p>Light is treated as a single wave with no direction of vibration, which
         rules out polarisation effects, and there is no full electromagnetic solver anywhere. If real
@@ -931,8 +966,9 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 .pe-plots{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
 .pe-panelbox{background:var(--pe-panel);border:1px solid var(--pe-border);
   border-radius:10px;padding:10px;}
-.pe-panelbox h4{margin:0 0 6px;font-size:12px;color:var(--pe-muted);font-weight:600;
+.pe-panelbox h4{margin:0 0 2px;font-size:12px;color:var(--pe-muted);font-weight:600;
   text-transform:uppercase;letter-spacing:.04em;}
+.pe-hint{margin:0 0 8px;font-size:11.5px;line-height:1.4;color:var(--pe-muted);max-width:46ch;}
 .pe-field-wrap{display:flex;gap:8px;align-items:stretch;}
 .pe-field{width:320px;height:320px;max-width:100%;image-rendering:auto;
   border-radius:6px;display:block;background:#000;}
@@ -1048,6 +1084,11 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 
     const fieldBox = el("div", "pe-panelbox");
     fieldBox.appendChild(el("h4", null, "Brightness |E|² (scaled to its own peak)"));
+    fieldBox.appendChild(el("p", "pe-hint",
+      "The beam seen face-on after travelling distance <b>z</b>, as a camera there would "
+      + "see it. Bright means more light arriving. Every frame is rescaled to its own "
+      + "brightest point, so this shows the <em>shape</em> of the pattern, not how much "
+      + "light is left."));
     const fieldWrap = el("div", "pe-field-wrap");
     const fieldCanvas = el("canvas", "pe-field");
     const colorbar = el("div", "pe-colorbar");
@@ -1058,6 +1099,10 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 
     const crossBox = el("div", "pe-panelbox");
     crossBox.appendChild(el("h4", null, "Horizontal cross-section (mid-row)"));
+    crossBox.appendChild(el("p", "pe-hint",
+      "One straight line of pixels taken across the middle of the panel on the left, "
+      + "plotted as a graph. The panel shows you the pattern; this shows you its "
+      + "numbers, so the faint outer rings are actually readable."));
     const crossCanvas = el("canvas", "pe-cross");
     crossBox.appendChild(crossCanvas);
     crossBox.appendChild(el("div", "pe-axis", "x in mm"));

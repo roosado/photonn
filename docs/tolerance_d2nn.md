@@ -201,9 +201,16 @@ To hold classification accuracy within 5 % of the ideal 0.799 (i.e. ≥ 0.7591):
 
 `tolerance_phase.png`, `tolerance_quant.png`, `tolerance_wavelength.png`,
 `tolerance_crosstalk.png`, `tolerance_detector.png`, `tolerance_loss.png`,
-`confusion_phase035.png` (as-built confusion at σ = 0.35 rad, accuracy 0.769),
+`confusion_phase.png` (as-built confusion at σ = 0.35 rad, accuracy 0.769),
 `sensitivity_map.png` (per-mask spatial sensitivity), plus
 `error_budget_results.mat`.
+
+The confusion σ is **derived from the model's own measured phase edge** (7/6 of the
+largest σ that still holds), not fixed. It reproduces 0.35 rad exactly on the shipped
+design, whose edge is 0.3, so that figure is unchanged. On the 56-mask candidate, whose
+edge is 0.15, it gives 0.175 rad and an accuracy of 0.7915. The previous hardcoded
+0.35 rad put the candidate nearly twice past its failure point, where it read 0.108 —
+chance — and the matrix showed only collapse onto classes 5 and 6.
 
 ## Caveats
 

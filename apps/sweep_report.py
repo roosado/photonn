@@ -294,6 +294,27 @@ def build_js(doc, out=OUT_JS):
         "points": [point(r) for r in z_arm],
         "iso_reach_px": ISO_TARGET_PX,
         "iso": [point(r) for r in iso],
+        # Every 128-grid run in the sweep, deepest included, for the scaling curve
+        # on /optics. `iso` above is only the four runs sitting exactly on the
+        # iso-reach target, which is the right set for the reach argument and the
+        # wrong one for "what does depth actually buy" -- that needs the 20, 28,
+        # 40, 56 and 80-mask runs too. Sorted by depth, since the curve is read
+        # left to right.
+        # 256-grid runs carry an "n256_" config prefix; they belong to the
+        # depth-versus-resolution question, not to this curve.
+        "scaling": sorted(
+            (point(r) for r in doc["runs"]
+             if r["layers"] > 0 and not str(r["config"]).startswith("n256_")),
+            key=lambda p: (p["layers"], p["z_mm"]),
+        ),
+        # The two full-budget runs, which are NOT part of the sweep: 60k images
+        # rather than 20k, and the numbers every other page quotes. They are what
+        # makes the scaling curve legible, because the sweep's own accuracies are
+        # depressed by its short protocol and must never be compared to them.
+        "full": [
+            {"layers": 5, "acc": 0.7990, "label": "shipped"},
+            {"layers": 56, "acc": 0.9040, "label": "deep candidate"},
+        ],
     }
 
     Path(out).parent.mkdir(parents=True, exist_ok=True)

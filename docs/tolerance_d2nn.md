@@ -201,16 +201,29 @@ To hold classification accuracy within 5 % of the ideal 0.799 (i.e. ≥ 0.7591):
 
 `tolerance_phase.png`, `tolerance_quant.png`, `tolerance_wavelength.png`,
 `tolerance_crosstalk.png`, `tolerance_detector.png`, `tolerance_loss.png`,
+`confusion_ideal.png` (no error applied, accuracy 0.7990),
 `confusion_phase.png` (as-built confusion at σ = 0.35 rad, accuracy 0.769),
 `sensitivity_map.png` (per-mask spatial sensitivity), plus
 `error_budget_results.mat`.
 
-The confusion σ is **derived from the model's own measured phase edge** (7/6 of the
-largest σ that still holds), not fixed. It reproduces 0.35 rad exactly on the shipped
+**Two confusion matrices, and they answer different questions.** `confusion_ideal.png`
+is the model's own behaviour with nothing perturbed — the reference the degraded one is
+read against. It is free, since the ideal full-test-set pass is already computed to set
+the 95 %-of-ideal threshold. `confusion_phase.png` is what a fabrication error does to
+that behaviour.
+
+The stressed matrix's σ is **derived from the model's own measured phase edge** (7/6 of
+the largest σ that still holds), not fixed. It reproduces 0.35 rad exactly on the shipped
 design, whose edge is 0.3, so that figure is unchanged. On the 56-mask candidate, whose
 edge is 0.15, it gives 0.175 rad and an accuracy of 0.7915. The previous hardcoded
 0.35 rad put the candidate nearly twice past its failure point, where it read 0.108 —
 chance — and the matrix showed only collapse onto classes 5 and 6.
+
+**The site uses the ideal matrix for both models.** `/` shows the shipped design's
+(0.7990) and `/optics` shows the candidate's (0.9040), so the two are directly
+comparable and the figure is answering "what did depth buy?" rather than duplicating
+the tolerance curves printed beside it. The candidate's stressed matrix stays in
+`figures_candidate_L56/` as a record of the run; it is no longer published.
 
 ## Caveats
 

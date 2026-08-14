@@ -148,7 +148,10 @@ FIGURES = {
     "cand_crosstalk": "photonn-hw/figures_candidate_L56/tolerance_crosstalk.png",
     "cand_detector": "photonn-hw/figures_candidate_L56/tolerance_detector.png",
     "cand_loss": "photonn-hw/figures_candidate_L56/tolerance_loss.png",
-    "cand_confusion": "photonn-hw/figures_candidate_L56/confusion_phase.png",
+    # Ideal, not stressed, so it answers "what does depth buy?" against the front
+    # page's confusion_ideal rather than "what does fabrication cost?" -- which the
+    # six tolerance curves beside it already answer.
+    "cand_confusion_ideal": "photonn-hw/figures_candidate_L56/confusion_ideal.png",
 }
 
 # A figure is encoded at roughly 2x the CSS width it is actually displayed at,
@@ -164,7 +167,7 @@ FIG_OPTS = {key: {"max_w": GRID_MAX_W} for key in (
     "tol_phase", "tol_quant", "tol_wavelength", "tol_crosstalk", "tol_detector",
     "tol_loss", "confusion",
     "cand_phase", "cand_quant", "cand_wavelength", "cand_crosstalk", "cand_detector",
-    "cand_loss", "cand_confusion",
+    "cand_loss", "cand_confusion_ideal",
 )}
 
 # AVIF at q60 is the knee of the quality curve for these figures, measured against
@@ -1838,15 +1841,31 @@ OPTICS_BODY = r"""
       <figure class="plate"><img src="@@FIG_cand_loss@@" alt="Deep model: accuracy against optical loss" loading="lazy"><figcaption><span class="fign">Fig 4</span>Deep model, lost light, totalled across 56 plates.</figcaption></figure>
       <figure class="plate"><img src="@@FIG_cand_wavelength@@" alt="Deep model: accuracy against wavelength drift" loading="lazy"><figcaption><span class="fign">Fig 5</span>Deep model, wavelength drift. Twice as forgiving.</figcaption></figure>
       <figure class="plate"><img src="@@FIG_cand_quant@@" alt="Deep model: accuracy against bits of control" loading="lazy"><figcaption><span class="fign">Fig 6</span>Deep model, delay steps. One bit more demanding.</figcaption></figure>
-      <figure class="plate"><img src="@@FIG_cand_confusion@@" alt="Deep model: as-built confusion matrix" loading="lazy"><figcaption><span class="fign">Fig 7</span>Deep model, which digits get confused for which, at its own stress point of &sigma;=0.175&nbsp;rad. Accuracy 0.7915.</figcaption></figure>
+      <figure class="plate"><img src="@@FIG_cand_confusion_ideal@@" alt="Deep model: confusion matrix with no error applied, accuracy 0.904" loading="lazy"><figcaption><span class="fign">Fig 7</span>Deep model at its best, nothing perturbed. Accuracy <strong>0.9040</strong>, against 0.7990 for the shipped design on the same 2,000 digits.</figcaption></figure>
     </div>
     <div class="prose col">
-      <p>One detail in Fig&nbsp;7 is worth stating rather than hiding. Each model&rsquo;s confusion
-      matrix is drawn at <em>its own</em> phase-error edge, because a single fixed stress level is
-      not a fair comparison between designs of different fragility. At the 0.35&nbsp;rad the shipped
-      design merely degrades under, the deep model is already at <strong>chance</strong>, predicting
-      almost nothing but 5 and 6 for every input. That is the fragility in the table, seen from a
-      different angle.</p>
+      <p>Fig&nbsp;7 is the odd one out in that grid: no error is applied to it. The six curves
+      beside it say what fabrication costs this design, and that question is answered. Fig&nbsp;7
+      asks the other one, which is what the extra fifty-one plates actually bought, and it is drawn
+      the same way as the
+      <a class="link" href="@@HREF_index@@">front page&rsquo;s matrix &rarr;</a> so the two can be
+      set side by side.</p>
+      <p><strong>What depth fixes is the digits that were collapsing onto 3.</strong> On the shipped
+      design a 5 is called a 3 forty-one times and an 8 is called a 3 thirty-seven times; those are
+      its two worst cells by a wide margin. Deep, they fall to <strong>6 and 11</strong>, and 5 goes
+      from right 109 times out of 186 to <strong>164</strong>. Nearly the whole ten-point gain is
+      that one repair.</p>
+      <p><strong>What it does not fix is 4 against 9.</strong> Mistaking a 4 for a 9 happens
+      <em>more</em> often on the deep stack, 18 times against 15, and 7 called 9 barely moves, 14
+      against 12. What vanishes is the reverse direction: 9 read as 4 drops from 29 to 2. So the
+      confusion stops being mutual without stopping. Fifty-six plates of steering separate the pairs
+      that a coarser routing merged, and leave the pair that shares an upper loop in the same place
+      roughly where it was. That is the shape of a better approximation of the same limited
+      operation, which is the subject of the next section.</p>
+      <p>None of that says anything about fragility, and the figure is not evidence either way.
+      For the record, at the 0.35&nbsp;rad of delay error the shipped design merely degrades under,
+      this model is at <strong>chance</strong>, predicting almost nothing but 5 and 6 for every
+      input. The table above is where that lives.</p>
     </div>
   </section>
 

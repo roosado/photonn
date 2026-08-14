@@ -2,9 +2,10 @@ function results = run_error_budget(opts)
 %RUN_ERROR_BUDGET Scriptable Phase-4 error budget for the trained D2NN.
 %   RESULTS = RUN_ERROR_BUDGET() loads the trained-D2NN handoff, verifies the
 %   ideal baseline accuracy, sweeps each fabrication/operation error source into a
-%   tolerance curve, renders a confusion matrix at a representative degraded
-%   operating point, and computes a spatial sensitivity map. All figures are
-%   saved to photonn-hw/figures/ and RESULTS is saved alongside as a .mat.
+%   tolerance curve, renders two confusion matrices (one ideal, one at a
+%   representative degraded operating point), and computes a spatial sensitivity
+%   map. All figures are saved to photonn-hw/figures/ and RESULTS is saved
+%   alongside as a .mat.
 %
 %   RESULTS = RUN_ERROR_BUDGET(OPTS) accepts fields:
 %     .handoffPath - handoff .h5 (default ../exports/d2nn_phase2.h5)
@@ -42,6 +43,14 @@ function results = run_error_budget(opts)
     idealAcc = base.accuracy;
     fprintf('=== D2NN error budget ===\nideal baseline accuracy: %.4f\n', idealAcc);
     thresh = 0.95 * idealAcc;                    % "retain >=95% of ideal"
+
+    % ---------------- confusion matrix, no error applied -----------------
+    % The reference every degraded matrix is read against: same model, same
+    % figure, nothing perturbed. It is free -- BASE is already the ideal
+    % full-test-set pass -- and it is what the site shows for a model's own
+    % behaviour, as opposed to what fabrication does to it.
+    f = viz.confusion_matrix(base.labels, base.predictions);
+    saveFig(f, figDir, 'confusion_ideal.png');
 
     rng(20260724);                               % fixed subset for the sweeps
     nTest = numel(h.test_set.labels);

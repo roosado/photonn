@@ -49,10 +49,24 @@
   letter-spacing:.04em;display:block;margin-bottom:3px;}
 .ex-row input[type=range]{width:220px;max-width:100%;accent-color:var(--ex-accent);display:block;}
 .ex-val{font-variant-numeric:tabular-nums;font-weight:600;font-size:14px;white-space:nowrap;}
-.ex-panes{display:flex;gap:12px;flex-wrap:wrap;}
-.ex-pane{flex:1 1 150px;min-width:132px;}
+/* The three panels are a before/after/difference triptych: the widget only says
+   anything if all three are on screen while the slider moves. So they never
+   wrap -- a zero flex-basis plus min-width:0 lets them share whatever width
+   there is, down to a phone, instead of overflowing onto a second row and
+   leaving the reader scrolling between panels meant to be compared at a glance. */
+.ex-panes{display:flex;gap:12px;align-items:flex-start;}
+.ex-pane{flex:1 1 0;min-width:0;}
+/* A single plot spanning the row, capped so it does not sprawl into a 1000 px
+   letterbox on a desktop. */
+.ex-pane.ex-wide{flex:1 1 100%;max-width:640px;margin:0 auto;}
 .ex-pane canvas{width:100%;height:auto;display:block;border-radius:6px;background:#000;}
 .ex-cap{font-size:11px;color:var(--ex-muted);margin:5px 0 0;text-align:center;line-height:1.35;}
+@media (max-width:560px){
+  .ex-panes{gap:7px;}
+  .ex-cap{font-size:10px;line-height:1.3;}
+  .ex-row{gap:10px;margin-bottom:9px;}
+  .ex-row input[type=range]{width:min(220px,60vw);}
+}
 .ex-note{font-size:12px;color:var(--ex-muted);margin:11px 0 0;line-height:1.5;}
 .ex-note b{color:var(--ex-fg);}
 .ex-flag{font-weight:600;}
@@ -129,13 +143,63 @@
     ctx.putImageData(img, 0, 0);
   }
 
-  function pane(parent, caption) {
-    const p = el("div", "ex-pane");
+  function pane(parent, caption, wide) {
+    const p = el("div", "ex-pane" + (wide ? " ex-wide" : ""));
     const c = el("canvas");
     p.appendChild(c);
     p.appendChild(el("p", "ex-cap", caption));
     parent.appendChild(p);
     return c;
+  }
+
+  /**
+   * Size a plot canvas to the width it is *actually* laid out at, so that one
+   * drawing unit is one CSS pixel in both directions.
+   *
+   * The panel canvases carry square bitmaps and can be left to `width:100%`,
+   * but a plot cannot. These used to draw into a fixed 420-unit space and then
+   * let `width:100%` stretch the bitmap to whatever the column happened to be,
+   * which scales x without scaling y: the chart came out flattened on a wide
+   * screen and stretched tall on a narrow one, and the text with it. Measuring
+   * first is the whole fix. `heightFor` maps the measured width to a height, so
+   * the shape stays sane across the range rather than being pinned to one.
+   *
+   * `setTransform` is correct here, unlike in d2nn_stage.js: resizing a canvas
+   * resets its context, so this call is establishing the dpr scale, not
+   * replacing one that is already there.
+   */
+  function fitCanvas(c, heightFor) {
+    const r = dpr();
+    const W = Math.max(240, Math.round(c.getBoundingClientRect().width || 420));
+    const H = Math.round(heightFor(W));
+    c.width = Math.round(W * r);
+    c.height = Math.round(H * r);
+    c.style.height = H + "px";
+    const ctx = c.getContext("2d");
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+    return { ctx, W, H };
+  }
+
+  /**
+   * Re-run `fn` when `target` changes width, and only then.
+   *
+   * Guarded on the measured width rather than firing on every observation
+   * because `fn` sets the canvas height, which is itself a resize: an unguarded
+   * observer would answer its own callback forever.
+   */
+  function onWidthChange(target, fn) {
+    let last = -1;
+    const check = function () {
+      const w = Math.round(target.getBoundingClientRect().width);
+      if (w === last) return;
+      last = w;
+      fn();
+    };
+    if (typeof window.ResizeObserver === "function") {
+      new window.ResizeObserver(check).observe(target);
+    } else {
+      window.addEventListener("resize", check);
+    }
   }
 
   function slider(parent, label, min, max, step, value) {
@@ -349,17 +413,12 @@
     const s = slider(ctl, "Lost per surface", 0, 3, 0.1, 1);
     const panes = el("div", "ex-panes");
     root.appendChild(panes);
-    const c = pane(panes, "photons surviving, surface by surface");
-    c.parentElement.style.flex = "1 1 100%";
+    const c = pane(panes, "photons surviving, surface by surface", true);
     const note = el("p", "ex-note");
     root.appendChild(note);
     function update() {
       const db = +s.input.value;
-      const W = 420, H = 150;
-      c.width = W * dpr(); c.height = H * dpr();
-      c.style.height = H + "px";
-      const ctx = c.getContext("2d");
-      ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+      const { ctx, W, H } = fitCanvas(c, (w) => Math.max(150, Math.min(200, w * 0.34)));
       ctx.fillStyle = "#0b0d10"; ctx.fillRect(0, 0, W, H);
       const stages = 6;
       let frac = 1;
@@ -386,6 +445,7 @@
         + "light budget rather than alone.";
     }
     s.input.addEventListener("input", update);
+    onWidthChange(c, update);
     update();
   };
 
@@ -440,8 +500,7 @@
     const LABELS = ["1 fW", "10 fW", "100 fW", "1 pW", "10 pW", "1 nW", "1 mW"];
     const panes = el("div", "ex-panes");
     root.appendChild(panes);
-    const c = pane(panes, "light collected by each of the ten class boxes");
-    c.parentElement.style.flex = "1 1 100%";
+    const c = pane(panes, "light collected by each of the ten class boxes", true);
     const note = el("p", "ex-note");
     root.appendChild(note);
     // A plausible clean readout: one clear winner, a runner-up, and eight others.
@@ -452,11 +511,7 @@
       const power = POWERS[idx];
       // 532 nm photon = 3.73e-19 J (h*c/lambda); 1 ms exposure.
       const photons = power * 1e-3 / 3.73e-19;
-      const W = 420, H = 158;
-      c.width = W * dpr(); c.height = H * dpr();
-      c.style.height = H + "px";
-      const ctx = c.getContext("2d");
-      ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+      const { ctx, W, H } = fitCanvas(c, (w) => Math.max(158, Math.min(210, w * 0.36)));
       ctx.fillStyle = "#0b0d10"; ctx.fillRect(0, 0, W, H);
       let best = -1, bestV = -1;
       const vals = [];
@@ -491,6 +546,7 @@
         + "is a million times brighter than that.";
     }
     s.input.addEventListener("input", update);
+    onWidthChange(c, update);
     update();
   };
 

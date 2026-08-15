@@ -6,7 +6,19 @@
       "Bash(py -0p)",
       "Bash(where python3 *)",
       "Bash(py -c \"import sys; print\\(sys.executable\\)\")",
-      "Bash(py -c ' *)"
+      "Bash(py -c ' *)",
+      "Bash(node tests/error_widget_runner.js)",
+      "Bash(grep -n '`' apps/web/errors.js)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m pytest tests/test_error_widgets.py -q 2>&1 | Select-Object -Last 25)",
+      "Bash(cp apps/web/errors.js /c/Users/rodri/AppData/Local/Temp/claude/D--Python-Photonn/0ee2aa5e-e897-4723-a9bd-f8092a94f1cb/scratchpad/errors_fixed.js)",
+      "Bash(.venv/Scripts/python.exe -)",
+      "Bash(node -e ' *)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m pytest tests/test_error_widgets.py -q 2>&1 | Select-Object -Last 8)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_error_widgets.py -q)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m apps.build_site; .venv\\\\Scripts\\\\python.exe -m pytest tests -q 2>&1 | Select-Object -Last 8)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }

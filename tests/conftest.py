@@ -48,17 +48,23 @@ def d2nn_payload(rng):
 
 @pytest.fixture
 def mesh_payload(rng):
-    """A valid ``mesh`` handoff payload as keyword args for ``write_handoff``."""
-    grid_size, n_modes = 8, 4
-    n_mzi = n_modes * (n_modes - 1) // 2
+    """A valid ``mesh`` handoff payload as keyword args for ``write_handoff``.
+
+    Two meshes (V and U) of ``n_modes``, matching the SVD layer the Phase-3 model
+    uses, so the shape cross-checks in ``export._mesh_arrays`` are exercised.
+    """
+    grid_size, n_modes, n_meshes = 8, 4, 2
+    n_mzi = n_meshes * (n_modes * (n_modes - 1) // 2)
     images, labels = _test_set(rng, grid_size)
     return dict(
         model_type="mesh",
         parameters={
             "phase_theta": rng.random(n_mzi),
             "phase_phi": rng.random(n_mzi),
+            "sigma": rng.random(n_modes),
+            "out_phase": rng.random((n_meshes, n_modes)),
         },
-        geometry=_geometry(grid_size, 1),
+        geometry=_geometry(grid_size, n_meshes),
         operating_point={"wavelength_m": 1.55e-6},
         test_images=images,
         test_labels=labels,

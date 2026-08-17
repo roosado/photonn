@@ -50,7 +50,7 @@ function results = run_error_budget(opts)
     % full-test-set pass -- and it is what the site shows for a model's own
     % behaviour, as opposed to what fabrication does to it.
     f = viz.confusion_matrix(base.labels, base.predictions);
-    saveFig(f, figDir, 'confusion_ideal.png');
+    viz.save_figure(f, figDir, 'confusion_ideal.png');
 
     rng(20260724);                               % fixed subset for the sweeps
     nTest = numel(h.test_set.labels);
@@ -60,25 +60,25 @@ function results = run_error_budget(opts)
 
     % ---------------- 1. phase-shifter error (stochastic) ----------------
     sig = [0 0.02 0.05 0.1 0.15 0.2 0.3 0.5];                 % rad
-    acc = sweep(h, arrayfun(@(s) struct('phase_sigma_rad', s, 'subset', subset), sig), nReal, 2000);
+    acc = mc.sweep(h, arrayfun(@(s) struct('phase_sigma_rad', s, 'subset', subset), sig), nReal, 2000);
     f = viz.tolerance_curve(sig, acc, 'phase-shifter sigma (rad)');
-    saveFig(f, figDir, 'tolerance_phase.png');
-    results.phase = pack(sig, acc, thresh);
+    viz.save_figure(f, figDir, 'tolerance_phase.png');
+    results.phase = mc.pack(sig, acc, thresh);
 
     % ---------------- 2. DAC quantization (deterministic) ----------------
     bits = [12 10 8 6 5 4 3 2];
-    acc = sweep(h, arrayfun(@(b) struct('quant_bits', b, 'subset', subset), bits), 1, 3000);
+    acc = mc.sweep(h, arrayfun(@(b) struct('quant_bits', b, 'subset', subset), bits), 1, 3000);
     f = viz.tolerance_curve(bits, acc, 'DAC resolution (bits)');
     set(gca, 'XDir', 'reverse');                 % coarser -> right
-    saveFig(f, figDir, 'tolerance_quant.png');
-    results.quant = pack(bits, acc, thresh);
+    viz.save_figure(f, figDir, 'tolerance_quant.png');
+    results.quant = mc.pack(bits, acc, thresh);
 
     % ---------------- 3. wavelength drift (deterministic) ----------------
     dlam = [0 1 2 5 10 20 30] * 1e-9;            % m
-    acc = sweep(h, arrayfun(@(d) struct('delta_lambda_m', d, 'subset', subset), dlam), 1, 4000);
+    acc = mc.sweep(h, arrayfun(@(d) struct('delta_lambda_m', d, 'subset', subset), dlam), 1, 4000);
     f = viz.tolerance_curve(dlam * 1e9, acc, 'wavelength drift (nm)');
-    saveFig(f, figDir, 'tolerance_wavelength.png');
-    results.wavelength = pack(dlam * 1e9, acc, thresh);
+    viz.save_figure(f, figDir, 'tolerance_wavelength.png');
+    results.wavelength = mc.pack(dlam * 1e9, acc, thresh);
 
     % ---------------- 4. thermal crosstalk (deterministic) ---------------
     blur = [0 0.25 0.5 0.75 1.0 1.5 2.0];        % Gaussian sigma, pixels
@@ -88,10 +88,10 @@ function results = run_error_budget(opts)
         if blur(i) > 0, c.crosstalk_kernel = gaussKernel(blur(i)); end
         cfgs{i} = c;
     end
-    acc = sweep(h, cfgs, 1, 5000);
+    acc = mc.sweep(h, cfgs, 1, 5000);
     f = viz.tolerance_curve(blur, acc, 'thermal crosstalk blur (pixels)');
-    saveFig(f, figDir, 'tolerance_crosstalk.png');
-    results.crosstalk = pack(blur, acc, thresh);
+    viz.save_figure(f, figDir, 'tolerance_crosstalk.png');
+    results.crosstalk = mc.pack(blur, acc, thresh);
 
     % ---------------- 5. detector noise: photon budget (stochastic) ------
     powers = [1e-3 1e-6 1e-9 1e-12 1e-13 1e-14 1e-15 1e-16];   % W (1 ms integration)
@@ -101,11 +101,11 @@ function results = run_error_budget(opts)
         d = det0; d.input_power_w = powers(i);
         cfgs{i} = struct('detector', d, 'subset', subset);
     end
-    acc = sweep(h, cfgs, nReal, 6000);
+    acc = mc.sweep(h, cfgs, nReal, 6000);
     f = viz.tolerance_curve(powers, acc, 'input optical power (W)');
     set(gca, 'XScale', 'log', 'XDir', 'reverse');
-    saveFig(f, figDir, 'tolerance_detector.png');
-    results.detector = pack(powers, acc, thresh);
+    viz.save_figure(f, figDir, 'tolerance_detector.png');
+    results.detector = mc.pack(powers, acc, thresh);
 
     % ---------------- 6. optical loss at the shot-noise operating point ---
     % Loss cancels in the ideal readout; it only bites through the photon budget,
@@ -131,11 +131,11 @@ function results = run_error_budget(opts)
     detLow = det0; detLow.input_power_w = 1e-12;
     cfgs = arrayfun(@(L) struct('loss_insertion_db', L, 'loss_propagation_db_per_cm', 0, ...
         'detector', detLow, 'subset', subset), lossDb, 'UniformOutput', false);
-    acc = sweep(h, cfgs, nReal, 7000);
+    acc = mc.sweep(h, cfgs, nReal, 7000);
     f = viz.tolerance_curve(lossDb, acc, ...
         sprintf('insertion loss (dB/mask, x%d masks) @ 1 pW', nMasks));
-    saveFig(f, figDir, 'tolerance_loss.png');
-    results.loss = pack(lossDb, acc, thresh);
+    viz.save_figure(f, figDir, 'tolerance_loss.png');
+    results.loss = mc.pack(lossDb, acc, thresh);
     results.loss.totalDb = lossTotalDb;
     results.loss.nMasks = nMasks;
 
@@ -157,7 +157,7 @@ function results = run_error_budget(opts)
         'wavelength_m', lambda0), sigmaC, 1);
     oC = model.evaluate(h, struct('params', pC));
     f = viz.confusion_matrix(oC.labels, oC.predictions);
-    saveFig(f, figDir, 'confusion_phase.png');
+    viz.save_figure(f, figDir, 'confusion_phase.png');
     results.confusion.config = cfgC; results.confusion.accuracy = oC.accuracy;
     results.confusion.sigma_rad = sigmaC;
 
@@ -175,34 +175,18 @@ function results = run_error_budget(opts)
     else
         sens = sensitivityMap(h, subset(1:min(sensN, numel(subset))), gBlocks, 0.5, lambda0);
         f = viz.sensitivity_map(permute(sens, [2 1 3]), 'D2NN phase masks');
-        saveFig(f, figDir, 'sensitivity_map.png');
+        viz.save_figure(f, figDir, 'sensitivity_map.png');
         results.sensitivity = sens;
     end
 
     save(outMat, 'results');
-    printSummary(results);
+    viz.print_summary(results, ...
+        {'phase','quant','wavelength','crosstalk','detector','loss'});
     fprintf('\nfigures + results saved to %s\n', figDir);
 end
 
 % ===================== local helpers =====================================
-function acc = sweep(h, cfgs, nReal, baseSeed)
-%SWEEP Run mc.run_montecarlo for each config; return nMag-by-nReal accuracy.
-    if ~iscell(cfgs), cfgs = num2cell(cfgs); end
-    nMag = numel(cfgs);
-    acc = zeros(nMag, nReal);
-    for i = 1:nMag
-        st = mc.run_montecarlo(h, cfgs{i}, nReal, baseSeed + 100 * i);
-        acc(i, :) = st.acc(:)';
-        fprintf('  [%2d/%2d] mean acc %.4f\n', i, nMag, st.mean);
-    end
-end
 
-function s = pack(mag, acc, thresh)
-    s.magnitudes = mag(:)';
-    s.accMean = mean(acc, 2)';
-    s.accStd = std(acc, 0, 2)';
-    s.threshold = thresh;
-end
 
 function sens = sensitivityMap(h, subS, g, sig, lambda0)
 %SENSITIVITYMAP Accuracy drop when a fixed phase offset hits each mask block.
@@ -238,22 +222,4 @@ function v = getdef(s, f, d)
     if isfield(s, f) && ~isempty(s.(f)), v = s.(f); else, v = d; end
 end
 
-function saveFig(fig, figDir, name)
-    exportgraphics(fig, fullfile(figDir, name), 'Resolution', 130);
-    close(fig);
-end
 
-function printSummary(r)
-    fprintf('\n--- tolerance summary (threshold = %.4f, 95%% of ideal %.4f) ---\n', ...
-        r.threshold, r.ideal);
-    srcs = {'phase','quant','wavelength','crosstalk','detector','loss'};
-    for i = 1:numel(srcs)
-        if isfield(r, srcs{i})
-            s = r.(srcs{i});
-            below = find(s.accMean < s.threshold, 1);
-            if isempty(below), edge = 'not reached in sweep';
-            else, edge = sprintf('crosses at magnitude ~%.4g', s.magnitudes(below)); end
-            fprintf('  %-11s: %s\n', srcs{i}, edge);
-        end
-    end
-end

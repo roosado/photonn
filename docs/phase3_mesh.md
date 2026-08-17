@@ -55,8 +55,8 @@ n=16: clements 7.2e-16  reck 1.0e-15   (120 MZIs)
 
 The **SVD layer** decomposes an arbitrary real matrix as `M = U Σ V†` (two Clements
 meshes around a diagonal), reconstructing it to ~1e-15. Passivity note: a lossless
-mesh cannot amplify, so a physical `Σ` needs singular values ≤ 1 — the trained
-mesh below violates this, a documented finding.
+mesh cannot amplify, so a physical `Σ` needs singular values ≤ 1 — the trained mesh
+below violates this. **Resolved, and it costs nothing** — see below.
 
 ## The mesh classifier
 
@@ -68,8 +68,29 @@ electronic head, exactly as the D²NN. Trained with Adam, seed recorded.
 - **Test accuracy: 0.736** (chance 0.10); 2 628 trainable parameters.
 - The learned **Σ is effectively low-rank** (see `phase3_mesh_topology.png`): only
   ~15–20 of 36 singular values are significant, so the task uses far fewer than 36
-  effective dimensions. Several σ exceed 1 — a real device would need gain or a
-  global rescale-plus-loss.
+  effective dimensions.
+
+### The passivity violation is free to fix
+
+The trained `Σ` runs **−0.041 … 3.907**, with nine values above 1. A lossless mesh
+cannot amplify, so that is not a device — and the point is sharper than tidiness: you
+cannot ask what 0.5 dB of loss per MZI costs a model that already contains 12 dB of
+free gain, so the error budget could not start until this was settled.
+
+Two rewrites make `Σ` passive and **neither changes what the network computes**
+(`photonn.mzi.passivize`):
+
+- **Sign.** `Σ` multiplies the V mesh's output element-wise and V's output phase
+  screen is applied immediately before it, so `σ_k < 0` is absorbed exactly as
+  `out_phase_v[k] += π`.
+- **Scale.** `σ → σ / max|σ|` is one real scale on the field entering U, hence one
+  scale on every output intensity — which cancels identically in the `region / total`
+  readout. Not merely the same predictions: the same **logits**, to 1e-12.
+
+So the as-built model runs a passive `0 ≤ σ ≤ 1` bank with an external gain of
+**3.9068** recorded in the handoff, and reproduces 0.7355 exactly. What a real device
+still owes is that 3.9× somewhere in front of the chip; what it does not owe is any
+accuracy. Asserted in `tests/test_mesh_handoff_is_sufficient.py`.
 
 ## Why they are the same machine
 
@@ -180,13 +201,21 @@ dimension, so it ingests the full-resolution image cheaply. This footprint ↔
 input-dimensionality trade-off — parameter efficiency vs input capacity — is the
 central structural difference between the two photonic processors.
 
-**Failure modes** also differ: the mesh's error is dominated by **accumulation
-through 72 serial MZIs** and by coupler imbalance / per-MZI loss (making the
-realized transfer sub-unitary) — the MZI-specific error sources deferred from the
-Phase-4 D²NN budget. The D²NN's error (from `docs/tolerance_d2nn.md`) is dominated
-by **sub-pixel phase-crosstalk fidelity**, with per-pixel errors acting in
-parallel rather than compounding serially. Both share the same expressivity
-ceiling: one linear optical transform followed by `|·|²` detection.
+**Failure modes** also differ, and this has now been **measured** rather than
+predicted — see [`tolerance_mesh.md`](tolerance_mesh.md). The prediction written here
+first was that the mesh's error would be dominated by accumulation through its 72
+serial MZIs, against the D²NN's per-pixel errors acting in parallel. It holds: the
+mesh needs its phases to **0.03 rad** where the D²NN holds to **0.3 rad**, a factor
+of ten, each against its own 95 %-of-ideal bar. Coupler imbalance — which has no
+meaning for a phase mask and was a stub through the whole Phase-4 D²NN budget — comes
+in **level with phase error** at a 0.01 power-split tolerance. Both architectures
+share the same expressivity ceiling: one linear optical transform followed by `|·|²`
+detection.
+
+The trade is one sentence: **the mesh buys an arbitrary linear map with 31× fewer
+parameters and pays for it in precision.** The D²NN's 16 384 pixels are redundant, and
+redundancy is what makes a device tolerant; the mesh's 2 628 parameters each do
+irreplaceable work, arranged so every one is seen by everything downstream.
 
 ## Verification
 
@@ -217,10 +246,16 @@ pytest -q tests/test_mzi.py tests/test_correspondence.py
 
 - **Boson sampling** (single-photon input through the same mesh) — deferred to a
   dedicated branch (open-decision #3).
-- **Mesh error budget** — the exported mesh handoff sets up extending the MATLAB
-  error framework to the mesh (reactivating the deferred `coupler_imbalance` and
-  per-MZI `loss` sources). A full SVD-mesh export would extend the handoff schema
-  (Σ and output phases beyond `phase_theta`/`phase_phi`).
+- ~~**Mesh error budget**~~ — **done**, see [`tolerance_mesh.md`](tolerance_mesh.md).
+  `coupler_imbalance` is implemented and is one of the three binding constraints;
+  per-MZI loss became `err.mzi_loss`, a genuinely different source from the D²NN's
+  because it is mode-dependent and does not cancel in the readout. The handoff schema
+  was extended to **0.2.0** to carry Σ and the output phases, which 0.1.0 omitted —
+  108 of the model's 2 628 parameters, without which the as-built side could not
+  reproduce the ideal accuracy at all.
+- **A second mesh size.** The budget is one point. Whether the phase tolerance scales
+  as 1/√L or 1/L with mode count needs a second trained mesh, and would be the mesh's
+  answer to the D²NN's 5-mask-vs-56-mask fragility result.
 
 ## References
 

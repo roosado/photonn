@@ -147,17 +147,31 @@ and full connectivity is guaranteed by construction. An
 (`apps/web/analogy.js`); every number in it is read from the trained models by
 `python -m apps.export_analogy_web` and re-derived in `tests/test_correspondence.py`.
 
-**Phase 4 error budget on the D²NN (done for the D²NN; MZI sources deferred).** Taking CLAUDE.md
-open-decision #2, the fabrication error budget is run against the trained D²NN before the MZI mesh
-is built. The MATLAB as-built side (`photonn-hw/`) reproduces the ideal **79.9% baseline exactly**
-through its own forward simulator ([`+model`](photonn-hw/+model)), then applies six error sources
-([`+err`](photonn-hw/+err): per-pixel phase error, DAC quantization, wavelength drift, thermal
-crosstalk, optical loss, detector/shot noise), sweeps each into tolerance curves via Monte Carlo
-([`+mc`](photonn-hw/+mc)), and renders confusion matrices and a spatial sensitivity map
-([`+viz`](photonn-hw/+viz)). Run the scriptable `run_error_budget` (no App Designer GUI needed).
-Findings and required per-component precision are in [`docs/tolerance_d2nn.md`](docs/tolerance_d2nn.md);
-every error magnitude is sourced in [`docs/parameter_sources.md`](docs/parameter_sources.md).
-Coupler imbalance and per-MZI loss stay Phase-3 stubs (no meaning for phase masks).
+**Phase 4 error budget, both architectures (done).** Taking CLAUDE.md open-decision #2, the
+fabrication error budget was run against the trained D²NN before the MZI mesh was built, then
+against the mesh. Each MATLAB as-built simulator reproduces its ideal baseline **exactly** —
+**79.9%** through [`+model`](photonn-hw/+model), **73.55%** through
+[`+meshmodel`](photonn-hw/+meshmodel) — and each then takes seven error sources
+([`+err`](photonn-hw/+err)) swept into tolerance curves by Monte Carlo
+([`+mc`](photonn-hw/+mc)), with confusion matrices and sensitivity maps from
+[`+viz`](photonn-hw/+viz). Run the scriptable `run_error_budget` and `run_error_budget_mesh`
+(no App Designer GUI needed). Findings and required per-component precision are in
+[`docs/tolerance_d2nn.md`](docs/tolerance_d2nn.md) and
+[`docs/tolerance_mesh.md`](docs/tolerance_mesh.md).
+
+**The mesh comparison is the result.** Its error is serial — 72 MZI columns deep — where the
+D²NN's is parallel and per-pixel, and the measurement is unambiguous: the mesh needs its phases
+**10× more accurate** (holds at 0.03 rad against the D²NN's 0.3) and its DACs 3 bits finer.
+**Coupler imbalance**, which has no meaning for a phase mask and stayed a stub through Phase 3,
+is now implemented and binds level with phase error at a 0.01 power split. Loss stops being free:
+in a Clements rectangle it is path-dependent, so it no longer cancels in the normalised readout.
+And a **quarter of the U mesh** sits outside the readout's light cone — 156 of 630 MZIs with
+exactly zero measured sensitivity, needing no tolerance at all. Every D²NN error magnitude is
+sourced in [`docs/parameter_sources.md`](docs/parameter_sources.md); **every realistic as-built
+value on the mesh side is marked `UNSOURCED`, deliberately.** The sweep publishes tolerance
+*edges* — properties of the network and its topology, which no foundry data will move — ahead of
+the PDK sourcing that open-decision #4 still leaves open, rather than inventing constants to fill
+a margin column.
 
 **Phase 2 — diffractive network, ideal case (done).** The band-limited angular-spectrum
 propagator is recast as a differentiable torch layer (verified against the NumPy reference to
@@ -176,7 +190,9 @@ and Airy references, and the aperture/thin-lens elements. The Phase-1 deliverabl
 in the browser (see the explainer entry above) — generates from `python -m apps.diffraction_explorer`.
 
 Docs: [`docs/phase3_mesh.md`](docs/phase3_mesh.md) (MZI mesh, decomposition, D²NN comparison) ·
-[`docs/tolerance_d2nn.md`](docs/tolerance_d2nn.md) (D²NN error budget, required precision) ·
+[`docs/tolerance_mesh.md`](docs/tolerance_mesh.md) (mesh error budget, cross-architecture
+comparison) · [`docs/tolerance_d2nn.md`](docs/tolerance_d2nn.md) (D²NN error budget, required
+precision) ·
 [`docs/phase2_dnn.md`](docs/phase2_dnn.md) (D²NN, power budget, linearity limit) ·
 [`docs/wave_optics.md`](docs/wave_optics.md) (propagators, sampling criteria, validity ranges,
 citations) · [`docs/phase0_baseline.md`](docs/phase0_baseline.md) (scaffolding baseline).
@@ -198,7 +214,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`230 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`240 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
 `test_mount_queue.py` — require Node on `PATH` and skip cleanly if it is absent.
@@ -225,5 +241,5 @@ apps/web/       # dependency-free browser side: asm.js (propagation) · explorer
 site/           # generated, self-contained, GitHub Pages ready: index.html (the live D²NN) · physics.html · chip.html · tolerance.html (the study) · optics.html
 tests/          # pytest suite
 docs/           # handoff schema + parameter-source ledger
-photonn-hw/     # MATLAB as-built side (+io, +err, +mc, +viz, ErrorBudgetApp)
+photonn-hw/     # MATLAB as-built side (+io, +model, +meshmodel, +err, +mc, +viz, ErrorBudgetApp)
 ```

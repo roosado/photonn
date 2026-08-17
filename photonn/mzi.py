@@ -184,6 +184,41 @@ def svd_decompose(matrix):
     return {"u": clements_decompose(u), "s": s, "v": clements_decompose(vh.conj().T)}
 
 
+def passivize(sigma, out_phase_v):
+    """Rewrite a trained ``Sigma`` as a passive one, without changing what it computes.
+
+    A trained :class:`~photonn.models.MeshNetwork` leaves ``Sigma`` unconstrained, so
+    it comes out signed and larger than 1 (the 36-mode mesh runs -0.041 .. 3.907, nine
+    values above unity). A lossless mesh cannot amplify, so that is not a device --
+    and asking what per-MZI loss costs a model that already contains free gain is not
+    a question with an answer. Two rewrites fix it exactly:
+
+    * **Sign.** ``Sigma`` multiplies the V mesh's output element-wise, and V's output
+      phase screen is applied immediately before it, so ``sigma_k < 0`` is absorbed as
+      ``out_phase_v[k] += pi``. Identical field, everywhere.
+    * **Scale.** ``sigma -> sigma / max|sigma|`` is one real scale on the field
+      entering U, hence one scale on every output intensity -- which cancels in the
+      ``region / total`` readout. Identical logits, not merely identical predictions.
+
+    Returns ``(sigma_p, out_phase_v_p, gain)`` with ``0 <= sigma_p <= 1``, where
+    ``gain = max|sigma|`` is the external factor a real device would have to supply.
+    Pure representation change, so it lives here rather than in the MATLAB error
+    model (CLAUDE.md boundary).
+    """
+    sigma = np.asarray(sigma, dtype=float)
+    out_phase_v = np.asarray(out_phase_v, dtype=float)
+    if sigma.shape != out_phase_v.shape:
+        raise ValueError(
+            f"sigma {sigma.shape} and out_phase_v {out_phase_v.shape} must have the same shape."
+        )
+    gain = float(np.max(np.abs(sigma)))
+    if gain == 0.0:
+        raise ValueError("sigma is identically zero; there is nothing to normalise.")
+    sigma_p = np.abs(sigma) / gain
+    out_phase_p = out_phase_v + np.where(sigma < 0.0, np.pi, 0.0)
+    return sigma_p, out_phase_p, gain
+
+
 def svd_reconstruct(svd_settings) -> np.ndarray:
     """Rebuild ``M = U * Sigma * V^dagger`` from :func:`svd_decompose` output."""
     u = reconstruct(svd_settings["u"])

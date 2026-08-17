@@ -20,10 +20,24 @@ import h5py
 
 #: Handoff schema version. Bump on any breaking change to the layout below.
 #: The MATLAB reader checks against its own copy of this string.
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
+
+#: Versions a reader accepts. 0.2.0 added the mesh parameters that 0.1.0 left out
+#: (Sigma and the output phases); the ``d2nn`` layout did not move, so files written
+#: at 0.1.0 -- including the 131 MB ``exports/d2nn_phase2.h5`` -- stay readable
+#: without a re-export. See the version history in ``docs/handoff_schema.md``.
+SUPPORTED_SCHEMAS = ("0.1.0", "0.2.0")
 
 #: Supported model kinds. ``d2nn`` stores phase masks; ``mesh`` stores MZI angles.
 MODEL_TYPES = ("d2nn", "mesh")
+
+#: Mesh topology written into ``/parameters.topology``. The rectangular Clements
+#: schedule is the only one the mesh models here use (Optica 3(12):1460, 2016).
+MESH_TOPOLOGY = "clements_rectangular"
+
+#: Order the two SVD meshes are concatenated in along ``phase_theta``/``phase_phi``
+#: and indexed in along ``out_phase``. The realised operator is ``U diag(s) V``.
+MESH_ORDER = "V,U"
 
 
 def _as_str(value):
@@ -31,6 +45,46 @@ def _as_str(value):
     if isinstance(value, bytes):
         return value.decode("utf-8")
     return str(value)
+
+
+#: Mesh parameter datasets, in the order they are written and checked.
+_MESH_DATASETS = ("phase_theta", "phase_phi", "sigma", "out_phase")
+
+
+def _mesh_arrays(parameters):
+    """Coerce and cross-check the four mesh parameter arrays.
+
+    Returns ``(phase_theta, phase_phi, sigma, out_phase)`` as ``f8``. Raises
+    :class:`ValueError` if the shapes cannot describe one consistent SVD mesh --
+    the check schema 0.1.0 never made, which is how the exported handoff came to
+    be missing 108 of the model's 2 628 parameters without anything noticing.
+    """
+    for key in _MESH_DATASETS:
+        if key not in parameters:
+            raise ValueError(f"mesh parameters are missing required key {key!r}.")
+    theta = np.asarray(parameters["phase_theta"], dtype="f8")
+    phi = np.asarray(parameters["phase_phi"], dtype="f8")
+    sigma = np.asarray(parameters["sigma"], dtype="f8")
+    out_phase = np.asarray(parameters["out_phase"], dtype="f8")
+
+    if out_phase.ndim != 2:
+        raise ValueError(f"'out_phase' must be 2-D [n_meshes, n_modes]; got {out_phase.shape}.")
+    n_meshes, n_modes = out_phase.shape
+    if sigma.shape != (n_modes,):
+        raise ValueError(
+            f"'sigma' must be [n_modes]={(n_modes,)}; got {sigma.shape}."
+        )
+    if theta.shape != phi.shape:
+        raise ValueError(
+            f"'phase_theta' {theta.shape} and 'phase_phi' {phi.shape} must have the same shape."
+        )
+    expected = n_meshes * (n_modes * (n_modes - 1) // 2)
+    if theta.shape != (expected,):
+        raise ValueError(
+            f"'phase_theta'/'phase_phi' must be [n_meshes * n_modes(n_modes-1)/2]"
+            f"={(expected,)} for {n_meshes} meshes of {n_modes} modes; got {theta.shape}."
+        )
+    return theta, phi, sigma, out_phase
 
 
 def write_handoff(
@@ -54,7 +108,11 @@ def write_handoff(
         Selects which parameter datasets are written.
     parameters : dict
         ``d2nn`` -> ``{"phase_masks": float[n_layers, N, N]}``.
-        ``mesh`` -> ``{"phase_theta": float[...], "phase_phi": float[...]}``.
+        ``mesh`` -> ``{"phase_theta": float[2 * n_mzi], "phase_phi": float[2 * n_mzi],
+        "sigma": float[n_modes], "out_phase": float[2, n_modes]}``, where the two
+        meshes are concatenated in :data:`MESH_ORDER` and ``out_phase`` is indexed
+        the same way. Together these are everything needed to rebuild the operator;
+        schema 0.1.0 carried only the first two and was not sufficient.
     geometry : dict
         ``{"grid_size": int, "physical_extent_m": float, "n_layers": int,
         "layer_separations_m": 1D float array}``.
@@ -103,12 +161,17 @@ def write_handoff(
                 "phase_masks", data=np.asarray(parameters["phase_masks"], dtype="f8")
             )
         else:  # mesh
-            p.create_dataset(
-                "phase_theta", data=np.asarray(parameters["phase_theta"], dtype="f8")
-            )
-            p.create_dataset(
-                "phase_phi", data=np.asarray(parameters["phase_phi"], dtype="f8")
-            )
+            theta, phi, sigma, out_phase = _mesh_arrays(parameters)
+            n_meshes, n_modes = out_phase.shape
+            n_mzi = theta.size // n_meshes
+            p.attrs["n_modes"] = int(n_modes)
+            p.attrs["n_mzi_per_mesh"] = int(n_mzi)
+            p.attrs["mesh_order"] = MESH_ORDER
+            p.attrs["topology"] = MESH_TOPOLOGY
+            p.create_dataset("phase_theta", data=theta)
+            p.create_dataset("phase_phi", data=phi)
+            p.create_dataset("sigma", data=sigma)
+            p.create_dataset("out_phase", data=out_phase)
 
         ts = f.create_group("test_set")
         ts.create_dataset("images", data=np.asarray(test_images, dtype="f4"))
@@ -118,18 +181,21 @@ def write_handoff(
 def validate_handoff(path):
     """Validate that ``path`` conforms to the handoff schema.
 
-    Reads the file back and asserts that the schema version matches and that all
-    required groups, attributes, and datasets are present for the declared
-    ``model_type``. Raises :class:`ValueError` on the first violation; returns
-    ``None`` on success.
+    Reads the file back and asserts that the schema version is one this reader
+    supports and that all required groups, attributes, and datasets are present
+    for the declared ``model_type``. Raises :class:`ValueError` on the first
+    violation; returns ``None`` on success.
+
+    A ``mesh`` file at 0.2.0 is additionally checked for shape consistency, so a
+    handoff that cannot rebuild its own operator fails here rather than in MATLAB.
     """
     with h5py.File(path, "r") as f:
         if "schema_version" not in f.attrs:
             raise ValueError("Missing root attribute 'schema_version'.")
         version = _as_str(f.attrs["schema_version"])
-        if version != SCHEMA_VERSION:
+        if version not in SUPPORTED_SCHEMAS:
             raise ValueError(
-                f"Schema version mismatch: file {version!r}, expected {SCHEMA_VERSION!r}."
+                f"Schema version mismatch: file {version!r}, supported {SUPPORTED_SCHEMAS!r}."
             )
 
         for group in ("geometry", "operating_point", "parameters", "test_set"):
@@ -154,12 +220,25 @@ def validate_handoff(path):
             raise ValueError(
                 f"'/parameters.model_type' must be one of {MODEL_TYPES}; got {model_type!r}."
             )
-        required = ("phase_masks",) if model_type == "d2nn" else ("phase_theta", "phase_phi")
+        if model_type == "d2nn":
+            required = ("phase_masks",)
+        elif version == "0.1.0":
+            # 0.1.0 mesh files carry the MZI angles only. They load, but they cannot
+            # rebuild the operator -- see the version history in docs/handoff_schema.md.
+            required = ("phase_theta", "phase_phi")
+        else:
+            required = _MESH_DATASETS
         for dset in required:
             if dset not in params:
                 raise ValueError(
-                    f"Missing dataset '/parameters/{dset}' for model_type={model_type!r}."
+                    f"Missing dataset '/parameters/{dset}' for model_type={model_type!r}"
+                    f" at schema {version}."
                 )
+        if model_type == "mesh" and version != "0.1.0":
+            _mesh_arrays({k: params[k][...] for k in _MESH_DATASETS})
+            for attr in ("n_modes", "n_mzi_per_mesh", "mesh_order", "topology"):
+                if attr not in params.attrs:
+                    raise ValueError(f"Missing attribute '/parameters.{attr}'.")
 
         test_set = f["test_set"]
         for dset in ("images", "labels"):

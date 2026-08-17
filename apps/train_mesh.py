@@ -9,6 +9,7 @@ Run (from the repo root, in the project venv)::
 
     python -m apps.train_mesh                 # deliverable config
     python -m apps.train_mesh --quick         # fast smoke config
+    python -m apps.train_mesh --export-only   # re-export the handoff, no training
 
 Deterministic given ``--seed`` (recorded in the export).
 """
@@ -22,6 +23,7 @@ import torch
 
 from photonn.export import validate_handoff, write_handoff
 from photonn.models import MeshNetwork
+from photonn.mzi import passivize
 from photonn.train import encode_modes, evaluate, load_dataset, train
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -43,13 +45,98 @@ def parse_args():
     p.add_argument("--wavelength", type=float, default=1.55e-6, help="design wavelength (m)")
     p.add_argument("--seed", type=int, default=20260725)
     p.add_argument("--quick", action="store_true")
+    p.add_argument("--export-only", action="store_true",
+                   help="rebuild the handoff from --out-pt without retraining")
     p.add_argument("--out-h5", default=str(_REPO / "exports" / "mesh_phase3.h5"))
     p.add_argument("--out-pt", default=str(_REPO / "exports" / "mesh_phase3.pt"))
     return p.parse_args()
 
 
+def export_handoff(model, test_ds, *, out_h5, n, n_classes, wavelength, seed, test_acc):
+    """Write the mesh handoff: MZI angles, a passivized Sigma, and the output phases.
+
+    Schema 0.2.0. Everything needed to rebuild the operator crosses the boundary --
+    0.1.0 carried the MZI angles alone and so could not reproduce the ideal accuracy
+    on the MATLAB side, which is the anchor the whole error budget rests on.
+    """
+    n_mzi = n * (n - 1) // 2
+    sd = {k: v.detach().cpu().numpy() for k, v in model.state_dict().items()}
+
+    # Sigma is trained unconstrained and comes out signed and > 1; passivize() folds
+    # the sign into V's output phase and the scale into an external gain, both of
+    # which leave the logits identical. See photonn/mzi.py and docs/phase3_mesh.md.
+    sigma_p, out_phase_v, sigma_gain = passivize(sd["sigma"], sd["v.out_phase"])
+
+    # theta/phi concatenated as [V, U]; out_phase indexed the same way (export.MESH_ORDER).
+    theta = np.concatenate([sd["v.theta"], sd["u.theta"]])
+    phi = np.concatenate([sd["v.phi"], sd["u.phi"]])
+    out_phase = np.stack([out_phase_v, sd["u.out_phase"]])
+
+    test_maps = encode_modes(torch.as_tensor(test_ds.images, dtype=torch.float32), n_modes=n)
+    g = int(round(n ** 0.5))
+    test_images = test_maps.abs().numpy().astype("f4").reshape(-1, g, g)
+
+    write_handoff(
+        out_h5,
+        model_type="mesh",
+        parameters={"phase_theta": theta, "phase_phi": phi,
+                    "sigma": sigma_p, "out_phase": out_phase},
+        geometry={
+            "grid_size": g,
+            "physical_extent_m": 0.0,
+            "n_layers": 2,                     # V and U meshes
+            "layer_separations_m": np.zeros(1, dtype="f8"),
+        },
+        # input_power_w / integration_time_s are the photon budget the detector sweep
+        # needs; state them here rather than leaning on the MATLAB reader's defaults.
+        operating_point={"wavelength_m": wavelength, "n_modes": n,
+                         "n_classes": n_classes, "readout_gain": model.readout_gain,
+                         "sigma_gain": sigma_gain,
+                         "input_power_w": 1e-3, "integration_time_s": 1e-3},
+        test_images=test_images,
+        test_labels=test_ds.labels,
+        description=(
+            f"MZI mesh Phase 3 | modes={n} | SVD U*diag(sigma)*V | test_acc={test_acc:.4f} | "
+            f"seed={seed} | phase_theta/phi = concat[V, U] MZI phases ({n_mzi} each); "
+            f"out_phase = [V; U]; sigma passivized to <=1 with external gain "
+            f"{sigma_gain:.4f} (logit-preserving)"
+        ),
+    )
+    validate_handoff(out_h5)
+    return sigma_gain
+
+
+def export_only(args):
+    """Rebuild the handoff from the saved checkpoint, without retraining.
+
+    Retraining risks moving the accuracy the error budget is anchored to, so the
+    re-export reads ``--out-pt`` and leaves the trained parameters exactly as they are.
+    """
+    out_pt = Path(args.out_pt)
+    if not out_pt.exists():
+        raise SystemExit(f"checkpoint not found: {out_pt} (train first, or pass --out-pt)")
+    ckpt = torch.load(out_pt, weights_only=False)
+    saved = ckpt["args"]
+    n, n_classes = saved["modes"], saved["classes"]
+    print(f"re-exporting from {out_pt} | modes={n} classes={n_classes} seed={saved['seed']}")
+
+    model = MeshNetwork(n, n_classes, use_svd=True)
+    model.load_state_dict(ckpt["state_dict"])
+    test_ds = load_dataset("mnist", subset=saved["subset_test"], split="test")
+    encoder = lambda imgs: encode_modes(imgs, n_modes=n)
+    test_acc = evaluate(model, test_ds, encoder=encoder)
+    print(f"test accuracy: {test_acc:.4f}")
+
+    gain = export_handoff(model, test_ds, out_h5=Path(args.out_h5), n=n, n_classes=n_classes,
+                          wavelength=saved["wavelength"], seed=saved["seed"], test_acc=test_acc)
+    print(f"sigma passivized (external gain {gain:.4f}, logits unchanged)")
+    print(f"exported handoff -> {args.out_h5}  (validated)")
+
+
 def main():
     args = parse_args()
+    if args.export_only:
+        return export_only(args)
     if args.quick:
         args.epochs, args.subset_train, args.subset_test = 5, 4000, 1000
 
@@ -86,37 +173,11 @@ def main():
     out_h5, out_pt = Path(args.out_h5), Path(args.out_pt)
     out_h5.parent.mkdir(parents=True, exist_ok=True)
 
-    # Store the MZI phases: theta/phi concatenated as [V mesh, U mesh]. Sigma and
-    # output phases are additional (a full as-built reconstruction of the SVD mesh
-    # would extend the schema -- the mesh error budget is a documented follow-on).
-    theta = np.concatenate([model.v.theta.detach().numpy(), model.u.theta.detach().numpy()])
-    phi = np.concatenate([model.v.phi.detach().numpy(), model.u.phi.detach().numpy()])
-    test_maps = encode_modes(torch.as_tensor(test_ds.images, dtype=torch.float32), n_modes=n)
-    test_images = test_maps.abs().numpy().astype("f4").reshape(-1, int(n ** 0.5), int(n ** 0.5))
-
-    write_handoff(
-        out_h5,
-        model_type="mesh",
-        parameters={"phase_theta": theta.astype("f8"), "phase_phi": phi.astype("f8")},
-        geometry={
-            "grid_size": int(round(n ** 0.5)),
-            "physical_extent_m": 0.0,
-            "n_layers": 2,                     # V and U meshes
-            "layer_separations_m": np.zeros(1, dtype="f8"),
-        },
-        operating_point={"wavelength_m": args.wavelength, "n_modes": n,
-                         "n_classes": args.classes, "readout_gain": model.readout_gain},
-        test_images=test_images,
-        test_labels=test_ds.labels,
-        description=(
-            f"MZI mesh Phase 3 | modes={n} | SVD U*Sigma*V* | test_acc={test_acc:.4f} | "
-            f"seed={args.seed} | phase_theta/phi = concat[V, U] MZI phases "
-            f"({n * (n - 1) // 2} each); Sigma + output phases not in schema 0.1.0"
-        ),
-    )
-    validate_handoff(out_h5)
+    gain = export_handoff(model, test_ds, out_h5=out_h5, n=n, n_classes=args.classes,
+                          wavelength=args.wavelength, seed=args.seed, test_acc=test_acc)
     torch.save({"state_dict": model.state_dict(), "history": hist, "args": vars(args)}, out_pt)
-    print(f"\nexported handoff -> {out_h5}  (validated)")
+    print(f"\nsigma passivized (external gain {gain:.4f}, logits unchanged)")
+    print(f"exported handoff -> {out_h5}  (validated)")
     print(f"saved torch model -> {out_pt}")
 
 

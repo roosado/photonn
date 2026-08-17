@@ -16,7 +16,7 @@ file is the consolidated ledger.
 - Add a row here for every sourced value so magnitudes stay internally
   consistent across the Python and MATLAB sides.
 
-## Open decision — RESOLVED for the D²NN
+## Open decision — RESOLVED for the D²NN, OPEN for the mesh
 
 **#4 — canonical parameter source.** For the diffractive (D²NN) error budget the
 device is a **visible-wavelength phase-mask processor** (532 nm, ~8 µm pitch),
@@ -25,6 +25,15 @@ or a lithographic phase plate, read out on a scientific-CMOS detector. The
 canonical sources are therefore the **SLM / phase-plate and sCMOS measurement
 literature and datasheets** below — not an integrated-photonics MZI PDK. The MZI
 mesh (Phase 3) will need its own PDK-anchored set; that remains open.
+
+**The mesh budget was run anyway, and deliberately so.** `docs/tolerance_mesh.md`
+reports measured tolerance **edges** for all seven mesh sources with the realistic
+as-built column left `UNSOURCED` throughout, and no "Margin" column at all. The
+reasoning: an edge is a property of the trained network and its topology, so it can
+be measured now and does not change when the sourcing lands; a margin is a claim
+about a fabrication process, and there is nothing to base one on yet. Ordering the
+work this way surfaces the gap instead of stalling on it. **What is still missing is
+the whole right-hand column of that table** — see the mesh ledger below.
 
 ## Ledger
 
@@ -121,6 +130,40 @@ The page states that explicitly so the weaker number cannot be mistaken for the
 claim. Neither figure includes the laser, modulator, detectors or converters;
 nothing in this project models those.
 
+## Mesh ledger — every row `UNSOURCED`
+
+The seven quantities the MZI-mesh error budget sweeps, what each one drives, and the
+class of source that would settle it. Nothing here has a value yet; the middle column
+is what the sweep covers, not a claim about any process. Filling this table in is the
+**second-largest open citation task in the project**, after the nonlinearity routes.
+
+The device the mesh budget implies is a **telecom-wavelength silicon photonic
+processor** (1550 nm, thermo-optic phase shifters, directional couplers or MMIs), so
+the sources will be foundry PDK data and integrated-photonics characterisation
+papers — a different literature from the SLM/sCMOS set above, which is the whole
+reason open decision #4 is still open for the mesh.
+
+| Quantity | Symbol / units | Sweep range covered | What would settle it | Used in |
+|---|---|---|---|---|
+| Phase-shifter setting error | σ_φ, rad | 0 … 0.12 | thermo-optic shifter calibration accuracy | `err.phase_shifter_error` |
+| Coupler split deviation | ε, power fraction, 1-σ | 0 … 0.12 | MMI / directional-coupler process spread across a wafer | `err.coupler_imbalance` |
+| Heater thermal coupling | α, dimensionless | 0 … 0.02 | measured crosstalk between adjacent thermo-optic shifters | `err.mesh_coupling_matrix` |
+| Thermal decay length | µm | **fixed at 50** | in-plane heat spreading in the device layer | `err.mesh_coupling_matrix` |
+| MZI layout pitch | µm, [column, mode] | **fixed at [80, 40]** | a real mesh floorplan | `meshmodel.schedule` → `err.mesh_coupling_matrix` |
+| Per-MZI insertion loss | dB per MZI | 0 … 2.0 | measured MZI insertion loss | `err.mzi_loss` |
+| Waveguide propagation loss | dB/cm | not swept (0) | SOI or SiN propagation loss | `err.mzi_loss` |
+| Coupler dispersion | Δsplit per nm | **fixed at 0.002** | coupler split vs wavelength characterisation | `err.mesh_wavelength_dispersion` |
+
+The three **fixed** rows are the ones to worry about most, because they do not appear
+on any curve's x-axis: the crosstalk sweep moves α with the geometry held constant, so
+the whole curve slides if the pitch or the decay length is wrong. The tolerance
+document says so in its Caveats rather than presenting the crosstalk edge as
+geometry-independent.
+
+DAC resolution and the detector parameters are **not** in this table. They are
+electronics, already sourced in the ledger above, and they carry over to the mesh
+unchanged — which is why the mesh and the D²NN measure the same 1 pW detector edge.
+
 ## Outstanding `UNSOURCED` / modelling choices
 
 Not every number is a directly-measured constant; some are deliberate modelling
@@ -133,6 +176,17 @@ choices flagged here so nothing is passed off as measured:
 - **Per-pixel phase σ.** The λ/100–λ/10 RMS figures are *aperture-averaged*
   wavefront RMS; treating them as i.i.d. per-pixel σ is a conservative modelling
   choice (real errors are spatially correlated).
+- **Mesh heater coupling kernel.** `err.mesh_coupling_matrix` uses
+  `C_ij = α·exp(-d_ij / L)`, the standard lumped form for in-plane heat spreading in
+  a thin device layer — not a solution of the heat equation for this geometry. The
+  decay length is doing all the work and is not sourced.
+- **Mesh thermal power proxy.** Crosstalk is driven by each MZI's *programmed phase*
+  as a stand-in for its dissipated heater power. That is exact for a shifter whose
+  phase is proportional to applied power, which is the usual thermo-optic case, and
+  wrong for one driven in voltage.
+- **V and U modelled as thermally independent.** A layout assumption, and the
+  optimistic one.
 - No invented numeric constants are committed in code: `+err` functions take
   magnitudes as arguments; the values above enter only via the driver sweeps and
-  this ledger.
+  this ledger. The three fixed mesh geometry constants live in
+  `run_error_budget_mesh.m`, each marked `% UNSOURCED` on the line that sets it.

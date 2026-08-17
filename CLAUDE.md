@@ -177,9 +177,16 @@ Kept here so a later session does not reopen a question the project already answ
    `train.py`. The error model lives in MATLAB and is never differentiated through, so JAX's
    composability advantage never came due.
 2. **Phase 4 ordering** → **error budget first.** Run against the trained D²NN before Phase 3
-   was complete; see `docs/tolerance_d2nn.md`. The MZI-specific sources (coupler imbalance,
-   per-MZI loss) stay deferred stubs, since they have no meaning for phase masks.
+   was complete; see `docs/tolerance_d2nn.md`. **The mesh budget has since been run too**
+   (`docs/tolerance_mesh.md`): the MZI-specific sources are no longer stubs — coupler
+   imbalance is implemented and binds, and per-MZI loss became `err.mzi_loss`, which is a
+   different source from the D²NN's rather than the same one renamed. Headline: the mesh
+   needs its phases **10× more accurate** (0.03 rad against 0.3), and a quarter of its U
+   mesh sits outside the readout's light cone and needs no tolerance at all.
 4. **Parameter source standardization** → **resolved for the D²NN**, still open for the mesh.
    The canonical set is the SLM / phase-plate and sCMOS measurement literature, not an
    integrated-photonics PDK; the ledger is `docs/parameter_sources.md`. The Phase-3 mesh will
-   need its own PDK-anchored set.
+   need its own PDK-anchored set. **The mesh budget ran ahead of that sourcing on purpose**:
+   it publishes measured tolerance *edges* (properties of the network and its topology, which
+   will not move) with every realistic as-built value marked `UNSOURCED` and no margin column.
+   The gap is a table in `docs/parameter_sources.md`, not a silence.

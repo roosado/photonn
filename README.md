@@ -45,7 +45,7 @@ See [`CLAUDE.md`](CLAUDE.md) for the full architecture, phase roadmap, and scope
 ## Status
 
 **The chip gets its own error budget, and it is not the same budget (2026-08-17, `2141b1f` →
-`e0121fb`).** Phase 4 had only ever been run against the diffractive stack. It has now been run
+`e9fd3f6`).** Phase 4 had only ever been run against the diffractive stack. It has now been run
 against the trained MZI mesh, which makes the project's failure-mode claim a measurement instead
 of an assertion: **the mesh needs its phases 10× more accurate** (holds at 0.03 rad against the
 D²NN's 0.3) and its DACs 3 bits finer, because light crosses 72 MZI columns *in series* and every

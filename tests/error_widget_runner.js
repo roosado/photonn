@@ -182,10 +182,9 @@ function survey(root, env) {
 }
 
 const out = {};
-// `mesh` is the chip page's widget rather than the tolerance page's, and it is
-// mounted here with no window.PHOTONN_MESH on purpose: that exercises the
-// stand-in path, and layout -- which is all this file tests -- does not depend on
-// which mesh the operator came from.
+// `mesh` is mounted here with no window.PHOTONN_MESH on purpose: that exercises
+// the stand-in path, and layout -- which is all this file tests -- does not depend
+// on which mesh the operator came from.
 const KINDS = ["crosstalk", "phase", "detector", "loss", "wavelength", "quant", "mesh"];
 // A phone, a small tablet, and a desktop column on the tolerance page.
 const WIDTHS = [300, 480, 1042];

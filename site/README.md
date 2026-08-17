@@ -16,16 +16,19 @@ They read in order, and the topbar lists all five:
    it, the **live diffraction explorer** with a reading guide for its controls, and the proof
    that the whole stack collapses to one linear operator followed by a single `|E|²`.
 3. **`chip.html`** — the MZI mesh, the crosswalk table, and why a phase mask *is* a column of
-   phase shifters. Then **what breaks it**: the chip's own half of the error budget, where the
-   two machines stop being the same machine. It needs its delays ten times more accurate than the
-   glass stack does, because 72 columns of interferometers in series carry each other's errors
-   forward, and it has a constraint the stack cannot have at all — couplers that split unevenly,
-   on the slider. A quarter of one mesh turns out to need no fabrication tolerance whatever. The
-   interactive correspondence widget was removed because the table already made its argument.
+   phase shifters. Prose and one figure only; the interactive correspondence widget was removed
+   because the table already made its argument. It hands off to `/tolerance` on the one thing
+   that separates the two machines: how they fail.
 4. **`tolerance.html`** — the fabrication error budget, as **one section per error source**.
    Each carries a purpose-built widget showing what that error physically does, its measured
-   tolerance curve, and the one number that matters. Closes on the ranking: five sources are
-   comfortable, crosstalk fails by 4×, and geometry is not modelled at all.
+   tolerance curve, and the one number that matters. Then the ranking: five sources are
+   comfortable, crosstalk fails by 4×, and geometry is not modelled at all. **Closes on the same
+   treatment applied to the chip**, which fails a different way — ten times tighter on delays
+   because 72 columns of interferometers in series carry each other's errors forward, plus a
+   constraint the stack cannot have at all (couplers that split unevenly, on the slider), and a
+   quarter of one mesh that needs no fabrication tolerance whatever. That section sits here and
+   not on `/chip` because in reading order the comparison only works once the stack's budget is
+   behind you.
 5. **`optics.html`** — what scaling buys, and where it stops. The depth-vs-accuracy chart, the
    5-mask model running beside the 56-mask one on one digit, what the
    extra masks cost in tolerance, and then the wall: a mask stack is one linear operator, so
@@ -51,8 +54,8 @@ exactly (`tests/test_d2nn_crosscheck.py`).
 | `d2nn.js` + `d2nn_demo.js` | index | the live classifier |
 | `d2nn_stage.js` | index, optics | the 3D optical stack |
 | `explorer.js` | physics | the diffraction explorer |
-| `errors.js` | tolerance, chip | **seven** error-mechanism widgets, one per source |
-| `mesh_weights.js` | chip | the trained chip's 2,628 settings, 16-bit, for `errors.js` |
+| `errors.js` | tolerance | **seven** error-mechanism widgets, one per source |
+| `mesh_weights.js` | tolerance | the trained chip's 2,628 settings, 16-bit, for `errors.js` |
 | `scaling.js` | optics | accuracy against mask count |
 | `d2nn_compare.js` | optics | 5 masks vs 56 masks, one digit |
 | `analogy.js` | *(none)* | kept for `apps/analogy_demo.py`; the site no longer mounts it |
@@ -65,11 +68,12 @@ slice of it. The chip comes from `mesh_weights.js`, written by `apps.export_mesh
 `tests/test_mesh_web.py` rebuilds the operator from it under Node and checks it against
 `photonn.mzi`, because a transposed index would draw a confident picture of a different chip.
 
-Six kinds mount on `/tolerance` in page order `crosstalk, phase, detector, loss, wavelength,
-quant`; the seventh, `mesh`, mounts on `/chip`. The whole file is inlined on both pages rather
-than split, because all seven share a stylesheet and a second copy would mean a second
-`STYLE_ID` — a bug this repo has shipped once. They split into two shapes with **two layout
-rules that are load-bearing** (both were broken and fixed in `cd372b1`):
+All seven mount on `/tolerance`, in page order `crosstalk, phase, detector, loss, wavelength,
+quant, mesh` — the first six against the stack, `mesh` in the closing section against the chip.
+The file is inlined once, and is never split, because all seven share a stylesheet and a second
+copy would mean a second `STYLE_ID` — a bug this repo has shipped once. They split into two
+shapes with **two layout rules that are load-bearing** (both were broken and fixed in
+`cd372b1`):
 
 * **Five triptychs** (crosstalk, phase, wavelength, quant, mesh) — three square panels reading
   as-designed / as-built / the difference. They must **never wrap**, because sweeping the
@@ -160,9 +164,9 @@ rebuilding the whole site.
 constants in `apps/build_site.py`, and they have gone stale before — the tolerance edges on the
 live site were the pre-retrain values for four months. After any retrain or any re-run of the
 error budget, re-grep `build_site.py` for the accuracies, the power budget *and* the tolerance
-edges, not just the headline — on `/chip` as well as `/tolerance` now, since both carry measured
-limits. `docs/tolerance_d2nn.md`, `docs/tolerance_mesh.md` and `docs/phase2_dnn.md` are the
-sources of record.
+edges, not just the headline — `/tolerance` now quotes edges for **two** machines, so a mesh
+re-run moves numbers there too. `docs/tolerance_d2nn.md`, `docs/tolerance_mesh.md` and
+`docs/phase2_dnn.md` are the sources of record.
 
 ## Publishing
 

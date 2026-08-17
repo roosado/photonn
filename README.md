@@ -19,10 +19,10 @@ nothing precomputed.
 Four more pages read on from it — [the wave optics
 underneath](https://roosado.github.io/photonn/physics.html) with the diffraction explorer
 recomputing scalar diffraction live as you move the controls, [the same machine built as a
-chip](https://roosado.github.io/photonn/chip.html), which also carries the half of the error
-budget only a chip can have, [how precisely it would have to be
+chip](https://roosado.github.io/photonn/chip.html), [how precisely it would have to be
 built](https://roosado.github.io/photonn/tolerance.html) — the study, one section per error
-source, each with a widget showing what that error physically does — and [how much better the
+source, each with a widget showing what that error physically does, closing on the same
+treatment applied to the chip, which fails a different way — and [how much better the
 optics could be](https://roosado.github.io/photonn/optics.html), which measures what depth buys
 and then argues why more of it is not the answer.
 
@@ -74,16 +74,21 @@ asking what 0.5 dB per MZI costs is now a question about a passive device. And `
 the mesh **column by column**, which is the seam `mzi.reconstruct` does not have and the only
 place a per-MZI error can enter.
 
-*`/chip` carries the comparison, with a widget for the mechanism.* A new `mesh` kind in
-[`apps/web/errors.js`](apps/web/errors.js) draws |U·Σ·V| for the trained chip, ideal against
-as-built, with coupler imbalance on the slider — mechanism only, no accuracy computed, like the
-other six. Its operator is checked against `photonn.mzi` under Node
+*`/tolerance` closes on the comparison, with a widget for the mechanism.* The site's error budget
+now runs both machines in one place and ends on where they part. It sits there rather than on
+`/chip` for a reading-order reason: the comparison is against the stack's budget, and on `/chip`
+that budget is still a page away, so every sentence would have been leaning on numbers the reader
+had not met. A new `mesh` kind in [`apps/web/errors.js`](apps/web/errors.js) draws |U·Σ·V| for the
+trained chip, ideal against as-built, with coupler imbalance on the slider — mechanism only, no
+accuracy computed, like the other six. Its operator is checked against `photonn.mzi` under Node
 ([`tests/test_mesh_web.py`](tests/test_mesh_web.py)), because a transposed index would draw a
 confident picture of a different chip. The per-MZI sensitivity map is published beside it: the
 D²NN's equivalent is 56 panels in one row at 47:1 and unpublishable at any web size, where a mesh
-map is two near-square panels. Suite 230 → **248**. `/chip` 124 → 196 KB against a ceiling raised
-to 220; the site total is 1,849 KB against 1,900, helped by a new lossless-WebP candidate in the
-figure encoder that is 30 % smaller than palette PNG on flat-shaded plates and never loses.
+map is two near-square panels. Suite 230 → **248**. `/tolerance` 179 → 227 KB against a ceiling
+raised to 250, `/chip` unchanged at 125, site total 1,770 → **1,815** against 1,900 — 34 KB less
+than the same section would have cost on `/chip`, since `errors.js` is now inlined once rather
+than on two pages, and a new lossless-WebP candidate in the figure encoder is 30 % smaller than
+palette PNG on flat-shaded plates and never loses.
 
 **Depth-named models, an honest deep-model matrix, and widgets that hold their shape
 (2026-08-14 … 17, `3174e72` → `cd372b1`).** Three passes over what the site claims and how it

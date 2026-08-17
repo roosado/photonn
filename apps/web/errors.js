@@ -1,9 +1,10 @@
 /*
  * errors.js -- what each fabrication error physically does to the machine.
  *
- * One widget per error source. Six sit on the tolerance page, against the
- * diffractive stack; the seventh sits on the chip page, against the MZI mesh.
- * Each is purpose-built for its own mechanism rather than being one generic
+ * One widget per error source, all seven on the tolerance page: six against the
+ * diffractive stack, and a seventh against the MZI mesh in the section that
+ * compares the two. Each is purpose-built for its own mechanism rather than one
+ * generic
  * slider: phase error scatters every pixel independently, quantisation collapses
  * a continuum onto steps, crosstalk smears neighbours together, loss drains a
  * photon budget, wavelength drift acts through two channels at once, detector
@@ -745,7 +746,7 @@
     ctx.putImageData(img, 0, 0);
   }
 
-  // 7. Coupler imbalance, on the chip. The one error source a phase mask cannot
+  // 7. Coupler imbalance, on the mesh. The one error source a phase mask cannot
   //    have, and the one that turns 72 columns of depth into a liability.
   KINDS.mesh = function (root) {
     const M = loadMesh();

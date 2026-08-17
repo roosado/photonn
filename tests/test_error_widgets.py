@@ -1,9 +1,10 @@
 """Layout invariants for the seven error-mechanism widgets.
 
-``apps/web/errors.js`` draws one widget per fabrication error source: six on
-/tolerance against the diffractive stack, and ``mesh`` on /chip against the MZI
-chip. Two of its layout properties are load-bearing for whether the widget
-teaches anything at all, and neither is visible to any other test:
+``apps/web/errors.js`` draws one widget per fabrication error source, all seven on
+/tolerance: six against the diffractive stack, and ``mesh`` against the MZI chip in
+the section that compares the two. Two of its layout properties are load-bearing
+for whether the widget teaches anything at all, and neither is visible to any other
+test:
 
 * **The triptychs must not wrap.** Five of the seven (crosstalk, phase,
   wavelength, quant, mesh) are a before/after/difference row. Sweeping the slider

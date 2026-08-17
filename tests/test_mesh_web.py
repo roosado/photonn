@@ -1,8 +1,9 @@
 """The chip widget must draw the chip that was trained, not a plausible one.
 
-``/chip`` carries one error-mechanism widget: coupler imbalance on the MZI mesh,
-the source that has no meaning for a phase mask and that
-``docs/tolerance_mesh.md`` measures binding level with phase error. It renders
+``/tolerance`` closes on the chip's own error budget, and carries one widget for
+it: coupler imbalance on the MZI mesh, the source that has no meaning for a phase
+mask and that ``docs/tolerance_mesh.md`` measures binding level with phase error.
+It renders
 
     |O| = |U . diag(sigma) . V|
 

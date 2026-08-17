@@ -16,8 +16,12 @@ They read in order, and the topbar lists all five:
    it, the **live diffraction explorer** with a reading guide for its controls, and the proof
    that the whole stack collapses to one linear operator followed by a single `|E|²`.
 3. **`chip.html`** — the MZI mesh, the crosswalk table, and why a phase mask *is* a column of
-   phase shifters. Prose and one figure only; the interactive correspondence widget was removed
-   because the table already made its argument.
+   phase shifters. Then **what breaks it**: the chip's own half of the error budget, where the
+   two machines stop being the same machine. It needs its delays ten times more accurate than the
+   glass stack does, because 72 columns of interferometers in series carry each other's errors
+   forward, and it has a constraint the stack cannot have at all — couplers that split unevenly,
+   on the slider. A quarter of one mesh turns out to need no fabrication tolerance whatever. The
+   interactive correspondence widget was removed because the table already made its argument.
 4. **`tolerance.html`** — the fabrication error budget, as **one section per error source**.
    Each carries a purpose-built widget showing what that error physically does, its measured
    tolerance curve, and the one number that matters. Closes on the ranking: five sources are
@@ -47,21 +51,27 @@ exactly (`tests/test_d2nn_crosscheck.py`).
 | `d2nn.js` + `d2nn_demo.js` | index | the live classifier |
 | `d2nn_stage.js` | index, optics | the 3D optical stack |
 | `explorer.js` | physics | the diffraction explorer |
-| `errors.js` | tolerance | **six** error-mechanism widgets, one per source |
+| `errors.js` | tolerance, chip | **seven** error-mechanism widgets, one per source |
+| `mesh_weights.js` | chip | the trained chip's 2,628 settings, 16-bit, for `errors.js` |
 | `scaling.js` | optics | accuracy against mask count |
 | `d2nn_compare.js` | optics | 5 masks vs 56 masks, one digit |
 | `analogy.js` | *(none)* | kept for `apps/analogy_demo.py`; the site no longer mounts it |
 
-`errors.js` is **mechanism only**: it never runs the classifier and computes no accuracy, so
-it cannot contradict the measured curve beside it. It shares one real 128² phase mask, cut out
-of `d2nn_weights.js` at build time by `build_site.error_mask_bundle()` — one copy of the
-trained phases in the repo, and this is a slice of it.
+`errors.js` is **mechanism only**: it never runs a classifier and computes no accuracy, so
+it cannot contradict the measured curve beside it. Both models it draws are the real thing. The
+128² phase mask is cut out of `d2nn_weights.js` at build time by
+`build_site.error_mask_bundle()` — one copy of the trained phases in the repo, and this is a
+slice of it. The chip comes from `mesh_weights.js`, written by `apps.export_mesh_web`, and
+`tests/test_mesh_web.py` rebuilds the operator from it under Node and checks it against
+`photonn.mzi`, because a transposed index would draw a confident picture of a different chip.
 
-Its six kinds mount in page order `crosstalk, phase, detector, loss, wavelength, quant`, and
-split into two shapes with **two layout rules that are load-bearing** (both were broken and
-fixed in `cd372b1`):
+Six kinds mount on `/tolerance` in page order `crosstalk, phase, detector, loss, wavelength,
+quant`; the seventh, `mesh`, mounts on `/chip`. The whole file is inlined on both pages rather
+than split, because all seven share a stylesheet and a second copy would mean a second
+`STYLE_ID` — a bug this repo has shipped once. They split into two shapes with **two layout
+rules that are load-bearing** (both were broken and fixed in `cd372b1`):
 
-* **Four triptychs** (crosstalk, phase, wavelength, quant) — three square panels reading
+* **Five triptychs** (crosstalk, phase, wavelength, quant, mesh) — three square panels reading
   as-designed / as-built / the difference. They must **never wrap**, because sweeping the
   slider only shows the mechanism if all three are on screen at once. They were
   `flex: 1 1 150px; min-width: 132px`, which needs 420 px of row; a phone column is about
@@ -81,7 +91,7 @@ fixed in `cd372b1`):
 > widget. This has happened once; the Node runner above is what caught it.
 
 Neither rule can be checked in a driven browser — that tab is always hidden, so it never lays
-anything out. `tests/error_widget_runner.js` mounts all six kinds against a DOM stand-in at
+anything out. `tests/error_widget_runner.js` mounts all seven kinds against a DOM stand-in at
 300/480/1042 px and device pixel ratios 1 and 2, and `tests/test_error_widgets.py` asserts that
 every canvas's **bitmap aspect equals the aspect it is displayed at**, plus the stylesheet rules
 above. The runner's mini-flexbox **parses its rules out of `errors.js`'s own CSS** rather than
@@ -122,6 +132,7 @@ If the **trained model** changes, regenerate in this order before rebuilding the
 ```bash
 python -m apps.export_d2nn_web      # -> apps/web/d2nn_weights.js, tests/fixtures/d2nn_reference.json
 python -m apps.export_analogy_web   # -> apps/web/analogy_geom.js
+python -m apps.export_mesh_web      # -> apps/web/mesh_weights.js   (needs handoff schema 0.2.0)
 python -m apps.analogy_figure       # -> docs/figures/phase3_correspondence.png
 python -m apps.build_site
 ```
@@ -133,9 +144,9 @@ reads its points from there rather than carrying its own copy:
 python -m apps.sweep_report         # -> apps/web/optics_sweep.js, docs/figures/optics_sweep.png
 ```
 
-`apps/web/d2nn_weights.js` and `apps/web/analogy_geom.js` are **committed on purpose**:
-`.gitignore` excludes `*.h5`/`*.pt`, so they are the repo's only copies of what the trained
-models say, and the only way the site rebuilds from a fresh clone.
+`apps/web/d2nn_weights.js`, `apps/web/analogy_geom.js` and `apps/web/mesh_weights.js` are
+**committed on purpose**: `.gitignore` excludes `*.h5`/`*.pt`, so they are the repo's only copies
+of what the trained models say, and the only way the site rebuilds from a fresh clone.
 
 The standalone one-widget pages (`apps/d2nn_demo.html`, `apps/diffraction_explorer.html`,
 `apps/analogy_demo.html`, `apps/compare_demo.html`) are built by `python -m apps.d2nn_demo`,
@@ -149,8 +160,9 @@ rebuilding the whole site.
 constants in `apps/build_site.py`, and they have gone stale before — the tolerance edges on the
 live site were the pre-retrain values for four months. After any retrain or any re-run of the
 error budget, re-grep `build_site.py` for the accuracies, the power budget *and* the tolerance
-edges, not just the headline. `docs/tolerance_d2nn.md` and `docs/phase2_dnn.md` are the sources
-of record.
+edges, not just the headline — on `/chip` as well as `/tolerance` now, since both carry measured
+limits. `docs/tolerance_d2nn.md`, `docs/tolerance_mesh.md` and `docs/phase2_dnn.md` are the
+sources of record.
 
 ## Publishing
 

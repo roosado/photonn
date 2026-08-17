@@ -1,11 +1,13 @@
-"""Layout invariants for the six error-mechanism widgets on /tolerance.
+"""Layout invariants for the seven error-mechanism widgets.
 
-``apps/web/errors.js`` draws one widget per fabrication error source. Two of its
-layout properties are load-bearing for whether the widget teaches anything at
-all, and neither is visible to any other test:
+``apps/web/errors.js`` draws one widget per fabrication error source: six on
+/tolerance against the diffractive stack, and ``mesh`` on /chip against the MZI
+chip. Two of its layout properties are load-bearing for whether the widget
+teaches anything at all, and neither is visible to any other test:
 
-* **The triptychs must not wrap.** Four of the six (crosstalk, phase, wavelength,
-  quant) are a before/after/difference row. Sweeping the slider only shows you
+* **The triptychs must not wrap.** Five of the seven (crosstalk, phase,
+  wavelength, quant, mesh) are a before/after/difference row. Sweeping the slider
+  only shows you
   the mechanism if all three panels are on screen at once. They used to be
   ``flex: 1 1 150px; min-width: 132px``, which needs 420 px of row -- more than a
   phone has -- so the third panel wrapped, each panel then grew to the full
@@ -36,7 +38,7 @@ RUNNER = os.path.join(HERE, "error_widget_runner.js")
 ERRORS_JS = os.path.join(HERE, "..", "apps", "web", "errors.js")
 
 #: Widgets whose three panels are meant to be read side by side.
-TRIPTYCHS = ("crosstalk", "phase", "wavelength", "quant")
+TRIPTYCHS = ("crosstalk", "phase", "wavelength", "quant", "mesh")
 #: Widgets that draw a single self-sized plot.
 PLOTS = ("loss", "detector")
 
@@ -110,10 +112,25 @@ def test_no_widget_sets_layout_with_an_inline_style(source):
 # ------------------------------------------------------------------- mounting
 
 def test_every_kind_mounts_at_every_width(out):
-    """Six widgets, three widths, two pixel ratios, no exceptions thrown."""
+    """Seven widgets, three widths, two pixel ratios, no exceptions thrown.
+
+    The runner keeps its own list of kinds, so this is also the check that a new
+    widget was added to it: without that, the seventh kind ships untested and
+    nothing here would have noticed.
+    """
     assert set(out["kinds"]) == set(TRIPTYCHS) | set(PLOTS)
     keys = [k for k in out if k != "kinds"]
-    assert len(keys) == 6 * 3 * 2, f"expected 36 mounted widgets, got {len(keys)}"
+    assert len(keys) == 7 * 3 * 2, f"expected 42 mounted widgets, got {len(keys)}"
+
+
+def test_the_runner_covers_every_kind_the_widget_file_defines(source):
+    """The list in the runner must not fall behind ``KINDS`` in errors.js."""
+    defined = set(re.findall(r"KINDS\.(\w+) = function", source))
+    assert defined == set(TRIPTYCHS) | set(PLOTS), (
+        f"errors.js defines {sorted(defined)}; this file tests "
+        f"{sorted(set(TRIPTYCHS) | set(PLOTS))}. A kind missing here is a kind "
+        "that ships with no layout test at all."
+    )
 
 
 def test_triptychs_keep_three_panels_on_one_row(out):

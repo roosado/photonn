@@ -19,7 +19,8 @@ nothing precomputed.
 Four more pages read on from it — [the wave optics
 underneath](https://roosado.github.io/photonn/physics.html) with the diffraction explorer
 recomputing scalar diffraction live as you move the controls, [the same machine built as a
-chip](https://roosado.github.io/photonn/chip.html), [how precisely it would have to be
+chip](https://roosado.github.io/photonn/chip.html), which also carries the half of the error
+budget only a chip can have, [how precisely it would have to be
 built](https://roosado.github.io/photonn/tolerance.html) — the study, one section per error
 source, each with a widget showing what that error physically does — and [how much better the
 optics could be](https://roosado.github.io/photonn/optics.html), which measures what depth buys
@@ -42,6 +43,47 @@ Two codebases, one project, separated by a one-directional boundary:
 See [`CLAUDE.md`](CLAUDE.md) for the full architecture, phase roadmap, and scope boundaries.
 
 ## Status
+
+**The chip gets its own error budget, and it is not the same budget (2026-08-17, `2141b1f` →
+`e0121fb`).** Phase 4 had only ever been run against the diffractive stack. It has now been run
+against the trained MZI mesh, which makes the project's failure-mode claim a measurement instead
+of an assertion: **the mesh needs its phases 10× more accurate** (holds at 0.03 rad against the
+D²NN's 0.3) and its DACs 3 bits finer, because light crosses 72 MZI columns *in series* and every
+column carries the last one's error forward, where five phase masks perturb in parallel and
+average. **Coupler imbalance** — meaningless for a phase mask, a stub since Phase 3 — is
+implemented and binds level with phase error at a 0.01 power split. Loss stops being free, since
+in a Clements rectangle it is path-dependent and no longer cancels in the normalised readout. And
+**156 of the U mesh's 630 MZIs measure exactly zero sensitivity**: they sit outside the readout's
+light cone, partitioned with no errors by a closed-form criterion, so a quarter of that mesh needs
+no fabrication tolerance at all.
+
+*Every realistic as-built value on the mesh side is marked `UNSOURCED`, deliberately.* There are
+no integrated-photonics rows in the parameter ledger and this project does not invent constants,
+so the study publishes tolerance **edges** — properties of the network and its topology, which no
+PDK will move — and omits the margin column rather than fake a verdict. Open-decision #4 stays
+open for the mesh; the gap is a table now, not a silence.
+
+*Three things had to be built first.* The mesh handoff was **lossy** and nobody had noticed —
+2,520 of 2,628 parameters, with Σ and both output-phase screens missing — so MATLAB could not have
+reproduced 0.7355, and "the as-built simulator reproduces the ideal exactly" is the anchor the
+whole budget rests on. Schema **0.2.0** fixes it additively, mesh-only, so the 131 MB
+`d2nn_phase2.h5` still validates at 0.1.0. The documented **Σ passivity violation** (−0.041 …
+3.907, nine values above 1) turned out to be removable exactly: a negative σ folds into
+`out_phase_v += π`, the global scale cancels in `region/total`, and the logits match to 1e-12 — so
+asking what 0.5 dB per MZI costs is now a question about a passive device. And `+meshmodel` builds
+the mesh **column by column**, which is the seam `mzi.reconstruct` does not have and the only
+place a per-MZI error can enter.
+
+*`/chip` carries the comparison, with a widget for the mechanism.* A new `mesh` kind in
+[`apps/web/errors.js`](apps/web/errors.js) draws |U·Σ·V| for the trained chip, ideal against
+as-built, with coupler imbalance on the slider — mechanism only, no accuracy computed, like the
+other six. Its operator is checked against `photonn.mzi` under Node
+([`tests/test_mesh_web.py`](tests/test_mesh_web.py)), because a transposed index would draw a
+confident picture of a different chip. The per-MZI sensitivity map is published beside it: the
+D²NN's equivalent is 56 panels in one row at 47:1 and unpublishable at any web size, where a mesh
+map is two near-square panels. Suite 230 → **248**. `/chip` 124 → 196 KB against a ceiling raised
+to 220; the site total is 1,849 KB against 1,900, helped by a new lossless-WebP candidate in the
+figure encoder that is 30 % smaller than palette PNG on flat-shaded plates and never loses.
 
 **Depth-named models, an honest deep-model matrix, and widgets that hold their shape
 (2026-08-14 … 17, `3174e72` → `cd372b1`).** Three passes over what the site claims and how it
@@ -214,7 +256,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`240 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`248 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
 `test_mount_queue.py` — require Node on `PATH` and skip cleanly if it is absent.
@@ -236,8 +278,8 @@ in [`docs/handoff_schema.md`](docs/handoff_schema.md); see `photonn/export.py` (
 
 ```
 photonn/        # Python design side (see CLAUDE.md for per-module responsibilities)
-apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier) · export_analogy_web.py, analogy_demo.py, analogy_figure.py (free-space↔chip correspondence)
-apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · errors.js (P4 error mechanisms) · scaling.js, optics_sweep.js (depth vs accuracy) · d2nn_compare.js (two models, one digit) · analogy.js, analogy_geom.js (P3 correspondence, demo only)
+apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier) · export_analogy_web.py, analogy_demo.py, analogy_figure.py (free-space↔chip correspondence) · export_mesh_web.py (trained chip → browser)
+apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · errors.js (P4 error mechanisms, both architectures) · mesh_weights.js (trained chip, for the coupler widget) · scaling.js, optics_sweep.js (depth vs accuracy) · d2nn_compare.js (two models, one digit) · analogy.js, analogy_geom.js (P3 correspondence, demo only)
 site/           # generated, self-contained, GitHub Pages ready: index.html (the live D²NN) · physics.html · chip.html · tolerance.html (the study) · optics.html
 tests/          # pytest suite
 docs/           # handoff schema + parameter-source ledger

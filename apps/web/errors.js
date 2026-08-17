@@ -1,26 +1,32 @@
 /*
  * errors.js -- what each fabrication error physically does to the machine.
  *
- * One widget per error source on the tolerance page. Each is purpose-built for
- * its own mechanism rather than being one generic slider: phase error scatters
- * every pixel independently, quantisation collapses a continuum onto steps,
- * crosstalk smears neighbours together, loss drains a photon budget, wavelength
- * drift acts through two channels at once, and detector noise corrupts ten sums.
- * Drawn as one file because they share a mask, a palette and a stylesheet; six
- * files would mean six STYLE_IDs to keep distinct, and this repo has already
- * shipped that bug once.
+ * One widget per error source. Six sit on the tolerance page, against the
+ * diffractive stack; the seventh sits on the chip page, against the MZI mesh.
+ * Each is purpose-built for its own mechanism rather than being one generic
+ * slider: phase error scatters every pixel independently, quantisation collapses
+ * a continuum onto steps, crosstalk smears neighbours together, loss drains a
+ * photon budget, wavelength drift acts through two channels at once, detector
+ * noise corrupts ten sums, and an imbalanced coupler sends the wrong fraction of
+ * the light the wrong way, 72 columns in a row. Drawn as one file because they
+ * share a palette, a stylesheet and a set of drawing helpers; seven files would
+ * mean seven STYLE_IDs to keep distinct, and this repo has already shipped that
+ * bug once.
  *
- * MECHANISM ONLY. Nothing here runs the classifier, and no accuracy number is
- * computed on this page: the measured tolerance curve sits beside each widget
- * and is the only thing that quotes accuracy. That keeps these honest -- they
+ * MECHANISM ONLY. Nothing here runs a classifier, and no accuracy number is
+ * computed in any widget: the measured tolerance curve sits beside it, and is
+ * the only thing that quotes accuracy. That keeps these honest -- they
  * illustrate what the error is, they do not make new claims about what it costs.
  *
- * The mask is the real thing, mask 0 of the trained network, carried by
- * error_mask.js (window.PHOTONN_ERR_MASK). Codes decode exactly as d2nn.js
- * decodes them: phi = code * 2*pi/256 - pi.
+ * Both models are the real thing. The mask is mask 0 of the trained D2NN,
+ * carried by the bundle in window.PHOTONN_ERR_MASK, and its codes decode exactly
+ * as d2nn.js decodes them: phi = code * 2*pi/256 - pi. The mesh is the trained
+ * Phase-3 chip, carried by mesh_weights.js (window.PHOTONN_MESH) at 16 bits.
+ * Either may be absent -- the widgets fall back to a deterministic stand-in so
+ * the file still mounts under Node, where layout, not physics, is under test.
  *
  * Usage:  window.PhotonnErrors.mount(el, {kind: "crosstalk"})
- *   kind: phase | quant | crosstalk | loss | wavelength | detector
+ *   kind: phase | quant | crosstalk | loss | wavelength | detector | mesh
  */
 (function () {
   "use strict";
@@ -32,6 +38,10 @@
   const SRC = (typeof window !== "undefined" && window.PHOTONN_ERR_MASK)
     ? window.PHOTONN_ERR_MASK
     : (typeof require !== "undefined" ? require("./error_mask.js") : null);
+
+  const MESH_SRC = (typeof window !== "undefined" && window.PHOTONN_MESH)
+    ? window.PHOTONN_MESH
+    : null;
 
   const CSS = `
 .ex-root{--ex-fg:#1b1f24;--ex-muted:#5a6472;--ex-panel:#f4f6f9;--ex-border:#d7dde5;
@@ -550,6 +560,255 @@
     update();
   };
 
+  // ------------------------------------------------------- the mesh, on demand
+  // Everything below is used by one widget on one page. Decoding 5,300 codes at
+  // load time would charge the tolerance page for a chip it never draws, so the
+  // mesh is built the first time the mesh widget mounts and cached after.
+  let MESH = null;
+
+  /** Decode 16-bit little-endian codes back to the span they were quantised over. */
+  function decode16(b64, span) {
+    const bytes = b64ToBytes(b64);
+    const out = new Float64Array(bytes.length >> 1);
+    for (let i = 0; i < out.length; i++) {
+      const code = bytes[2 * i] | (bytes[2 * i + 1] << 8);
+      out[i] = (code + 0.5) / 65536 * span;
+    }
+    return out;
+  }
+
+  /**
+   * The Clements schedule: column c couples mode pairs starting at c % 2.
+   *
+   * Derived rather than shipped. It is three lines of arithmetic and it is the
+   * same rule MZIMeshLayer._schedule applies, so re-deriving it costs nothing and
+   * removes one more array that could go stale against the model.
+   */
+  function schedule(n) {
+    const cols = [];
+    let idx = 0;
+    for (let c = 0; c < n; c++) {
+      const pairs = [];
+      for (let m = c % 2; m < n - 1; m += 2) pairs.push([m, idx++]);
+      cols.push(pairs);
+    }
+    return { columns: cols, nMzi: idx };
+  }
+
+  /**
+   * The 2x2 MZI block, written as the two couplers and two phase shifters it is
+   * physically made of: B(s2) . P(theta) . B(s1) . P(phi).
+   *
+   * With both splits at 0.5 this collapses to i.e^{i.theta/2}.[[e^{i.phi}s, c],
+   * [e^{i.phi}c, -s]], which is the closed form photonn.mzi.mzi_matrix and the
+   * torch layer both use. It is written factored anyway, because the factored
+   * form is the only one an imbalanced coupler can enter -- exactly the reason
+   * photonn-hw/+meshmodel/mzi_matrix.m is written this way too.
+   */
+  function mziBlock(theta, phi, s1, s2, out) {
+    const k1 = Math.asin(Math.sqrt(Math.min(1, Math.max(0, s1))));
+    const k2 = Math.asin(Math.sqrt(Math.min(1, Math.max(0, s2))));
+    const c1 = Math.cos(k1), n1 = Math.sin(k1);
+    const c2 = Math.cos(k2), n2 = Math.sin(k2);
+    // A = B(s1) . P(phi): P(phi) = diag(e^{i.phi}, 1), so it scales column 0.
+    const cp = Math.cos(phi), sp = Math.sin(phi);
+    const a = [c1 * cp, c1 * sp, 0, n1,      // [0][0], [0][1] = i.n1
+               -n1 * sp, n1 * cp, c1, 0];    // [1][0] = i.n1.e^{i.phi}, [1][1]
+    // P(theta) scales row 0 of A.
+    const ct = Math.cos(theta), st = Math.sin(theta);
+    const b = [a[0] * ct - a[1] * st, a[0] * st + a[1] * ct,
+               a[2] * ct - a[3] * st, a[2] * st + a[3] * ct,
+               a[4], a[5], a[6], a[7]];
+    // B(s2) . that.  B = [[c2, i.n2], [i.n2, c2]].
+    out[0] = c2 * b[0] - n2 * b[5];  out[1] = c2 * b[1] + n2 * b[4];
+    out[2] = c2 * b[2] - n2 * b[7];  out[3] = c2 * b[3] + n2 * b[6];
+    out[4] = c2 * b[4] - n2 * b[1];  out[5] = c2 * b[5] + n2 * b[0];
+    out[6] = c2 * b[6] - n2 * b[3];  out[7] = c2 * b[7] + n2 * b[2];
+  }
+
+  /**
+   * One mesh, built column by column into an n-by-n complex matrix.
+   *
+   * Column by column rather than as one product because that is where a per-MZI
+   * error has to be able to enter; `splits` is 2 per MZI, in schedule order.
+   */
+  function meshMatrix(n, sch, theta, phi, outPhase, off, splits) {
+    const re = new Float64Array(n * n), im = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) re[i * n + i] = 1;
+    const blk = new Float64Array(8);
+    const rowA = new Float64Array(2 * n), rowB = new Float64Array(2 * n);
+    for (let c = 0; c < sch.columns.length; c++) {
+      const pairs = sch.columns[c];
+      for (let p = 0; p < pairs.length; p++) {
+        const m = pairs[p][0], j = pairs[p][1];
+        mziBlock(theta[off + j], phi[off + j],
+                 splits ? splits[2 * j] : 0.5, splits ? splits[2 * j + 1] : 0.5, blk);
+        const r0 = m * n, r1 = (m + 1) * n;
+        for (let k = 0; k < n; k++) {
+          const ar = re[r0 + k], ai = im[r0 + k], br = re[r1 + k], bi = im[r1 + k];
+          rowA[2 * k] = blk[0] * ar - blk[1] * ai + blk[2] * br - blk[3] * bi;
+          rowA[2 * k + 1] = blk[0] * ai + blk[1] * ar + blk[2] * bi + blk[3] * br;
+          rowB[2 * k] = blk[4] * ar - blk[5] * ai + blk[6] * br - blk[7] * bi;
+          rowB[2 * k + 1] = blk[4] * ai + blk[5] * ar + blk[6] * bi + blk[7] * br;
+        }
+        for (let k = 0; k < n; k++) {
+          re[r0 + k] = rowA[2 * k]; im[r0 + k] = rowA[2 * k + 1];
+          re[r1 + k] = rowB[2 * k]; im[r1 + k] = rowB[2 * k + 1];
+        }
+      }
+    }
+    // The output phase screen: a diagonal e^{i.psi} on the left, so it scales rows.
+    for (let i = 0; i < n; i++) {
+      const cp = Math.cos(outPhase[i]), sp = Math.sin(outPhase[i]);
+      for (let k = 0; k < n; k++) {
+        const r = re[i * n + k], q = im[i * n + k];
+        re[i * n + k] = r * cp - q * sp;
+        im[i * n + k] = r * sp + q * cp;
+      }
+    }
+    return { re: re, im: im };
+  }
+
+  /** |U . diag(sigma) . V| -- the magnitude of the map the chip computes. */
+  function operatorMag(M, n, sigma, splits) {
+    const v = meshMatrix(n, M.sch, M.theta, M.phi, M.outV, 0, splits);
+    const u = meshMatrix(n, M.sch, M.theta, M.phi, M.outU, M.nMzi,
+                         splits ? splits.subarray(2 * M.nMzi) : null);
+    const out = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < n; k++) {
+        let ar = 0, ai = 0;
+        for (let j = 0; j < n; j++) {
+          const s = sigma[j];
+          const ur = u.re[i * n + j] * s, ui = u.im[i * n + j] * s;
+          const vr = v.re[j * n + k], vi = v.im[j * n + k];
+          ar += ur * vr - ui * vi;
+          ai += ur * vi + ui * vr;
+        }
+        out[i * n + k] = Math.sqrt(ar * ar + ai * ai);
+      }
+    }
+    return out;
+  }
+
+  function loadMesh() {
+    if (MESH) return MESH;
+    const n = MESH_SRC ? MESH_SRC.n : 36;
+    const sch = schedule(n);
+    let theta, phi, sigma, outPhase;
+    if (MESH_SRC) {
+      theta = decode16(MESH_SRC.theta_b64, 2 * Math.PI);
+      phi = decode16(MESH_SRC.phi_b64, 2 * Math.PI);
+      sigma = decode16(MESH_SRC.sigma_b64, 1);
+      outPhase = decode16(MESH_SRC.out_phase_b64, 2 * Math.PI);
+    } else {
+      // Stand-in with the right shape, so the widget mounts where the bundle is
+      // not inlined. Never reached on a built page.
+      const g = gaussians(4 * sch.nMzi + 4 * n, 20260817);
+      theta = new Float64Array(2 * sch.nMzi);
+      phi = new Float64Array(2 * sch.nMzi);
+      for (let i = 0; i < theta.length; i++) {
+        theta[i] = Math.abs(g[i]) % Math.PI;
+        phi[i] = Math.abs(g[i + theta.length]) % (2 * Math.PI);
+      }
+      sigma = new Float64Array(n);
+      for (let i = 0; i < n; i++) sigma[i] = 1 - i / n;
+      outPhase = new Float64Array(2 * n);
+    }
+    MESH = {
+      n: n, sch: sch, nMzi: sch.nMzi, theta: theta, phi: phi, sigma: sigma,
+      outV: outPhase.subarray(0, n), outU: outPhase.subarray(n, 2 * n),
+      splitNoise: gaussians(4 * sch.nMzi, 20260817),
+    };
+    return MESH;
+  }
+
+  /** Nearest-neighbour upscale of an n-by-n magnitude map, so cells stay square. */
+  function drawMatrix(canvas, mag, n, cap, scale) {
+    const px = n * scale;
+    canvas.width = px; canvas.height = px;
+    const ctx = canvas.getContext("2d");
+    const img = ctx.createImageData(px, px);
+    const hi = cap || 1;
+    for (let y = 0; y < px; y++) {
+      const sy = (y / scale) | 0;
+      for (let x = 0; x < px; x++) {
+        const v = Math.min(1, mag[sy * n + ((x / scale) | 0)] / hi);
+        const i = 4 * (y * px + x);
+        const c = Math.round(255 * v);
+        img.data[i] = c;
+        img.data[i + 1] = Math.round(c * 0.55);
+        img.data[i + 2] = Math.round(c * 0.30);
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // 7. Coupler imbalance, on the chip. The one error source a phase mask cannot
+  //    have, and the one that turns 72 columns of depth into a liability.
+  KINDS.mesh = function (root) {
+    const M = loadMesh();
+    const n = M.n;
+    const ctl = el("div", "ex-row");
+    root.appendChild(ctl);
+    const s = slider(ctl, "Coupler split error σ", 0, 0.05, 0.002, 0.01);
+    const panes = el("div", "ex-panes");
+    root.appendChild(panes);
+    const a = pane(panes, "as designed");
+    const b = pane(panes, "as built");
+    const d = pane(panes, "the difference");
+    const note = el("p", "ex-note");
+    root.appendChild(note);
+
+    const SCALE = 8;                       // 36 modes -> a 288 px bitmap
+    const ideal = operatorMag(M, n, M.sigma, null);
+    let cap = 0;
+    for (let i = 0; i < ideal.length; i++) cap = Math.max(cap, ideal[i]);
+    drawMatrix(a, ideal, n, cap, SCALE);
+
+    const splits = new Float64Array(4 * M.nMzi);
+    const built = new Float64Array(n * n);
+    const diff = new Float64Array(n * n);
+    // A fixed scale on the difference panel, so dragging the slider shows the
+    // damage growing rather than an auto-scale that hides it. 0.12 of the
+    // operator's own peak puts the measured limit (0.01) at about half-bright and
+    // saturates well before the slider ends, which is the right way round: the
+    // reader should run out of headroom past the limit, not before it.
+    const DIFF_CAP = 0.12 * cap;
+    function update() {
+      const eps = +s.input.value;
+      for (let i = 0; i < splits.length; i++) splits[i] = 0.5 + eps * M.splitNoise[i];
+      const got = operatorMag(M, n, M.sigma, eps > 0 ? splits : null);
+      let num = 0, den = 0;
+      for (let i = 0; i < built.length; i++) {
+        built[i] = got[i];
+        diff[i] = got[i] - ideal[i];
+        num += diff[i] * diff[i];
+        den += ideal[i] * ideal[i];
+      }
+      drawMatrix(b, built, n, cap, SCALE);
+      drawMatrix(d, diff, n, DIFF_CAP, SCALE);
+      const rms = 100 * Math.sqrt(num / (den || 1));
+      s.val.textContent = "±" + eps.toFixed(3) + " · " + rms.toFixed(1)
+        + "% operator shift";
+      const ok = eps <= 0.01;
+      note.innerHTML = "Each square is one entry of the 36&times;36 operation the chip "
+        + "performs: how much of input mode <i>k</i> arrives at output mode <i>i</i>. "
+        + "A coupler that splits 51:49 instead of 50:50 is a small error <b>in one "
+        + "interferometer</b> &mdash; but the light crosses <b>72 columns of them in "
+        + "series</b>, and every column carries the previous column's error forward. "
+        + "That is why the difference panel fills in across the whole matrix rather "
+        + "than staying near the couplers that were mis-made. "
+        + "<span class='ex-flag " + (ok ? "ok" : "warn") + "'>"
+        + (ok ? "Inside" : "Past") + " the measured limit of ±0.01.</span> "
+        + "How well a real foundry holds that split is not yet sourced &mdash; the "
+        + "limit here is a property of the network, not a verdict on a process.";
+    }
+    s.input.addEventListener("input", update);
+    update();
+  };
+
   function mount(container, opts) {
     opts = opts || {};
     const kind = opts.kind;
@@ -561,7 +820,11 @@
     KINDS[kind](root);
   }
 
-  const api = { mount, kinds: Object.keys(KINDS) };
+  // The chip widget's operator build is physics rather than decoration -- a
+  // transposed index or the wrong 2x2 block would draw a confident fiction. So it
+  // is exposed for tests/test_mesh_web.py to check against photonn.mzi, rather
+  // than re-implemented in the runner, which would only ever test the copy.
+  const api = { mount, kinds: Object.keys(KINDS), _mesh: { load: loadMesh, operatorMag } };
   if (typeof window !== "undefined") window.PhotonnErrors = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })();

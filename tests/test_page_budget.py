@@ -33,7 +33,13 @@ KB = 1024
 BUDGET = {
     "index.html": 430,        # the live classifier (8-bit) + the 3D stage + two plates
     "physics.html": 70,       # prose + the diffraction explorer; the cheap one
-    "chip.html": 150,         # the mesh topology plate; the analogy widget is gone
+    # Raised from 150 when the chip page gained its half of the error budget: the
+    # mesh widget's own bundle (8 KB of trained phases), the per-MZI sensitivity
+    # plate, and errors.js, which ships whole because all seven widgets share one
+    # stylesheet and splitting them would mean a second STYLE_ID. That last one is
+    # 15 KB of kinds this page never mounts, and is the only slack here worth
+    # having back if the ceiling ever binds again.
+    "chip.html": 220,         # the mesh topology plate + the coupler-imbalance widget
     "tolerance.html": 200,    # six error widgets sharing one mask, seven figures
     "optics.html": 1150,      # two models (one 56 masks at 4 bits) + the 56-mask budget
 }

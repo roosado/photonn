@@ -57,6 +57,37 @@ it cannot contradict the measured curve beside it. It shares one real 128² phas
 of `d2nn_weights.js` at build time by `build_site.error_mask_bundle()` — one copy of the
 trained phases in the repo, and this is a slice of it.
 
+Its six kinds mount in page order `crosstalk, phase, detector, loss, wavelength, quant`, and
+split into two shapes with **two layout rules that are load-bearing** (both were broken and
+fixed in `cd372b1`):
+
+* **Four triptychs** (crosstalk, phase, wavelength, quant) — three square panels reading
+  as-designed / as-built / the difference. They must **never wrap**, because sweeping the
+  slider only shows the mechanism if all three are on screen at once. They were
+  `flex: 1 1 150px; min-width: 132px`, which needs 420 px of row; a phone column is about
+  310 px, so the third panel wrapped, the rest grew to full width, and the reader got one
+  enormous picture at a time. Now `flex: 1 1 0; min-width: 0` on a row that cannot wrap, so
+  three always fit and simply shrink — about 95 px each at 300 px of column.
+* **Two plots** (loss, detector) — one wide pane, capped at 640 px by `.ex-pane.ex-wide`.
+  A plot must **measure its pane before it draws**. These used a fixed 420-unit drawing space
+  with an inline height and let `width:100%` scale the bitmap to whatever the column really
+  was, which scales x without scaling y: flattened on a desktop, stretched tall on a phone,
+  labels and all. `fitCanvas()` now measures first and draws one unit per CSS pixel, and
+  `onWidthChange()` redraws on a real width change (guarded on the measured width, since the
+  redraw sets the canvas height and would otherwise answer its own observer forever).
+
+> **The stylesheet is a JS template literal, so it must contain no backticks.** One anywhere
+> inside it — including inside a CSS comment — terminates the literal and breaks the whole
+> widget. This has happened once; the Node runner above is what caught it.
+
+Neither rule can be checked in a driven browser — that tab is always hidden, so it never lays
+anything out. `tests/error_widget_runner.js` mounts all six kinds against a DOM stand-in at
+300/480/1042 px and device pixel ratios 1 and 2, and `tests/test_error_widgets.py` asserts that
+every canvas's **bitmap aspect equals the aspect it is displayed at**, plus the stylesheet rules
+above. The runner's mini-flexbox **parses its rules out of `errors.js`'s own CSS** rather than
+restating them, so "three panels stay on one row" tests the stylesheet that ships and not the
+test file.
+
 ## Maths is MathML
 
 Expressions are MathML, which every current browser renders natively, so real notation costs

@@ -43,6 +43,42 @@ See [`CLAUDE.md`](CLAUDE.md) for the full architecture, phase roadmap, and scope
 
 ## Status
 
+**Depth-named models, an honest deep-model matrix, and widgets that hold their shape
+(2026-08-14 … 17, `3174e72` → `cd372b1`).** Three passes over what the site claims and how it
+renders it.
+
+*A model is named for its depth, never its standing in this project.* The 56-mask network runs
+live in the browser, and the page used to label it "not shipped" while a visitor was operating
+it — an internal workflow state, and nothing a reader could act on. Bundle labels are now
+`5 masks`, `56 masks` and `14 masks`, and each caption states what the accuracy **cost**
+instead: *"Accuracy 0.9015 … Buying those points costs 2x tighter phase control and 4.7x lower
+loss per mask. Same measurement as 5 masks (0.7995)."* Comparability was never a status
+question and still keys on `not_scored_on`, so the 14-mask ranking run still reads *"Not
+comparable"*. Nothing measured moved: the tolerance trade below is untouched and the 56-mask
+design is **still not promoted**. `provenance.shipped` survives as the guard against two
+bundles both claiming to be the headline, but no caption reads it, and
+[`tests/test_web_contract.py`](tests/test_web_contract.py)`::test_no_caption_describes_a_model_by_its_status`
+scans every committed bundle and fails on any status word.
+
+*The deep model's confusion matrix is drawn at its best, not under stress.* `run_error_budget.m`
+now emits `confusion_ideal.png` alongside the stressed one — free, since the ideal full-test-set
+pass is already computed to set the 95 %-of-ideal threshold. `/optics` shows the 56-mask
+network's at **0.9040** against the front page's **0.7990**, so the two are directly comparable
+and the figure answers what depth bought rather than duplicating the six tolerance curves beside
+it. Measured from the two matrices: depth repairs the collapse onto 3 (5→3 falls 41 to **6**,
+8→3 falls 37 to **11**), which is nearly the whole ten-point gain, while **4 against 9 is not
+repaired** (4→9 gets *worse*, 15 to **18**) — a better approximation of the same linear
+operation, which is what `/optics` argues next.
+
+*The `/tolerance` widgets hold their shape at any width.* The four before/after/difference
+triptychs wrapped on a phone, which grew each panel to full width and left one picture on screen
+at a time — no comparison, which is the whole point of them. The two plots drew into a fixed
+420-unit space and let `width:100%` stretch the bitmap to the real column, scaling x without y:
+flattened on a desktop, stretched tall on a phone. Both fixed, and both faults are now asserted
+under Node against a DOM stand-in at three column widths and two device pixel ratios
+([`tests/test_error_widgets.py`](tests/test_error_widgets.py)), because the driven browser cannot
+see them — that tab is always hidden and never lays anything out.
+
 **Site restructured around the linearity argument (2026-08-14, `360161d`).** `/tolerance` became
 one section per error source, each with a purpose-built widget
 ([`apps/web/errors.js`](apps/web/errors.js)) showing what that error physically does to a real
@@ -162,9 +198,16 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, and JS-cross-check tests pass (`87 passed`). The browser cross-checks
-(`test_asm_crosscheck.py`, `test_d2nn_crosscheck.py`) require Node on `PATH`; they skip cleanly if
-Node is absent.
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`230 passed`**). The
+checks that run the browser sources under Node — `test_asm_crosscheck.py`,
+`test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
+`test_mount_queue.py` — require Node on `PATH` and skip cleanly if it is absent.
+
+Three things the suite covers that a browser cannot, because the driven Chrome tab here is
+always hidden and so never paints or lays out: the widget start-up gate
+(`test_mount_queue.py`), the captions rendered from bundle provenance
+(`test_web_contract.py`), and the error widgets' layout at several widths and pixel ratios
+(`test_error_widgets.py`).
 
 ## The handoff
 

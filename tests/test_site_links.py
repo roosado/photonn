@@ -91,6 +91,23 @@ def test_exactly_one_nav_entry_is_marked_current(page):
     )
 
 
+@pytest.mark.parametrize("name", [p.file for p in PAGES])
+def test_no_page_uses_an_em_dash(name):
+    """Site prose convention, set 2026-08-11: no em-dashes anywhere.
+
+    En-dashes stay, in numeric ranges and in compound names like Mach-Zehnder;
+    only the em-dash is out. It was enforced by hand until now, and it drifted:
+    four pages held at zero while /tolerance accumulated 22, because nothing
+    checked. A convention nothing checks is a preference.
+
+    Both spellings are caught. The entity is what the page sources write, and the
+    literal character is what a careless paste introduces.
+    """
+    text = page_text(name)
+    assert "&mdash;" not in text, f"{name}: &mdash; entity in prose"
+    assert "\u2014" not in text, f"{name}: literal em-dash in prose"
+
+
 def test_the_artifact_body_uses_absolute_links():
     """The Artifact is a lone body on claude.ai with no sibling files.
 

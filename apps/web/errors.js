@@ -797,13 +797,13 @@
       note.innerHTML = "Each square is one entry of the 36&times;36 operation the chip "
         + "performs: how much of input mode <i>k</i> arrives at output mode <i>i</i>. "
         + "A coupler that splits 51:49 instead of 50:50 is a small error <b>in one "
-        + "interferometer</b> &mdash; but the light crosses <b>72 columns of them in "
+        + "interferometer</b>, but the light crosses <b>72 columns of them in "
         + "series</b>, and every column carries the previous column's error forward. "
         + "That is why the difference panel fills in across the whole matrix rather "
         + "than staying near the couplers that were mis-made. "
         + "<span class='ex-flag " + (ok ? "ok" : "warn") + "'>"
         + (ok ? "Inside" : "Past") + " the measured limit of ±0.01.</span> "
-        + "How well a real foundry holds that split is not yet sourced &mdash; the "
+        + "How well a real foundry holds that split is not yet sourced. The "
         + "limit here is a property of the network, not a verdict on a process.";
     }
     s.input.addEventListener("input", update);

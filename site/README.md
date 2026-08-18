@@ -23,9 +23,12 @@ They read in order, and the topbar lists all five:
    grouped into two families: **Fabrication**, how precisely each part has to be made, and
    **Setup**, where the parts have to sit once they are. Each source carries a purpose-built
    widget showing what that error physically does, its measured tolerance curve, and the one
-   number that matters. Then the ranking: five sources are comfortable, crosstalk fails by 4×,
-   and the whole Setup half is **not measured at all** — it holds one section, badged *Planned*,
-   which is the slot issue #6 fills. **Closes on the same treatment applied to the interferometer
+   number that matters. Then the ranking: five device sources are comfortable and crosstalk fails
+   by 4×. **Setup is measured too** (issue #6, 2026-08-17): four more sources, of which lateral
+   plate registration at **0.10 px = 0.8 µm** is the tightest number anywhere in the study, a
+   33 µm connectivity bound the project had quoted for three phases turns out **not to be a
+   tolerance**, and the three stochastic sources **fail when run together** at edges that each
+   passed alone. **Closes on the same treatment applied to the interferometer
    chip**, which fails a different way — ten times tighter on delays
    because 72 columns of interferometers in series carry each other's errors forward, plus a
    constraint the stack cannot have at all (couplers that split unevenly, on the slider), and a
@@ -90,6 +93,12 @@ Anchor jumps clear the sticky topbar through `scroll-margin-top: 78px` on any he
 id. On `/tolerance` a jump deep into the page can land on a widget still showing *Warming up…*:
 the error widgets are deferred until the reader nears them, and a jump outruns that by a frame or
 two. It resolves itself.
+
+**No em-dashes.** A site prose convention since 2026-08-11 that was enforced by hand until it
+drifted: four pages held at zero while `/tolerance` accumulated 22, because nothing checked.
+`tests/test_site_links.py::test_no_page_uses_an_em_dash` now checks, for both the `&mdash;`
+entity and the literal character. En-dashes stay, in numeric ranges and in compound names like
+Mach-Zehnder.
 
 > `classifier.html` **was deleted** in the 2026-08-10 redesign. Its reader-facing half became the
 > front page and its methodology moved to `physics.html`. `tests/test_site_links.py` fails if

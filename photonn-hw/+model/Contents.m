@@ -11,6 +11,7 @@
 %   here (the design/as-built boundary is one-directional, CLAUDE.md).
 %
 %   angular_spectrum  - Band-limited angular-spectrum propagation (lambda-parametric).
+%   subpixel_shift    - Fourier translation by a non-integer number of samples.
 %   encode_input      - Reconstruct the complex input field from stored [0,1] maps.
 %   detector_regions  - Fixed detector layout (port of detect.default_regions).
 %   readout           - Region-intensity readout + photon-budget reference.

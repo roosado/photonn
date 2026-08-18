@@ -164,6 +164,37 @@ DAC resolution and the detector parameters are **not** in this table. They are
 electronics, already sourced in the ledger above, and they carry over to the mesh
 unchanged — which is why the mesh and the D²NN measure the same 1 pW detector edge.
 
+## Alignment ledger — every row `UNSOURCED`
+
+The four quantities the D²NN's **geometry** sweeps cover (added 2026-08-17,
+issue #6), what each one drives, and the class of source that would settle it.
+Nothing here has a value yet, for the same reason the mesh table below has none: the
+study publishes measured *edges*, which are properties of this network and will not
+move, and refuses to invent the other half of a margin.
+
+The literature that would settle these is **optomechanical**, and it is a third
+distinct set from the SLM/sCMOS values in the ledger above and the integrated-photonics
+PDK data the mesh needs: kinematic-mount repeatability, translation-stage resolution
+and drift, opto-mechanical stability over a temperature cycle. None of it is sourced.
+
+| Quantity | Symbol / units | Sweep range covered | What would settle it | Used in |
+|---|---|---|---|---|
+| Lateral plate registration | σ, pixels (8 µm each) | 0 … 1.0 px | mount repeatability and assembly registration for a stacked plate | `err.mask_registration` |
+| Detector lateral placement | σ, pixels | 0 … 6 px | sensor-mount placement accuracy against the optical axis | `err.detector_offset` |
+| Plane spacing, per gap | σ, µm | 0 … 300 µm | spacer tolerance or stage resolution along the axis | `err.plane_spacing` |
+| Phase calibration gain | k, dimensionless | ±0 … ±75 % | SLM phase-response calibration accuracy over its stroke | `err.phase_gain` |
+
+**Registration is the one that matters.** Its measured edge, 0.10 px = **0.8 µm per
+plate**, is the tightest requirement anywhere in the study, and whether it is
+achievable is precisely what these missing sources would decide. The other three
+have edges (16 µm, 100 µm, ±10 %) that are loose enough to be plausibly comfortable,
+but "plausibly" is not a margin and the table does not pretend otherwise.
+
+**Plate tilt and rotation are not in the table because they are not modelled.**
+Registration covers translation only. A rotated plate induces a displacement that
+grows with distance from the axis, so it is a different error and probably a worse
+one; it is named here so its absence is on the record rather than implied.
+
 ## Outstanding `UNSOURCED` / modelling choices
 
 Not every number is a directly-measured constant; some are deliberate modelling
@@ -186,6 +217,21 @@ choices flagged here so nothing is passed off as measured:
   wrong for one driven in voltage.
 - **V and U modelled as thermally independent.** A layout assumption, and the
   optimistic one.
+- **Geometry errors are drawn independently per part.** Each plate is mounted
+  separately, so each is displaced separately, and each gap is set separately. That
+  is the right model for an assembly built one piece at a time and the wrong one for
+  a monolithic mount whose errors would be common-mode — and common-mode is the
+  benign case, since a translation of the whole stack largely cancels at a detector
+  in the same frame. The independent draw is therefore the conservative choice.
+- **A displaced plate is still phase-only.** `err.mask_registration` translates the
+  transmittance `exp(iφ)` and keeps `angle()` of the result, discarding the modulus
+  that Fourier interpolation introduces. That is physically right rather than merely
+  convenient: a real plate that moves does not stop being phase-only.
+- **The 33 µm connectivity floor is not a tolerance.** `phase3_mesh.md` derives it as
+  a bound on what *can* couple; sweeping it directly shows accuracy is unchanged at
+  the floor (0.7725 against 0.7712 nominal), because the light that stops coupling is
+  the Nyquist-ray corner, which carries almost no power. Recorded here because the
+  number reads like a tolerance and is not one.
 - No invented numeric constants are committed in code: `+err` functions take
   magnitudes as arguments; the values above enter only via the driver sweeps and
   this ledger. The three fixed mesh geometry constants live in

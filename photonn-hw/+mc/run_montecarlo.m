@@ -15,12 +15,25 @@ function stats = run_montecarlo(handoff, errorConfig, nRealizations, baseSeed)
 %     .detector                   - struct enabling err.detector_noise (stochastic)
 %     .subset                     - optional test-set indices (speed)
 %
-%   Deterministic sources (quantize, wavelength, crosstalk, loss) are identical
-%   across realizations; the Monte Carlo spread comes from the stochastic sources
-%   (phase error, detector noise). BASESEED sets a reproducible per-realization
-%   seed stream; the seeds are recorded in STATS (CLAUDE.md convention).
+%   Geometry -- where the parts sit, rather than what is wrong inside them:
+%     .spacing_sigma_m            - err.plane_spacing (stochastic)
+%     .registration_sigma_px      - err.mask_registration (stochastic)
+%     .phase_gain                 - err.phase_gain (deterministic)
+%     .detector_sigma_px          - err.detector_offset (stochastic)
+%
+%   Deterministic sources (quantize, wavelength, crosstalk, loss, phase gain) are
+%   identical across realizations; the Monte Carlo spread comes from the
+%   stochastic ones (phase error, the three geometry displacements, detector
+%   noise). BASESEED sets a reproducible per-realization seed stream; the seeds
+%   are recorded in STATS (CLAUDE.md convention).
+%
+%   Each stochastic source draws from its own offset of SEED rather than sharing
+%   one stream, so adding a source to a joint configuration cannot change the draw
+%   another source gets -- without that, a joint run is not the sum of the
+%   independent ones it is supposed to be compared against.
     lambda0 = handoff.operating_point.wavelength_m;
     baseMasks = handoff.parameters.phase_masks;
+    baseSep = handoff.geometry.layer_separations_m(:);
 
     acc = zeros(nRealizations, 1);
     seeds = zeros(nRealizations, 1);
@@ -29,7 +42,8 @@ function stats = run_montecarlo(handoff, errorConfig, nRealizations, baseSeed)
         seed = baseSeed + i - 1;
         seeds(i) = seed;
 
-        params = struct('phase_masks', baseMasks, 'wavelength_m', lambda0);
+        params = struct('phase_masks', baseMasks, 'wavelength_m', lambda0, ...
+                        'separations_m', baseSep);
 
         % -- deterministic device errors --
         if isfield(errorConfig, 'quant_bits') && ~isempty(errorConfig.quant_bits)
@@ -37,6 +51,9 @@ function stats = run_montecarlo(handoff, errorConfig, nRealizations, baseSeed)
         end
         if isfield(errorConfig, 'delta_lambda_m') && ~isempty(errorConfig.delta_lambda_m)
             params = err.wavelength_dispersion(params, errorConfig.delta_lambda_m);
+        end
+        if isfield(errorConfig, 'phase_gain') && ~isempty(errorConfig.phase_gain)
+            params = err.phase_gain(params, errorConfig.phase_gain);
         end
         if isfield(errorConfig, 'crosstalk_kernel') && ~isempty(errorConfig.crosstalk_kernel)
             params = err.thermal_crosstalk(params, errorConfig.crosstalk_kernel);
@@ -53,6 +70,24 @@ function stats = run_montecarlo(handoff, errorConfig, nRealizations, baseSeed)
         if isfield(errorConfig, 'phase_sigma_rad') && ~isempty(errorConfig.phase_sigma_rad) ...
                 && errorConfig.phase_sigma_rad > 0
             params = err.phase_shifter_error(params, errorConfig.phase_sigma_rad, seed);
+        end
+
+        % -- stochastic geometry errors --
+        % Mask registration goes last of the mask-touching sources: a plate is
+        % written, then mounted. Blurring an already-displaced plate or displacing
+        % an already-blurred one give the same answer for a shift-invariant kernel,
+        % but the order should still say which happens when.
+        if isfield(errorConfig, 'registration_sigma_px') && ~isempty(errorConfig.registration_sigma_px) ...
+                && errorConfig.registration_sigma_px > 0
+            params = err.mask_registration(params, errorConfig.registration_sigma_px, seed + 10000);
+        end
+        if isfield(errorConfig, 'spacing_sigma_m') && ~isempty(errorConfig.spacing_sigma_m) ...
+                && errorConfig.spacing_sigma_m > 0
+            params = err.plane_spacing(params, errorConfig.spacing_sigma_m, seed + 20000);
+        end
+        if isfield(errorConfig, 'detector_sigma_px') && ~isempty(errorConfig.detector_sigma_px) ...
+                && errorConfig.detector_sigma_px > 0
+            params = err.detector_offset(params, errorConfig.detector_sigma_px, seed + 30000);
         end
 
         % -- evaluate (detector noise applied inside, if configured) --

@@ -32,6 +32,24 @@ curves, a confusion matrix, and a spatial sensitivity map.
 | Wavelength drift | holds at **10 nm**, fails at **20 nm** | TEC-locked ≪ 0.1 nm | Passes by >100× |
 | DAC / SLM resolution | holds at **3 bits**, fails at **2 bits** | 8-bit standard | Passes by 5 bits |
 
+Those six are **device** errors: something wrong inside a component. The four below
+are **geometry** errors, added 2026-08-17: where the components sit once they exist.
+They have no realistic-value column, and that is deliberate — see
+[Geometry](#geometry-where-the-parts-sit).
+
+| Source | Tolerance edge (95 % of ideal) | Realistic as-built value |
+|---|---|---|
+| **Lateral mask registration** | holds at **0.10 px**, fails at **0.15 px** | `UNSOURCED` |
+| Detector lateral offset | holds at **2 px**, fails at **3 px** | `UNSOURCED` |
+| Plane spacing (per gap) | holds at **100 µm**, fails at **150 µm** | `UNSOURCED` |
+| Phase calibration gain | holds at **±10 %**, fails at **±20 %** | `UNSOURCED` |
+
+**Mask registration at 0.10 px is the tightest number in the study**, tighter than
+the crosstalk that decides the device half. At the design pitch of 8 µm that is
+**0.8 µm per plate**. And the three stochastic geometry sources **do not compose**:
+each at the largest magnitude that holds on its own, together they give **0.7119**
+against a 0.7591 bar.
+
 ## Findings
 
 1. **Spatial phase fidelity is the whole game.** Thermal/pixel crosstalk is by far
@@ -181,6 +199,140 @@ queued as error sources — plausibly bind this design before anything above doe
   `opts.skipSensitivity` reuses a saved map, which is correct exactly when the
   masks are unchanged and only a sweep is being re-measured.
 
+## Geometry: where the parts sit
+
+Everything above is a device error. Until 2026-08-17 the study had **nothing
+measured** about geometry, and said so in its own voice. For a free-space build that
+is the harder half: nobody assembles a five-plane stack with the gaps exactly
+3.000 mm and every plate registered to its neighbour. Four sources, measured the
+same way as the six above — same handoff, same 95 %-of-0.7990 bar, same
+holds-at-X / fails-at-Y bracket convention, seeds 15000–19000 (clear of the device
+half's 2000–7000 and the mesh's 8000–14000).
+
+### The measured edges
+
+| Source | Holds | Fails | In units a builder sets |
+|---|---|---|---|
+| Lateral mask registration, per plate | **0.10 px** | 0.15 px | **0.8 µm** at the 8 µm design pitch |
+| Detector lateral offset, whole array | **2 px** | 3 px | **16 µm** |
+| Plane spacing, per gap | **100 µm** | 150 µm | 3.3 % of the 3 mm gap |
+| Phase calibration gain | **±10 %** | ±20 % | a scale factor, not a physical distance |
+
+### Registration is the tightest requirement in the study
+
+At **0.10 px** it is 2.5× tighter than the crosstalk blur that decides the device
+half, and tighter than anything else measured on this design.
+
+The two are not the same quantity — one is the width of a blur, the other the size
+of a displacement — so "0.10 against 0.25" is not a like-for-like ratio and should
+not be quoted as one. What makes them comparable is the mechanism: both are ways of
+getting fine mask structure into the wrong place, and this design's structure is
+fine at the pixel scale. `figures/sensitivity_map.png` already showed the masks have
+no smooth regions to spare.
+
+The displacements are drawn **independently per plate**, because each plate is
+mounted independently. A common displacement of the whole stack would be a much
+more benign error: it would translate the output, and the detector layout sits in
+the same frame, so most of it would cancel.
+
+### The geometry sources do not compose
+
+Every sweep in this document moves one thing. A real bench has all of them at once,
+and the budget had never asked whether its own edges add up. Running the three
+stochastic geometry sources simultaneously, each at the largest magnitude that held
+alone — spacing 100 µm, registration 0.10 px, detector 2 px — gives
+
+> **0.7119 ± 0.0547**, against the 0.7591 bar. It fails.
+
+**So the per-source edges are not a specification a builder can work to.** Each is
+the answer to "how much of this alone", and three sources each at their own limit
+are already past the bar together. Any real allocation has to divide the budget, not
+spend it three times. This is the first joint measurement in the study; the six
+device sources have never been run together either, and on this evidence they should
+be.
+
+### A prediction that failed, and what it tells us
+
+`docs/phase3_mesh.md` derives a hard geometric floor: mask separation must stay
+above **2.967 mm** against the 3.000 mm design, **33 µm of headroom**, below which
+part of the input becomes physically invisible to part of the readout. That was
+stated three phases ago and never swept. Per-gap jitter of σ displaces the *mean*
+gap by σ/√6, so at the measured 100 µm edge the mean gap is erring by **40.8 µm** —
+suspiciously close to 33 µm. The obvious hypothesis is that connectivity is the
+mechanism.
+
+It is not. Moving **every gap the same way**, which changes total reach and nothing
+else, was swept separately (`tolerance_spacing_systematic.png`):
+
+| systematic offset | −100 µm | −75 | −50 | **−33** | 0 | +50 | +75 | +100 µm |
+|---|---|---|---|---|---|---|---|---|
+| accuracy | 0.7588 | 0.7725 | 0.7712 | **0.7725** | 0.7712 | 0.7688 | 0.7638 | 0.7512 |
+
+At the connectivity floor accuracy is **0.7725 — indistinguishable from nominal**,
+and the curve is roughly symmetric, failing near ±100 µm on both sides. Crossing the
+floor costs nothing measurable.
+
+That is not a contradiction; `phase3_mesh.md` predicts it in the same paragraph that
+derives the bound: *"the corner of the cone is the Nyquist ray, which carries little
+power."* The floor is a statement about what **can** couple, and the measurement
+confirms that what stops coupling there carries no useful energy. **A bound the
+project had quoted as a tolerance for three phases turns out not to be one.** It
+remains correct as geometry, and it is not the operative constraint.
+
+What the random per-gap jitter actually costs, then, is not lost reach — the mean is
+well inside the ±100 µm systematic tolerance at every point that holds. It is the
+gaps being **unequal**, so the stack no longer matches the geometry its masks were
+trained for, plate by plate.
+
+### Phase calibration is loose, and it is the one error you can take back
+
+±10 % holds; even ±20 % only reaches 0.7488. That is remarkable against the device
+half's per-pixel phase requirement of 0.3 rad, because the stored phases run to
+±23 rad — a 10 % gain error is a *2 rad* error on the largest of them, seven times
+the per-pixel tolerance, and it barely registers.
+
+The reason is that the two errors are not the same kind of thing, which is why they
+are separate sources. Per-pixel error is zero-mean and independent, so it is
+spatially white and scatters light out of the pattern. A gain error is the same
+multiplicative bias everywhere at once: it distorts the learned operator coherently
+rather than adding noise to it. **Two phase errors of equal size in radians are not
+comparable, and a budget that merged them would be wrong.**
+
+The response is also mildly asymmetric — at ±30 %, `k = 1−d` gives 0.7087 and
+`k = 1+d` gives 0.7175 — because a trained phase near the 2π wrap scaled up lands on
+the far side of it while scaled down it does not. The table quotes the worse sign at
+each magnitude, since what a builder needs is a two-sided tolerance.
+
+Gain is also the only source in this study that is **correctable after the fact**: it
+is one number, measurable on a test pattern and divided out in software before the
+masks are written. The sweep therefore measures how well the calibration must be
+*known*, not how well the hardware must behave.
+
+### Why there is no realistic-value column
+
+Every magnitude here is an edge — a property of this network and this geometry, which
+no choice of optomechanics will move. What is missing is the other half of a margin:
+what a real bench actually achieves for plate registration, stage repeatability and
+detector placement. That needs optomechanical measurement literature, and this
+project has not sourced it.
+
+Following the precedent set by the mesh budget (`tolerance_mesh.md`), the edges are
+published with **every realistic as-built value marked `UNSOURCED` and no margin
+column**, rather than filling the gap with plausible numbers. The gap is a table in
+[`parameter_sources.md`](parameter_sources.md), not a silence. Until it is closed,
+**the device half's verdict — crosstalk fails by 4× — is the only failure this study
+can claim**, and the geometry numbers say how hard the build is, not whether it is
+possible.
+
+### A conservatism worth stating
+
+The sweeps score an 800-image subset whose ideal accuracy is **0.7713**, while the
+bar is 95 % of the full-set 0.7990, i.e. 0.7591. So every sweep starts only 1.2
+points above its threshold. All ten sources share this, so they stay comparable to
+each other — which is what this study publishes — but each edge is somewhat tighter
+than a full-test-set measurement would give. It bites hardest on the geometry
+sources, whose curves are flattest near zero.
+
 ## Required precision per component
 
 To hold classification accuracy within 5 % of the ideal 0.799 (i.e. ≥ 0.7591):
@@ -197,10 +349,25 @@ To hold classification accuracy within 5 % of the ideal 0.799 (i.e. ≥ 0.7591):
 - **Wavelength stability:** **≤ 10 nm** (trivially met).
 - **Phase DAC resolution:** **≥ 3 bits** (trivially met by 8-bit).
 
+And on where the parts sit:
+
+- **Lateral plate registration:** **≤ 0.10 px = 0.8 µm** per plate, independently.
+  The tightest requirement in the study.
+- **Detector array placement:** **≤ 2 px = 16 µm** laterally.
+- **Plane spacing:** **≤ 100 µm** per gap. Not the 33 µm connectivity floor, which
+  is real geometry but costs no measurable accuracy.
+- **Phase calibration:** the gain must be *known* to **±10 %**; it need not be
+  correct, since it can be divided out before the masks are written.
+- **All three together:** the above are single-source edges and **do not compose**.
+  A joint allocation must divide the budget between them.
+
 ## Figures (`photonn-hw/figures/`)
 
 `tolerance_phase.png`, `tolerance_quant.png`, `tolerance_wavelength.png`,
 `tolerance_crosstalk.png`, `tolerance_detector.png`, `tolerance_loss.png`,
+`tolerance_registration.png`, `tolerance_detector_offset.png`,
+`tolerance_spacing.png`, `tolerance_spacing_systematic.png`,
+`tolerance_phase_gain.png`,
 `confusion_ideal.png` (no error applied, accuracy 0.7990),
 `confusion_phase.png` (as-built confusion at σ = 0.35 rad, accuracy 0.769),
 `sensitivity_map.png` (per-mask spatial sensitivity), plus
@@ -236,6 +403,18 @@ the tolerance curves printed beside it. The 56-mask stressed matrix stays in
   choice (see `parameter_sources.md`).
 - Coupler imbalance and per-MZI insertion loss are **not** modelled — they have no
   meaning for phase masks and belong to the Phase-3 MZI mesh.
+- The geometry sources have **no realistic as-built values**; every one is
+  `UNSOURCED`, so the edges below stand alone with no margin (see above).
+- Plate **tilt and rotation** are not modelled. Registration covers translation
+  only, and a rotated plate is a different (and probably worse) error, since the
+  displacement it induces grows with distance from the axis.
+- The mask displacements are circular: content leaving one edge of the grid returns
+  at the other, the same wrap the propagator already has. At a tenth of a pixel
+  against a 128-pixel grid whose outer quarter is dark, this moves no appreciable
+  energy.
+- Axial detector placement is **not** a separate source: it is the last of the L+1
+  gaps and is already inside the spacing sweep. Modelling it twice would quietly
+  tighten the joint budget.
 
 ## Reproduce
 
@@ -245,7 +424,17 @@ addpath(pwd)
 run_error_budget                    % full run (~30 min on a laptop CPU)
 run_error_budget(struct('quick',true))   % fast reduced run
 run_error_budget(struct('handoffPath', '../exports/other.h5'))   % any other model
+
+% One sweep at a time, merging into the saved results. Long background MATLAB
+% jobs get killed on this machine and a foreground call is capped, so the full
+% run cannot be done in one go; this is how the geometry half was measured.
+run_error_budget(struct('sources', {{'registration'}}, 'skipSensitivity', true))
 ```
+
+Anything `sources` does not name is carried forward from
+`figures/error_budget_results.mat`. The ideal baseline is recomputed on every call
+regardless and checked against the carried-forward one, so a chunked run still fails
+loudly if the model underneath moved.
 
 Deterministic given the recorded seeds; the ideal baseline must read **0.7990** or
 the forward model is misaligned with the handoff. `handoffPath` lets a retrained

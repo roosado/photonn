@@ -123,12 +123,25 @@ def test_tolerance_groups_its_sources_into_two_families():
     assert bands == ["fabrication", "setup"]
 
 
-def test_the_six_measured_sources_sit_under_fabrication():
+def test_each_family_holds_its_own_numbered_sources():
+    """Six device sources under Fabrication, four geometry ones under Setup.
+
+    The numbers come from the eyebrows ("Source N of M"), so they restart at 1 in
+    each family rather than running 1-10 across the page. That is what makes the
+    families readable, and it is only correct as long as every numbered source
+    actually sits under the band whose count it is quoting.
+    """
     entries = toc_of(page_text("tolerance.html"))
     idx = {ident: i for i, (_, ident, _) in enumerate(entries)}
-    numbered = [ident for cls, ident, label in entries if "toc-n" in label]
-    assert len(numbered) == 6
-    assert all(idx["fabrication"] < idx[i] < idx["setup"] for i in numbered)
+    numbers = {ident: int(re.search(r'toc-n">(\d+)<', label).group(1))
+               for _, ident, label in entries if "toc-n" in label}
+
+    fabrication = [i for i in numbers if idx["fabrication"] < idx[i] < idx["setup"]]
+    setup = [i for i in numbers if idx[i] > idx["setup"]]
+
+    assert len(numbers) == 10, "every source should be numbered"
+    assert sorted(numbers[i] for i in fabrication) == [1, 2, 3, 4, 5, 6]
+    assert sorted(numbers[i] for i in setup) == [1, 2, 3, 4]
 
 
 def test_the_chip_comparison_belongs_to_neither_family():

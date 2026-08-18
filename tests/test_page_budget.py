@@ -46,7 +46,11 @@ BUDGET = {
     # budget is behind you. It costs this page the mesh bundle (8 KB of trained
     # phases) and the per-MZI sensitivity plate, and costs the site nothing on top,
     # since errors.js is now inlined once instead of on two pages.
-    "tolerance.html": 250,    # seven error widgets sharing one bundle, eight figures
+    # Raised from 250 when the geometry half landed (issue #6): four more error
+    # sources, the registration tolerance curve, and the joint-failure result. The
+    # page is now the whole D2NN budget plus the chip comparison, which is what it
+    # is for -- it is the study's destination page and the only one that grew.
+    "tolerance.html": 290,    # ten error sources, seven widgets, nine figures
     "optics.html": 1150,      # two models (one 56 masks at 4 bits) + the 56-mask budget
 }
 

@@ -6,8 +6,11 @@ function out = evaluate(handoff, opts)
 %
 %   OUT = MODEL.EVALUATE(HANDOFF, OPTS) applies error-model overrides:
 %     OPTS.params   - struct with .phase_masks (N×N×L, handoff orientation) and
-%                     optional .wavelength_m; defaults to the ideal values. This
-%                     is what the +err device models perturb.
+%                     optional .wavelength_m, .separations_m (the L+1 free-space
+%                     gaps) and .detector_shift_px ([dRow dCol], sub-pixel);
+%                     defaults to the ideal values. This is what the +err models
+%                     perturb -- the device ones through the masks and wavelength,
+%                     the geometry ones through the last two.
 %     OPTS.detector - struct enabling the detector-noise path (fields
 %                     input_power_w, integration_time_s, read_noise_e, adc_bits,
 %                     full_well_e). When present, predictions come from noisy
@@ -26,12 +29,21 @@ function out = evaluate(handoff, opts)
     encCode    = handoff.operating_point.encoding_code;
     sep        = handoff.geometry.layer_separations_m(:);   % L+1 uniform gaps
 
+    detShift = [0 0];
     if isfield(opts, 'params') && ~isempty(opts.params)
         masks = opts.params.phase_masks;
         if isfield(opts.params, 'wavelength_m') && ~isempty(opts.params.wavelength_m)
             lambda = opts.params.wavelength_m;
         else
             lambda = handoff.operating_point.wavelength_m;
+        end
+        % Geometry errors arrive the same way device errors do: as a perturbed
+        % parameter, never as a flag read here. Absent means nominal.
+        if isfield(opts.params, 'separations_m') && ~isempty(opts.params.separations_m)
+            sep = opts.params.separations_m(:);
+        end
+        if isfield(opts.params, 'detector_shift_px') && ~isempty(opts.params.detector_shift_px)
+            detShift = opts.params.detector_shift_px;
         end
     else
         masks = handoff.parameters.phase_masks;
@@ -53,11 +65,23 @@ function out = evaluate(handoff, opts)
     inputField = field;
 
     L = size(masks, 3);
+    if numel(sep) ~= L + 1
+        error("model:evaluate:gapCount", ...
+            "expected %d free-space gaps for %d masks, got %d.", L + 1, L, numel(sep));
+    end
     for k = 1:L
         field = model.angular_spectrum(field, dx, lambda, sep(k));
         field = field .* exp(1i * masks(:, :, k));
     end
     field = model.angular_spectrum(field, dx, lambda, sep(L + 1));
+
+    % A laterally misplaced detector array is the output field arriving at the
+    % wrong place on it. Translating the field by -shift is exactly equivalent to
+    % translating the boxes by +shift, and leaves the detector layout -- which is
+    % shared with the design side and with the browser port -- untouched.
+    if any(detShift ~= 0)
+        field = model.subpixel_shift(field, -detShift(1), -detShift(2));
+    end
 
     regions = model.detector_regions(N, 10);   % MNIST: 10 detector classes
     [logits, regionIntensity, inputRef] = model.readout(field, regions, gain, inputField);

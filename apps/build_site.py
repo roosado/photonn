@@ -133,6 +133,7 @@ FIGURES = {
     "tol_quant": "photonn-hw/figures/tolerance_quant.png",
     "tol_wavelength": "photonn-hw/figures/tolerance_wavelength.png",
     "tol_crosstalk": "photonn-hw/figures/tolerance_crosstalk.png",
+    "tol_registration": "photonn-hw/figures/tolerance_registration.png",
     "tol_detector": "photonn-hw/figures/tolerance_detector.png",
     "tol_loss": "photonn-hw/figures/tolerance_loss.png",
     "confusion_ideal": "photonn-hw/figures/confusion_ideal.png",
@@ -1657,7 +1658,7 @@ TOLERANCE_BODY = r"""
       <em>Monte Carlo</em> sweep means, with the random seeds recorded so any run can be reproduced
       exactly, and <strong>every error size for this machine traced to a published
       measurement</strong> cited in the code at the point it is used. The chip, at the foot of this
-      page, has been through the identical procedure &mdash; and is explicit about the one thing it
+      page, has been through the identical procedure, and is explicit about the one thing it
       cannot yet source.</p>
       <p>One control turns this from a demonstration into a measurement. <strong>With no error
       injected at all, the second model reproduces 0.7990 exactly</strong>, the same number the
@@ -1854,30 +1855,147 @@ TOLERANCE_BODY = r"""
   <div class="band col reveal">
     <p class="band-k">Part 2 of 2</p>
     <h2 class="band-h">Setup</h2>
-    <p class="band-b">Where the parts have to sit once they are made. Nothing here is measured
-    yet, and for a free-space build it is plausibly the harder half.</p>
+    <p class="band-b">Where the parts have to sit once they are made. Four more sources, and
+    the tightest number on this page is one of them.</p>
   </div>
 
-  <section class="phase planned reveal">
+  <section class="phase reveal">
     <div class="phase-head col">
-      <span class="ph-num next">next</span>
-      <div><p class="eyebrow">Not measured &middot; <span class="badge-next">Planned</span></p>
-      <h3 data-toc="Where the parts sit">Nobody assembles a stack with the planes exactly 3.000&nbsp;mm apart</h3></div></div>
+      <div><p class="eyebrow">Source 1 of 4 &middot; the tightest on the page</p>
+      <h3>Registration: each plate has to land where the design put it</h3></div></div>
     <div class="prose col">
-      <p>Every source above is a <strong>device</strong> error, something that goes wrong inside a
-      component. None of them is a <strong>geometry</strong> error: plates a few microns out of
-      position, rotated a fraction of a degree, or registered slightly off against each other. A
-      real bench has all four, and no amount of care removes them &mdash; it only makes them
-      smaller. The four that matter are the spacing between planes, how well one plate is
-      registered against the next, a systematic gain on every delay at once, and a detector sitting
-      slightly off where the design put it.</p>
-      <p>These are a different kind of problem from the six above, which is why they get their own
-      half of the page rather than a seventh slot in the ranking. A fabrication error is fixed once
-      the part is made. An alignment error is set at assembly, drifts with temperature, and can in
-      principle be calibrated out &mdash; so the question is not only how large it is but whether
-      the machine can be re-tuned against it. <strong>This study has nothing measured to say about
-      any of it.</strong> Until it does, the tolerances on this page are a lower bound on how hard
-      the build is, not an estimate of it.</p>
+      <p>The six sources above ask what is wrong <em>inside</em> a part. This half asks where the
+      parts are. Nobody assembles a five-plane stack with the gaps exactly 3.000&nbsp;mm and every
+      plate lined up with the one behind it, and no amount of care removes that; it only
+      makes it smaller.</p>
+      <p>Slide one plate sideways, keeping everything else perfect. Each plate is mounted on its
+      own, so each slides on its own. <strong>Accuracy holds while that slip stays at
+      0.10&nbsp;px and fails by 0.15&nbsp;px</strong>. At this design's pixel size, eight
+      thousandths of a millimetre, that is <strong>0.8&nbsp;&micro;m per plate</strong>.</p>
+      <p><strong>That is the tightest requirement anywhere in this study</strong>, tighter than the
+      bleed that decides the first half. The two are not the same measurement (one is how far
+      a delay smears, the other how far a whole plate moves), so the ratio between them is not
+      meaningful on its own. What makes them worth putting side by side is that they fail the same
+      way: this design's pattern changes sharply from pixel to pixel, and both errors put that
+      pattern somewhere it was not trained to be.</p>
+    </div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_registration@@" alt="Accuracy against lateral misregistration of each phase plate" loading="lazy">
+      <figcaption><span class="fign">Fig 9</span>Measured. Accuracy against how far each plate
+      slips sideways from where it should be. The band is the spread over ten builds: past a tenth
+      of a pixel, two machines assembled to the same specification stop agreeing with each
+      other.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 2 of 4</p>
+      <h3 data-toc="Spacing between planes">Spacing: the gaps are set one at a time, and err one at a time</h3></div></div>
+    <div class="prose col">
+      <p>Six gaps hold the five plates and the detector apart. Each is set separately, so each is
+      wrong separately. <strong>Accuracy holds at 100&nbsp;&micro;m of error per gap and fails by
+      150&nbsp;&micro;m</strong>, which is a slack three per cent of a 3&nbsp;mm gap and by far the
+      most comfortable of the four.</p>
+      <p>There is a twist here worth reporting, because it corrects something this project has been
+      saying for months. The <a class="link" href="@@HREF_chip@@">correspondence page &rarr;</a>
+      derives a hard floor on the spacing: below <strong>2.967&nbsp;mm</strong>, part of the input
+      physically cannot reach part of the readout, whatever the plates are trained to. That is
+      33&nbsp;&micro;m of headroom on a 3&nbsp;mm design, and it reads exactly like a tolerance.</p>
+      <p><strong>It is not one.</strong> Moving every gap together by that amount, which is the
+      clean way to test it, changes accuracy by nothing measurable:</p>
+    </div>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>every gap moved by</th><th>accuracy</th></tr></thead>
+        <tbody>
+          <tr><td>&minus;100&nbsp;&micro;m</td><td>0.759</td></tr>
+          <tr><td>&minus;50&nbsp;&micro;m</td><td>0.771</td></tr>
+          <tr><td><strong>&minus;33&nbsp;&micro;m</strong>, the floor</td><td><strong>0.773</strong></td></tr>
+          <tr><td>0, as designed</td><td>0.771</td></tr>
+          <tr><td>+50&nbsp;&micro;m</td><td>0.769</td></tr>
+          <tr><td>+100&nbsp;&micro;m</td><td>0.751</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p>At the floor, and well past it, nothing happens. The reason was written down in the same
+      paragraph that derived the bound: the light that stops reaching is the very edge of the
+      spreading cone, and it carries almost no energy. So the floor is real geometry and a real
+      statement about what <em>can</em> connect, but it is not a number a builder has to hold. What
+      the gaps actually cannot afford is being <em>unequal</em>, which is a different thing and is
+      what the 100&nbsp;&micro;m figure measures.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 3 of 4</p>
+      <h3 data-toc="Detector placement">Where the detector sits</h3></div></div>
+    <div class="prose col">
+      <p>The same question for the camera at the end. There is only one of it, so it is one
+      displacement rather than five independent ones, and the boxes it reads are fourteen pixels
+      across rather than one. <strong>Accuracy holds at 2&nbsp;px of offset and fails by
+      3&nbsp;px</strong>, about 16&nbsp;&micro;m, twenty times looser than a plate, for
+      exactly the reason you would guess: a detector box is a coarse thing and a plate is a fine
+      one.</p>
+      <p>Sliding the detector <em>along</em> the beam is not a separate source here. That is just
+      the last of the six gaps, and it is already inside the spacing sweep above. Counting it twice
+      would have made the budget look tighter than it is.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 4 of 4 &middot; the one you can take back</p>
+      <h3 data-toc="Calibration">Calibration: ask for a delay, get a slightly different one</h3></div></div>
+    <div class="prose col">
+      <p>A modulator is calibrated: ask for a given delay and it delivers what it was told that
+      setting means. If the calibration is off by a few per cent, <em>every</em> delay is off by
+      the same few per cent. <strong>Accuracy holds at &plusmn;10&nbsp;% and fails by
+      &plusmn;20&nbsp;%</strong>, which is astonishingly loose next to the first half's requirement
+      that each individual delay be right to a twenty-first of a wavelength.</p>
+      <p>Those two numbers describe the same physical quantity and are not comparable, which is
+      precisely why they are separate sources. A per-pixel error is random: each pixel is wrong on
+      its own, the pattern acquires noise, and light scatters out of it. A calibration error is the
+      same stretch applied everywhere at once, so the pattern is distorted rather than roughened,
+      and a distorted pattern still does most of its job. The delays here run as large as 23
+      radians, so a ten per cent stretch is a two-radian error on the biggest of them, seven
+      times the per-pixel limit, and it barely registers.</p>
+      <p>It is also the only error on this page you can <strong>take back</strong>. A calibration
+      is one number: measure it against a test pattern, divide it out, write the plates to the
+      corrected values. So what the sweep really measures is not how good the modulator has to be,
+      but how well you have to <em>know</em> it.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What the four add up to</p>
+      <h3 data-toc="Three at once">Three of them at once, and it stops working</h3></div></div>
+    <div class="prose col">
+      <p>Every curve on this page moves one thing and holds the rest perfect. A real bench does not
+      work that way. So: set the spacing, the plate registration and the detector placement each to
+      the largest error that survived on its own (100&nbsp;&micro;m, 0.10&nbsp;px,
+      2&nbsp;px), and run all three together.</p>
+    </div>
+    <div class="finding col reveal">
+      <p class="tag">The edges do not add up</p>
+      <p class="body"><strong>0.712, against a pass mark of 0.759.</strong> Three errors that each
+      passed alone fail together. That is not a surprise once stated, but it had never been checked,
+      not here and not for the six device sources, which have also only ever been measured
+      one at a time. It means the numbers on this page are answers to &ldquo;how much of this
+      one?&rdquo; and <strong>not a specification anyone can build to</strong>. A real budget has
+      to divide the allowance between the sources rather than hand all of it to each.</p>
+    </div>
+    <div class="prose col">
+      <p>One thing is deliberately missing from this half: <strong>what a real optical bench
+      actually achieves</strong>. The first half of the page can say crosstalk fails because there
+      is a measured number for a real display chip to fail against. Here there is no such number:
+      how precisely plates can be registered in practice is a question for a literature this
+      study has not read. So these four are published as edges, with no verdict attached, and the
+      missing half is <a class="link" href="https://github.com/roosado/photonn/blob/main/docs/parameter_sources.md">written down as a gap &rarr;</a>
+      rather than filled in with something plausible.</p>
     </div>
   </section>
 
@@ -1888,7 +2006,7 @@ TOLERANCE_BODY = r"""
     <div class="prose col">
       <p>Everything above is the stack of glass. The
       <a class="link" href="@@HREF_chip@@">interferometer mesh &rarr;</a> has now been through the
-      same procedure &mdash; its own trained settings, handed to its own as-built model, broken one
+      same procedure: its own trained settings, handed to its own as-built model, broken one
       imperfection at a time against its own 95% bar. Running it twice is what turns
       &ldquo;these two machines fail differently&rdquo; from a plausible sentence into a
       measurement, and the two answers are not the same answer.</p>
@@ -1909,7 +2027,7 @@ TOLERANCE_BODY = r"""
       the signal. Nothing averages. A splitter that sends 51% one way instead of 50% is a trivial
       error in one component and a visible one by the far end.</p>
       <p>That is what the panel below shows. Each square is one entry of the operation the chip
-      performs &mdash; how much of one input channel arrives at one output channel &mdash; drawn for
+      performs, how much of one input channel arrives at one output channel, drawn for
       the <em>trained</em> chip, then again with every coupler mis-made by a random amount, then as
       the difference between them. The damage does not stay near the couplers that were made wrong.
       It fills in everywhere.</p>
@@ -1918,7 +2036,7 @@ TOLERANCE_BODY = r"""
 
     <div class="prose col">
       <p>Not everything moves. <strong>Detector noise lands on exactly the same limit</strong>, 1 pW
-      at 1 ms, on a different architecture, a different test set and a different wavelength &mdash;
+      at 1 ms, on a different architecture, a different test set and a different wavelength,
       as it should, since that is a statement about counting photons at the readout rather than about
       the optics in front of it. Getting the same number twice is a check on both budgets. Lost light
       is the one that changes character rather than magnitude: in the stack it is nearly uniform and
@@ -1932,7 +2050,7 @@ TOLERANCE_BODY = r"""
       <p class="body">Detuning each of the 1,260 interferometers in turn, one at a time, and
       measuring how far the output moves gives a map of which parts of the device matter.
       <strong>156 of the 630 interferometers in the second mesh move the output by exactly
-      nothing</strong> &mdash; not a little, not below the noise, but zero. They sit outside the
+      nothing</strong>: not a little, not below the noise, but zero. They sit outside the
       readout&rsquo;s reach: only the first ten channels are ever measured, a coupler in column
       <i>c</i> can influence a channel at most <span class="q">36&minus;c+1</span> steps away, and
       those 156 are further than that from anything the detector sees. Whatever they are set to, and
@@ -1946,7 +2064,7 @@ TOLERANCE_BODY = r"""
     <figure class="plate reveal">
       <img src="@@FIG_mesh_sensitivity@@" alt="Per-MZI sensitivity across both meshes of the chip, drawn on the Clements rectangle" loading="lazy">
       <figcaption><span class="fign">Fig 8</span>Measured. Every interferometer in the chip, drawn
-      where it physically sits &mdash; column across the page, channel pair down it &mdash; shaded by
+      where it physically sits, column across the page and channel pair down it, shaded by
       how far it moves the output when that one device alone is detuned. Darker is more sensitive;
       the chequerboard of gaps is the brick pattern, where a column has no device on that pair. The
       blank triangle across the lower right of the second mesh is the 156 that no measurement can
@@ -1959,7 +2077,7 @@ TOLERANCE_BODY = r"""
       what lets it end in a verdict: crosstalk fails by a factor of four. The chip has no such column
       yet. Its limits are measured properties of the network and its wiring and will not move, but
       what a fabricated part actually achieves has to come from a chip foundry&rsquo;s published
-      process data &mdash; not the display-device literature everything above rests on. That sourcing
+      process data, not the display-device literature everything above rests on. That sourcing
       has not been done, so <strong>every &ldquo;realistic value&rdquo; in the chip&rsquo;s tolerance
       document reads <span class="q">UNSOURCED</span></strong>, and there is deliberately no pass/fail
       verdict anywhere in it. Publishing the limits first and the comparison against reality second is
@@ -1983,7 +2101,7 @@ TOLERANCE_BODY = r"""
         realistic column unsourced. Modelling choices are labelled as such on both sides.</p></div>
       <div><h3>Reproducible</h3><p>The same seeds give the same answers, and the two studies draw
         from ranges that cannot collide. Each error-free baseline must come out at its model&rsquo;s
-        exact ideal &mdash; 0.7990 for the stack, 0.7355 for the chip &mdash; or that pair of models
+        exact ideal (0.7990 for the stack, 0.7355 for the chip), or that pair of models
         has drifted apart. A new model can be scored without disturbing either.</p></div>
     </div>
     <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.

@@ -39,7 +39,8 @@ photonn/
 
 photonn-hw/
 ├── +io/              # load exported parameter sets and frozen test data
-├── +err/             # fabrication error, quantization, dispersion, loss, thermal crosstalk
+├── +err/             # device error (phase, quantization, dispersion, loss, crosstalk)
+│                  # and geometry error (spacing, registration, calibration, detector)
 ├── +mc/              # Monte Carlo drivers and statistics
 ├── +viz/             # plots, confusion matrices, error-budget curves
 └── ErrorBudgetApp.mlapp
@@ -113,6 +114,17 @@ Error sources, in implementation order:
 6. Thermal crosstalk (distance-dependent coupling matrix)
 7. Detector noise (shot noise from Phase 2 photon budget, thermal noise, ADC quantization)
 
+Those seven are **device** errors. The D²NN also has **geometry** errors, added after the
+device half was complete — where the parts sit rather than what is wrong inside them. They
+are a separate family because they are a different problem for a builder: a device error is
+fixed once the part is made, an alignment error is set at assembly and can sometimes be
+calibrated out. The mesh has no equivalent; lithography places its waveguides.
+
+8. Plane spacing (independent per-gap deviation from the nominal z)
+9. Lateral mask registration (sub-pixel displacement per plate)
+10. Systematic phase gain (a calibration error, not a setting error)
+11. Detector lateral offset (axial offset is the last gap, already in 8)
+
 Deliverables: App Designer dashboard with per-source sliders, live accuracy, confusion
 matrix, and a spatial sensitivity map. Plus a tolerance document stating required
 precision per component to hold accuracy above a threshold.
@@ -183,6 +195,10 @@ Kept here so a later session does not reopen a question the project already answ
    different source from the D²NN's rather than the same one renamed. Headline: the mesh
    needs its phases **10× more accurate** (0.03 rad against 0.3), and a quarter of its U
    mesh sits outside the readout's light cone and needs no tolerance at all.
+   **The D²NN's geometry half has since been run too** (2026-08-17): plate registration at
+   0.10 px is the tightest number in the study, three sources at their own edges **fail
+   together**, and the 33 µm connectivity bound turned out not to be a tolerance. Phase 4 is
+   complete for the D²NN; the mesh needs no geometry sources.
 4. **Parameter source standardization** → **resolved for the D²NN**, still open for the mesh.
    The canonical set is the SLM / phase-plate and sCMOS measurement literature, not an
    integrated-photonics PDK; the ledger is `docs/parameter_sources.md`. The Phase-3 mesh will

@@ -17,6 +17,7 @@ are right.
 | Whether the light that misses the detectors is recoverable accuracy | [`phase2_dnn.md` § The light that misses the boxes](phase2_dnn.md#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17) |
 | What the interferometer mesh is, and **why it and the glass stack are the same machine** | [`phase3_mesh.md`](phase3_mesh.md) |
 | How precisely the **diffractive network** must be built | [`tolerance_d2nn.md`](tolerance_d2nn.md) |
+| How precisely it must be **assembled**, as opposed to fabricated | [`tolerance_d2nn.md` § Geometry](tolerance_d2nn.md#geometry-where-the-parts-sit) |
 | How precisely the **chip** must be built, and how the two failure modes differ | [`tolerance_mesh.md`](tolerance_mesh.md) |
 | Where every physical constant comes from, and which ones are still unsourced | [`parameter_sources.md`](parameter_sources.md) |
 | What crosses the Python → MATLAB boundary, and in what format | [`handoff_schema.md`](handoff_schema.md) |
@@ -34,11 +35,17 @@ The difference between them is the result: the mesh needs its phases **10× more
 because its error accumulates through 72 MZI columns in series where the stack's acts in
 parallel across five masks and averages.
 
-They differ in one other way, deliberately. The D²NN's realistic-value column is fully
-sourced and ends in a verdict; **the mesh's is entirely `UNSOURCED`**, because it needs
-foundry PDK data rather than the display-device literature, and no value is invented to
-fill it. That gap is a table in [`parameter_sources.md`](parameter_sources.md), not a
-silence.
+**Only the D²NN has a geometry half.** Where a plate sits is set at assembly; where a
+waveguide sits is set by lithography, so the chip has no equivalent sources and its document
+has no equivalent section. That asymmetry is a result about the two machines, not a gap in
+the mesh study.
+
+They differ in one other way, deliberately. **Only the D²NN's device sources have realistic
+values to compare against**, from the display-device literature, which is why "crosstalk fails
+by 4×" is the one verdict this project can state. The mesh's column is entirely `UNSOURCED`
+(it needs foundry PDK data) and so is the D²NN's geometry column (it needs optomechanical
+measurement) — three different literatures, two of them unread. No value is invented to fill
+either. Both gaps are tables in [`parameter_sources.md`](parameter_sources.md), not silences.
 
 ## Elsewhere in the repo
 

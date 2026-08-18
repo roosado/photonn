@@ -150,10 +150,21 @@ pixel farthest from it (patches span px 21–106 in `x`, 25–102 in `y`) — is
 **74 px**. So every input pixel *can* reach every detector region, with
 **0.81 px of margin, about 1%**.
 
-Equivalently, as a tolerance on the one dimension a builder sets: mask separation
-must stay above **2.967 mm**, against a design value of 3.000 mm — **33 µm of
-headroom**. Below it, part of the input becomes physically invisible to part of the
-readout, whatever the masks are trained to.
+Equivalently, as a bound on the one dimension a builder sets: mask separation must
+stay above **2.967 mm**, against a design value of 3.000 mm — **33 µm of headroom**.
+Below it, part of the input becomes physically invisible to part of the readout,
+whatever the masks are trained to.
+
+> **Correction (2026-08-17).** An earlier revision called that 33 µm *a tolerance
+> a builder can act on*. **It is not one**, and the geometry error budget has now
+> measured it directly. Moving every gap together by −33 µm changes accuracy from
+> 0.7712 to **0.7725** — nothing — and the response stays flat until roughly
+> ±100 µm on both sides ([`tolerance_d2nn.md`](tolerance_d2nn.md#geometry-where-the-parts-sit)).
+> The reason is the caveat two paragraphs below, which was already right: the
+> corner of the cone is the Nyquist ray, and it carries almost no power, so losing
+> it costs nothing measurable. **The bound is correct as geometry and wrong as a
+> specification.** What spacing actually cannot afford is the gaps being *unequal*:
+> independent per-gap error holds at 100 µm and fails at 150 µm.
 
 Nothing in the training procedure knew about this bound; the operating point
 happens to clear it. The mesh has no equivalent fragility — 36 columns for 36

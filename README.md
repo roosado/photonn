@@ -16,15 +16,16 @@ forward pass in your browser: draw a digit or pick one from the frozen MNIST tes
 it diffract through five trained phase masks onto ten detectors. No libraries, no network,
 nothing precomputed.
 
-Four more pages read on from it — [the wave optics
-underneath](https://roosado.github.io/photonn/physics.html) with the diffraction explorer
-recomputing scalar diffraction live as you move the controls, [the same machine built as a
-chip](https://roosado.github.io/photonn/chip.html), [how precisely it would have to be
-built](https://roosado.github.io/photonn/tolerance.html) — the study, one section per error
-source, each with a widget showing what that error physically does, closing on the same
-treatment applied to the chip, which fails a different way — and [how much better the
-optics could be](https://roosado.github.io/photonn/optics.html), which measures what depth buys
-and then argues why more of it is not the answer.
+Four more pages read on from it:
+
+- [**the wave optics underneath**](https://roosado.github.io/photonn/physics.html) — with a
+  diffraction explorer that recomputes scalar diffraction live as you move the controls
+- [**the same machine built as a chip**](https://roosado.github.io/photonn/chip.html)
+- [**how precisely it would have to be built**](https://roosado.github.io/photonn/tolerance.html)
+  — the study, one section per error source, each with a widget showing what that error
+  physically does, closing on the chip, which fails a different way
+- [**how much better the optics could be**](https://roosado.github.io/photonn/optics.html) —
+  what depth buys, and why more of it is not the answer
 
 **The through-line, stated once.** A stack of phase masks is *one linear operator* no matter how
 tall it is, so depth converges on the best that operator can do rather than compounding the way
@@ -40,209 +41,37 @@ Two codebases, one project, separated by a one-directional boundary:
 - **`photonn-hw/`** — MATLAB. Fabrication-error modeling, Monte Carlo, interactive analysis.
   The *as-built* side. Reads the handoff; never writes back.
 
-See [`CLAUDE.md`](CLAUDE.md) for the full architecture, phase roadmap, and scope boundaries.
+## Timeline
 
-## Status
+The project runs in phases, and the site was re-argued each time a measurement changed what
+it should be claiming. Each row links to where that work is written up in full.
 
-**The chip gets its own error budget, and it is not the same budget (2026-08-17, `2141b1f` →
-`e9fd3f6`).** Phase 4 had only ever been run against the diffractive stack. It has now been run
-against the trained MZI mesh, which makes the project's failure-mode claim a measurement instead
-of an assertion: **the mesh needs its phases 10× more accurate** (holds at 0.03 rad against the
-D²NN's 0.3) and its DACs 3 bits finer, because light crosses 72 MZI columns *in series* and every
-column carries the last one's error forward, where five phase masks perturb in parallel and
-average. **Coupler imbalance** — meaningless for a phase mask, a stub since Phase 3 — is
-implemented and binds level with phase error at a 0.01 power split. Loss stops being free, since
-in a Clements rectangle it is path-dependent and no longer cancels in the normalised readout. And
-**156 of the U mesh's 630 MZIs measure exactly zero sensitivity**: they sit outside the readout's
-light cone, partitioned with no errors by a closed-form criterion, so a quarter of that mesh needs
-no fabrication tolerance at all.
+| | | |
+|---|---|---|
+| **Jul 2026** | **Phase 0–1.** Scaffolding, then the scalar-diffraction core: angular spectrum, Fresnel, Fraunhofer, a programmatic sampling criterion, and analytic references to check them against. | [`phase0_baseline.md`](docs/phase0_baseline.md) · [`wave_optics.md`](docs/wave_optics.md) |
+| **Jul 2026** | **Phase 2.** The propagator recast as a differentiable layer, stacked into a trained D²NN, plus the power budget and the linearity ceiling. | [`phase2_dnn.md`](docs/phase2_dnn.md) |
+| **Jul 2026** | **Phase 3.** MZI transfer matrix, Clements and Reck decomposition, an SVD layer, and a 36-mode mesh classifier — with the argument that it and the glass stack are the same machine. | [`phase3_mesh.md`](docs/phase3_mesh.md) |
+| **Jul 2026** | **Phase 4, first half.** The MATLAB as-built side reproduces the ideal accuracy exactly, then breaks it one imperfection at a time. Crosstalk binds, and it fails by 4×. | [`tolerance_d2nn.md`](docs/tolerance_d2nn.md) |
+| **30 Jul** | The trained network starts running its own forward pass **in the browser**, held to PyTorch by a cross-check rather than by eye. | [`site/README.md`](site/README.md) |
+| **3 Aug** | The free-space ↔ chip correspondence, and the optical stack drawn in 3D. | [`phase3_mesh.md`](docs/phase3_mesh.md) |
+| **6 Aug** | **Retrained on the full MNIST set**, 0.7695 → **0.7990**. Every downstream number is re-derived from it. | [`phase2_dnn.md`](docs/phase2_dnn.md) |
+| **6–8 Aug** | **The optics sweep**, which overturned the ceiling claim: 0.799 belonged to *that geometry*, not to the architecture. Depth keeps paying; a bigger grid does not. | [`phase2_dnn.md`](docs/phase2_dnn.md#what-the-optics-can-still-buy) |
+| **9 Aug** | A **56-mask network at 0.9040** — measured, put in the browser beside the 5-mask one, and **not promoted**: the ten points cost 2× tighter phase control and 4.7× lower loss per mask, while the constraint that already fails does not move. | [`tolerance_d2nn.md`](docs/tolerance_d2nn.md) |
+| **10 Aug** | The site becomes **five pages that lead with the machine and land on the fabrication question**, and five tolerance numbers that had been stale on the live site for months are corrected. | [`site/README.md`](site/README.md) |
+| **14 Aug** | The site is **re-argued around the linearity wall**, `/tolerance` becomes one section per error source with a widget for each, and models start being named by depth rather than by status. | [`site/README.md`](site/README.md) |
+| **17 Aug** | **Phase 4, second half.** The same budget run against the mesh, which fails a different way: **10× tighter on phase**, coupler imbalance binding for the first time, and a quarter of one mesh needing no tolerance at all. | [`tolerance_mesh.md`](docs/tolerance_mesh.md) |
 
-*Every realistic as-built value on the mesh side is marked `UNSOURCED`, deliberately.* There are
-no integrated-photonics rows in the parameter ledger and this project does not invent constants,
-so the study publishes tolerance **edges** — properties of the network and its topology, which no
-PDK will move — and omits the margin column rather than fake a verdict. Open-decision #4 stays
-open for the mesh; the gap is a table now, not a silence.
+**Where things are written down.** [`docs/`](docs/README.md) is the reference — one file per
+question, indexed. [`site/README.md`](site/README.md) covers the generated pages and how the
+browser ports are held to the models. [`CLAUDE.md`](CLAUDE.md) holds the architecture, the
+scope boundaries and the decisions that are closed. Commit messages carry the reasoning for
+individual changes.
 
-*Three things had to be built first.* The mesh handoff was **lossy** and nobody had noticed —
-2,520 of 2,628 parameters, with Σ and both output-phase screens missing — so MATLAB could not have
-reproduced 0.7355, and "the as-built simulator reproduces the ideal exactly" is the anchor the
-whole budget rests on. Schema **0.2.0** fixes it additively, mesh-only, so the 131 MB
-`d2nn_phase2.h5` still validates at 0.1.0. The documented **Σ passivity violation** (−0.041 …
-3.907, nine values above 1) turned out to be removable exactly: a negative σ folds into
-`out_phase_v += π`, the global scale cancels in `region/total`, and the logits match to 1e-12 — so
-asking what 0.5 dB per MZI costs is now a question about a passive device. And `+meshmodel` builds
-the mesh **column by column**, which is the seam `mzi.reconstruct` does not have and the only
-place a per-MZI error can enter.
-
-*`/tolerance` closes on the comparison, with a widget for the mechanism.* The site's error budget
-now runs both machines in one place and ends on where they part. It sits there rather than on
-`/chip` for a reading-order reason: the comparison is against the stack's budget, and on `/chip`
-that budget is still a page away, so every sentence would have been leaning on numbers the reader
-had not met. A new `mesh` kind in [`apps/web/errors.js`](apps/web/errors.js) draws |U·Σ·V| for the
-trained chip, ideal against as-built, with coupler imbalance on the slider — mechanism only, no
-accuracy computed, like the other six. Its operator is checked against `photonn.mzi` under Node
-([`tests/test_mesh_web.py`](tests/test_mesh_web.py)), because a transposed index would draw a
-confident picture of a different chip. The per-MZI sensitivity map is published beside it: the
-D²NN's equivalent is 56 panels in one row at 47:1 and unpublishable at any web size, where a mesh
-map is two near-square panels. Suite 230 → **248**. `/tolerance` 179 → 227 KB against a ceiling
-raised to 250, `/chip` unchanged at 125, site total 1,770 → **1,815** against 1,900 — 34 KB less
-than the same section would have cost on `/chip`, since `errors.js` is now inlined once rather
-than on two pages, and a new lossless-WebP candidate in the figure encoder is 30 % smaller than
-palette PNG on flat-shaded plates and never loses.
-
-**Depth-named models, an honest deep-model matrix, and widgets that hold their shape
-(2026-08-14 … 17, `3174e72` → `cd372b1`).** Three passes over what the site claims and how it
-renders it.
-
-*A model is named for its depth, never its standing in this project.* The 56-mask network runs
-live in the browser, and the page used to label it "not shipped" while a visitor was operating
-it — an internal workflow state, and nothing a reader could act on. Bundle labels are now
-`5 masks`, `56 masks` and `14 masks`, and each caption states what the accuracy **cost**
-instead: *"Accuracy 0.9015 … Buying those points costs 2x tighter phase control and 4.7x lower
-loss per mask. Same measurement as 5 masks (0.7995)."* Comparability was never a status
-question and still keys on `not_scored_on`, so the 14-mask ranking run still reads *"Not
-comparable"*. Nothing measured moved: the tolerance trade below is untouched and the 56-mask
-design is **still not promoted**. `provenance.shipped` survives as the guard against two
-bundles both claiming to be the headline, but no caption reads it, and
-[`tests/test_web_contract.py`](tests/test_web_contract.py)`::test_no_caption_describes_a_model_by_its_status`
-scans every committed bundle and fails on any status word.
-
-*The deep model's confusion matrix is drawn at its best, not under stress.* `run_error_budget.m`
-now emits `confusion_ideal.png` alongside the stressed one — free, since the ideal full-test-set
-pass is already computed to set the 95 %-of-ideal threshold. `/optics` shows the 56-mask
-network's at **0.9040** against the front page's **0.7990**, so the two are directly comparable
-and the figure answers what depth bought rather than duplicating the six tolerance curves beside
-it. Measured from the two matrices: depth repairs the collapse onto 3 (5→3 falls 41 to **6**,
-8→3 falls 37 to **11**), which is nearly the whole ten-point gain, while **4 against 9 is not
-repaired** (4→9 gets *worse*, 15 to **18**) — a better approximation of the same linear
-operation, which is what `/optics` argues next.
-
-*The `/tolerance` widgets hold their shape at any width.* The four before/after/difference
-triptychs wrapped on a phone, which grew each panel to full width and left one picture on screen
-at a time — no comparison, which is the whole point of them. The two plots drew into a fixed
-420-unit space and let `width:100%` stretch the bitmap to the real column, scaling x without y:
-flattened on a desktop, stretched tall on a phone. Both fixed, and both faults are now asserted
-under Node against a DOM stand-in at three column widths and two device pixel ratios
-([`tests/test_error_widgets.py`](tests/test_error_widgets.py)), because the driven browser cannot
-see them — that tab is always hidden and never lays anything out.
-
-**Site restructured around the linearity argument (2026-08-14, `360161d`).** `/tolerance` became
-one section per error source, each with a purpose-built widget
-([`apps/web/errors.js`](apps/web/errors.js)) showing what that error physically does to a real
-mask — mechanism only, so it never computes an accuracy and cannot contradict the measured curve
-beside it. `/optics` was rebuilt around what depth buys ([`apps/web/scaling.js`](apps/web/scaling.js),
-plotting every training run against mask count) and where it stops, closing on the nonlinearity
-wall and the routes the field is trying through it. Mathematics is now MathML throughout, which
-costs no library. The confusion-matrix stress point is **derived from each model's own measured
-phase edge** rather than hardcoded, which fixed a 56-mask figure that had been rendering at
-chance because a constant tuned for the 5-mask design is nearly twice past the 56-mask model's
-failure point.
-
-**In-browser D²NN classifier (done).** The trained diffractive network now runs its forward pass
-client-side on its own page: encode a digit into the entrance field, propagate through the five
-trained phase masks, integrate intensity over ten detector regions. It shows the entrance field, the
-intensity arriving at each mask, and the detector plane with the class regions drawn on. Trained
-parameters are exported to a browser bundle by `python -m apps.export_d2nn_web`
-([`apps/web/d2nn_weights.js`](apps/web/d2nn_weights.js), committed — the `.h5`/`.pt` exports are
-not versioned). The JavaScript is held to the trained model:
-[`tests/test_d2nn_crosscheck.py`](tests/test_d2nn_crosscheck.py) runs it under Node against
-reference logits from PyTorch and asserts **identical predictions** (max class-score error 5.5e-7)
-plus a bilinear resize matching torch's `align_corners=False` convention to 1.2e-7. Accuracy is
-**0.799**, so the shipped gallery deliberately includes digits the model gets wrong.
-
-Above the per-plane frames, the same page draws the **optical stack in 3D**
-([`apps/web/d2nn_stage.js`](apps/web/d2nn_stage.js)): entrance plane, five masks and detector plane
-as parallel panels along the optical axis, orbitable, with a sweep that walks one wavefront through
-and a toggle between the light arriving on each mask and the mask's own trained phase. An
-orthographic projection of a flat plane is affine, so each panel is one `ctx.transform` + `drawImage`
-— no WebGL, no library — and parallel non-intersecting panels make back-to-front painting exact. The
-haze between the panels is the field at **intermediate depths, computed not faked**: sub-stepping a
-hop is exact because `H(z₁)·H(z₂) = H(z₁+z₂)` and the band limit is inactive below
-`z_crit = 15.40 mm`, asserted in [`tests/test_propagate.py`](tests/test_propagate.py). No rays are
-drawn — scalar diffraction is not ray optics — and the slices are display-only: the cross-check
-asserts `classify()` logits stay **bit-identical** with slicing enabled.
-
-**Project site + live diffraction explorer (done).** Five self-contained pages tell the whole
-story — the working machine first, the fabrication question last — deployed to GitHub Pages by
-`python -m apps.build_site`, which writes all of them plus a body-only variant for embedding. The
-explorer itself was rebuilt: its
-scalar-diffraction physics is ported to ~200 lines of dependency-free JavaScript
-([`apps/web/asm.js`](apps/web/asm.js)) — a faithful translation of
-`photonn.propagate.angular_spectrum`, cross-checked against it to **< 1e-6**
-([`tests/test_asm_crosscheck.py`](tests/test_asm_crosscheck.py)) — so every control (aperture,
-distance, wavelength, grid) is continuously live, fixing the previous "only distance is live" caveat.
-
-**Phase 3 — MZI mesh (done).** The interferometer side: a 2×2 MZI transfer matrix from
-coupler/phase-shifter primitives (unitary), **Clements and Reck** decomposition of any unitary —
-both reconstructing Haar-random unitaries to **~1e-15** — an SVD layer (U·Σ·V†) for arbitrary real
-matrices, and a 36-mode mesh classifier ([`MeshNetwork`](photonn/models.py)) trained on
-6×6-downsampled MNIST. The headline is a [direct comparison to the D²NN](docs/phase3_mesh.md): the
-mesh realises an *arbitrary* linear map with **~31× fewer parameters** (2 628 vs 81 920) and nearly
-matches the D²NN (0.74 vs 0.80) — falling just short only because its N²/2-MZI footprint forces
-aggressive input downsampling (the footprint ↔ input-dimensionality trade-off). Train/export with `python -m apps.train_mesh`; verify the
-decompositions and render the mesh topology with `python -m apps.mesh_toolkit`. The boson-sampling
-branch is deferred (open-decision #3).
-
-The same doc also answers **why the two are the same machine**: both are
-`[trainable phase] → [fixed mixing] → … → |E|²`, and they differ on one axis — reach per layer.
-Diffraction mixes **12.5 px** per hop but unsteerably; a coupler mixes exactly **1 mode** but
-individually. That comparison surfaced a result about the D²NN itself: six hops give **74.8 px** of
-reach against **74 px** the design needs, so it is fully connected **by 0.81 px (~1%)** — 33 µm of
-headroom on the 3 mm mask separation, where the mesh's 36 columns for 36 modes is the Clements bound
-and full connectivity is guaranteed by construction. An
-[interactive version](https://roosado.github.io/photonn/chip.html) sits on the site's chip page
-(`apps/web/analogy.js`); every number in it is read from the trained models by
-`python -m apps.export_analogy_web` and re-derived in `tests/test_correspondence.py`.
-
-**Phase 4 error budget, both architectures (done).** Taking CLAUDE.md open-decision #2, the
-fabrication error budget was run against the trained D²NN before the MZI mesh was built, then
-against the mesh. Each MATLAB as-built simulator reproduces its ideal baseline **exactly** —
-**79.9%** through [`+model`](photonn-hw/+model), **73.55%** through
-[`+meshmodel`](photonn-hw/+meshmodel) — and each then takes seven error sources
-([`+err`](photonn-hw/+err)) swept into tolerance curves by Monte Carlo
-([`+mc`](photonn-hw/+mc)), with confusion matrices and sensitivity maps from
-[`+viz`](photonn-hw/+viz). Run the scriptable `run_error_budget` and `run_error_budget_mesh`
-(no App Designer GUI needed). Findings and required per-component precision are in
-[`docs/tolerance_d2nn.md`](docs/tolerance_d2nn.md) and
-[`docs/tolerance_mesh.md`](docs/tolerance_mesh.md).
-
-**The mesh comparison is the result.** Its error is serial — 72 MZI columns deep — where the
-D²NN's is parallel and per-pixel, and the measurement is unambiguous: the mesh needs its phases
-**10× more accurate** (holds at 0.03 rad against the D²NN's 0.3) and its DACs 3 bits finer.
-**Coupler imbalance**, which has no meaning for a phase mask and stayed a stub through Phase 3,
-is now implemented and binds level with phase error at a 0.01 power split. Loss stops being free:
-in a Clements rectangle it is path-dependent, so it no longer cancels in the normalised readout.
-And a **quarter of the U mesh** sits outside the readout's light cone — 156 of 630 MZIs with
-exactly zero measured sensitivity, needing no tolerance at all. Every D²NN error magnitude is
-sourced in [`docs/parameter_sources.md`](docs/parameter_sources.md); **every realistic as-built
-value on the mesh side is marked `UNSOURCED`, deliberately.** The sweep publishes tolerance
-*edges* — properties of the network and its topology, which no foundry data will move — ahead of
-the PDK sourcing that open-decision #4 still leaves open, rather than inventing constants to fill
-a margin column.
-
-**Phase 2 — diffractive network, ideal case (done).** The band-limited angular-spectrum
-propagator is recast as a differentiable torch layer (verified against the NumPy reference to
-`1e-10`), stacked with trainable phase masks into a [`D2NN`](photonn/models.py), and trained to
-classify MNIST. The input is encoded in **both** amplitude and phase; the detector plane reads
-integrated intensity over ten regions (*integrate intensity, softmax* — no electronic hidden
-layer). The optical power budget (photons per detector per inference) and the **expressivity
-limit imposed by linearity** are written up in [`docs/phase2_dnn.md`](docs/phase2_dnn.md). Train
-and export with `python -m apps.train_d2nn`; the trained model serialises straight into the HDF5
-handoff. MZI meshes are Phase 3; the hardware error model is Phase 4 (MATLAB).
-
-**Phase 1 — wave optics foundation (done).** The scalar-diffraction core: angular spectrum
-(band-limited), Fresnel and Fraunhofer, a programmatic sampling criterion, analytic Gaussian-beam
-and Airy references, and the aperture/thin-lens elements. The Phase-1 deliverable — a **live, standalone-HTML**
-[diffraction explorer](apps/diffraction_explorer.py) that recomputes angular-spectrum propagation
-in the browser (see the explainer entry above) — generates from `python -m apps.diffraction_explorer`.
-
-Docs: [`docs/phase3_mesh.md`](docs/phase3_mesh.md) (MZI mesh, decomposition, D²NN comparison) ·
-[`docs/tolerance_mesh.md`](docs/tolerance_mesh.md) (mesh error budget, cross-architecture
-comparison) · [`docs/tolerance_d2nn.md`](docs/tolerance_d2nn.md) (D²NN error budget, required
-precision) ·
-[`docs/phase2_dnn.md`](docs/phase2_dnn.md) (D²NN, power budget, linearity limit) ·
-[`docs/wave_optics.md`](docs/wave_optics.md) (propagators, sampling criteria, validity ranges,
-citations) · [`docs/phase0_baseline.md`](docs/phase0_baseline.md) (scaffolding baseline).
+**Still open:** promoting the 56-mask geometry; re-scoring the readout geometry against the
+current masks; alignment and calibration tolerances, which the error budget does not model at
+all; sourcing the mesh's as-built values, every one of which is currently `UNSOURCED`; and a
+second mesh size, to turn the chip's fragility result into a trend. These are tracked as
+[GitHub issues](https://github.com/roosado/photonn/issues).
 
 ## Install
 
@@ -287,6 +116,6 @@ apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.
 apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · errors.js (P4 error mechanisms, both architectures) · mesh_weights.js (trained chip, for the coupler widget) · scaling.js, optics_sweep.js (depth vs accuracy) · d2nn_compare.js (two models, one digit) · analogy.js, analogy_geom.js (P3 correspondence, demo only)
 site/           # generated, self-contained, GitHub Pages ready: index.html (the live D²NN) · physics.html · chip.html · tolerance.html (the study) · optics.html
 tests/          # pytest suite
-docs/           # handoff schema + parameter-source ledger
+docs/           # the written record, indexed in docs/README.md
 photonn-hw/     # MATLAB as-built side (+io, +model, +meshmodel, +err, +mc, +viz, ErrorBudgetApp)
 ```

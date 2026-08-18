@@ -397,6 +397,26 @@ MATLAB's independent as-built forward model reproduces **0.9040 exactly** with z
 error injected, at 57 hops. That correctness anchor has held through every change
 in the project.
 
+**What the ten points actually repaired.** Measured per class from the two ideal
+confusion matrices (`figures/confusion_ideal.png` and
+`figures_candidate_L56/confusion_ideal.png`, both printed from `model.evaluate` over
+the full 2 000):
+
+| confusion | 5 masks | 56 masks | |
+|---|---|---|---|
+| 5 → 3 | 41 | **6** | repaired |
+| 8 → 3 | 37 | **11** | repaired |
+| 5 correct | 109 of 186 | **164 of 186** | |
+| 9 → 4 | 29 | **2** | repaired |
+| 4 → 9 | 15 | **18** | *worse* |
+| 7 → 9 | 12 | **14** | barely moves |
+
+**The collapse onto 3 is nearly the whole gain; 4 against 9 is not repaired at all.**
+The 9→4 direction collapses while 4→9 gets slightly worse, so the confusion stops
+being mutual without stopping. That reads as a better approximation of the *same*
+linear operation rather than a qualitatively different machine — which is what the
+linearity section above predicts, and what the argument on `/optics` turns on.
+
 ### The deep regime stops being a stack of plates
 
 `z` falls from 3 mm to 0.53 mm at 56 masks and 0.37 mm at 80 — comparable to the

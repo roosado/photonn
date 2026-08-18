@@ -42,10 +42,58 @@ it has no sibling files). Gitignored; not part of the deployed site.
 > front page and its methodology moved to `physics.html`. `tests/test_site_links.py` fails if
 > anything links to it again.
 
-None of the physics is precomputed. The browser runs a hand-written FFT ported from
-`photonn.propagate.angular_spectrum` (`apps/web/asm.js`, cross-checked to < 1e-6 by
-`tests/test_asm_crosscheck.py`), and the classifier's predictions match the PyTorch model
-exactly (`tests/test_d2nn_crosscheck.py`).
+## Nothing here is precomputed, and nothing here is trusted
+
+The browser runs the physics, and every port is held to the Python it came from rather than
+to a screenshot of it.
+
+- **Propagation.** `apps/web/asm.js` is a hand-written FFT and a faithful translation of
+  `photonn.propagate.angular_spectrum`, in ~200 dependency-free lines.
+  `tests/test_asm_crosscheck.py` runs it under Node against the NumPy reference: agreement
+  **< 1e-6**. This is what makes every control on the diffraction explorer live, rather than
+  the "only distance is live" version it replaced.
+- **The classifier.** `tests/test_d2nn_crosscheck.py` runs `d2nn.js` against reference logits
+  from PyTorch and asserts **identical predictions**, max class-score error **5.5e-7**. It
+  also pins the bilinear resize to torch's `align_corners=False` convention to **1.2e-7** —
+  the one place a half-pixel error would silently poison every prediction. Accuracy is
+  **0.7995** at 8 bits, so the shipped gallery deliberately includes digits it gets wrong.
+- **The chip.** `tests/test_mesh_web.py` + `tests/mesh_operator_runner.js` rebuild the mesh
+  operator from `mesh_weights.js` under Node and check it against `photonn.mzi`: **4.5e-5**
+  on a peak entry of 0.345, which is 16-bit phase codes compounding through 72 columns.
+
+**The 3D optical stack** (`d2nn_stage.js`) draws the entrance plane, the masks and the
+detector plane as parallel panels along the optical axis. An orthographic projection of a
+flat plane is affine, so each panel is one `ctx.transform` + `drawImage` — no WebGL, no
+library — and parallel non-intersecting panels make back-to-front painting exact. The haze
+between them is the field at **intermediate depths, computed not faked**: sub-stepping a hop
+is exact because `H(z₁)·H(z₂) = H(z₁+z₂)` while the band limit is inactive below
+`z_crit = 15.40 mm`, which `tests/test_propagate.py` asserts. No rays are drawn — scalar
+diffraction is not ray optics — and the slices are display-only: the cross-check asserts
+`classify()` logits stay **bit-identical** with slicing enabled.
+
+**Runtime came from a lookup table, not from cutting work.** A quantised bundle has only
+`2^bits` distinct phases, so `d2nn.js` keeps codes as a `Uint8Array` plus a `2^bits` cos/sin
+table rather than two full-length `Float64Array`s. The 56-mask model went **18.4 MB → ~0.9 MB**
+retained; the forward pass is 11 ms shipped and 102 ms deep.
+
+> **Canvas transforms must use `ctx.transform`, never `setTransform`.** `draw()` puts a
+> devicePixelRatio scale on the context, and replacing the matrix drops it — which split the
+> 3D stage apart on high-DPI screens.
+
+## What a model is allowed to claim
+
+Provenance lives **in the bundles, not in the JavaScript**. Each exporter writes `label`,
+`accuracy`, `scored_on`, `protocol`, and optionally `caveat` / `not_scored_on`, and
+`d2nn_compare.js` renders *every* caption from it. So changing what a model claims is
+regenerating a bundle, never a JS edit, and `tests/test_web_contract.py` enforces that.
+
+**A model is named for its depth, never for its standing in this project** — the labels are
+`5 masks`, `56 masks`, `14 masks`. The 56-mask network runs live in the browser, and a page
+that labelled it "not shipped" while a visitor was operating it was showing an internal
+workflow state nobody could act on. What replaced the badge is the *cost*: *"Buying those
+points costs 2x tighter phase control and 4.7x lower loss per mask."* Comparability is a
+separate sentence keyed on `not_scored_on`, not on status. `test_no_caption_describes_a_model_by_its_status`
+scans every committed bundle and fails on any status word.
 
 ## Widgets
 

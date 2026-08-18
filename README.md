@@ -60,6 +60,7 @@ it should be claiming. Each row links to where that work is written up in full.
 | **10 Aug** | The site becomes **five pages that lead with the machine and land on the fabrication question**, and five tolerance numbers that had been stale on the live site for months are corrected. | [`site/README.md`](site/README.md) |
 | **14 Aug** | The site is **re-argued around the linearity wall**, `/tolerance` becomes one section per error source with a widget for each, and models start being named by depth rather than by status. | [`site/README.md`](site/README.md) |
 | **17 Aug** | **Phase 4, second half.** The same budget run against the mesh, which fails a different way: **10× tighter on phase**, coupler imbalance binding for the first time, and a quarter of one mesh needing no tolerance at all. | [`tolerance_mesh.md`](docs/tolerance_mesh.md) |
+| **17 Aug** | The detector layout **re-scored against the masks that ship**, on data that is neither trained on nor the frozen test set. The shipped boxes still win, and the 40 % of light that misses them is still not headroom — but depth turns out to make the readout almost indifferent to box size. | [`phase2_dnn.md`](docs/phase2_dnn.md#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17) |
 
 **Where things are written down.** [`docs/`](docs/README.md) is the reference — one file per
 question, indexed. [`site/README.md`](site/README.md) covers the generated pages and how the
@@ -67,10 +68,10 @@ browser ports are held to the models. [`CLAUDE.md`](CLAUDE.md) holds the archite
 scope boundaries and the decisions that are closed. Commit messages carry the reasoning for
 individual changes.
 
-**Still open:** promoting the 56-mask geometry; re-scoring the readout geometry against the
-current masks; alignment and calibration tolerances, which the error budget does not model at
-all; sourcing the mesh's as-built values, every one of which is currently `UNSOURCED`; and a
-second mesh size, to turn the chip's fragility result into a trend. These are tracked as
+**Still open:** promoting the 56-mask geometry; alignment and calibration tolerances, which
+the error budget does not model at all; sourcing the mesh's as-built values, every one of
+which is currently `UNSOURCED`; and a second mesh size, to turn the chip's fragility result
+into a trend. These are tracked as
 [GitHub issues](https://github.com/roosado/photonn/issues).
 
 ## Install
@@ -90,7 +91,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`248 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`255 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
 `test_mount_queue.py` — require Node on `PATH` and skip cleanly if it is absent.

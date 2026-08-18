@@ -135,6 +135,76 @@ noise only bites once the power budget (or integration time) is pushed orders of
 magnitude lower, and the tolerance curves will show where. The photon budget
 established here is exactly the input `detect.shot_noise` will consume in Phase 4.
 
+### The light that misses the boxes is not headroom (re-scored 2026-08-17)
+
+Sixty per cent captured invites the obvious question: widen the boxes and collect
+the rest. It does not work, and `apps/score_readout.py` measures why against the
+masks that actually ship.
+
+With the masks fixed the detector-plane field is fixed, so every layout scores
+against **one** forward pass per image — 48 layouts, 6 `field_frac` values ×
+8 `patch_frac` values, boxes from 6 px to 51 px. Choosing a layout is model
+selection, so the ranking runs on the **8 000 t10k images the frozen 2 000-image
+subset did not take** (`score_readout.holdout_split`), which are held out of
+training and disjoint from the set every published accuracy is quoted from.
+Frozen-set numbers are reported alongside but never rank anything.
+
+Box size at the shipped `field_frac=0.75`, holdout accuracy and captured fraction:
+
+| patch | box | 5 masks | captured | 56 masks | captured |
+|---|---|---|---|---|---|
+| 0.05 | 6 px | 0.6750 | 0.139 | 0.8530 | 0.101 |
+| 0.08 | 10 px | 0.7784 | 0.348 | 0.8938 | 0.326 |
+| **0.11** | **14 px** | **0.8030** | **0.600** | **0.9021** | **0.795** |
+| 0.15 | 19 px | 0.7985 | 0.713 | 0.9025 | 0.847 |
+| 0.20 | 26 px | 0.7598 | 0.896 | 0.9016 | 0.939 |
+| 0.26 | 33 px | 0.6807 | 1.115 | 0.8952 | 1.058 |
+| 0.32 | 41 px | 0.4710 | 1.597 | 0.8247 | 1.576 |
+| 0.40 | 51 px | 0.2472 | 2.407 | 0.4706 | 2.293 |
+
+**Captured fraction above 1 is double counting made literal**: once a patch grows
+past its lattice cell the boxes overlap, the same photon is summed by several
+classes, and the ten region powers add to more than the power on the plane. The
+original study inferred that mechanism from the accuracy fall-off; `overlap_stats`
+now reports it directly (`max_cover`, the number of classes stacked on the worst
+pixel: 1 through 0.15, then 2, 4, 4, 6).
+
+**Capture and accuracy are not aligned.** The best non-overlapping layout by
+capture is `field_frac=0.85, patch_frac=0.20` — **81.4 %** of the light for the
+5-mask design, against the shipped layout's 60.0 %, and it scores **0.7556**
+against 0.8030. Twenty-one more points of light cost 4.7 points of accuracy. The
+light outside the boxes is not information waiting to be collected; the boxes are
+where the network was trained to put the light it can separate classes with.
+
+**The shipped layout is still the right one, and for the shallow model it is not
+close.** Ranked over all 48:
+
+| masks | shipped rank | shipped | best alternative | 1 s.e. | tied within 1 s.e. |
+|---|---|---|---|---|---|
+| 12 000-sample (superseded) | **1** of 48 | 0.7826 | — | 0.0046 | 1 |
+| 5 (shipped, 0.7990) | **1** of 48 | 0.8030 | — | 0.0044 | 2 |
+| 56 (0.9040) | 3 of 48 | 0.9021 | 0.9044 at `0.65 / 0.11` | 0.0033 | 9 |
+
+At 56 masks two layouts nominally edge ahead, by **+0.0023 against a standard
+error of 0.0033** on 8 000 images. That is not a result, and nine layouts sit
+inside one standard error of the shipped one. **No layout beats `0.75 / 0.11`
+significantly on either current model**, so the claim carries over — but its
+character changes, and that is the finding.
+
+**Depth does not move the optimum; it flattens the penalty for missing it.** At a
+26 px box the 5-mask design gives up **5.4 %** of its accuracy and the 56-mask
+design gives up **nothing measurable** — 0.9016 against 0.9021, well inside a
+standard error. The cliff moves from `patch_frac=0.20` to `0.32`. This is the "concentrate rather than scatter" mechanism seen from the
+readout side: a deep stack focuses each class tightly enough inside its patch that
+enlarging the patch adds background rather than signal, so the box size stops
+mattering. The shallow stack has no such margin — its classes are only just
+separated at the plane, and a wider box mixes them.
+
+Running the same grid against the **superseded 12 000-sample masks reproduces the
+original study exactly** — rank 1 of 48, 0.7695 on the frozen set, 57.8 % captured
+(the "58 %" figure). The old conclusion was correct; it had simply never been
+re-tested after the retrain or against a deep stack. That is issue #5, closed here.
+
 ---
 
 ## The expressivity limit imposed by linearity
@@ -389,9 +459,12 @@ unselected number.
 **Photon capture rose from ~60 % to 79.1 %** of input photons landing inside the ten
 detector boxes, with the detector geometry unchanged. This is the "route rather
 than scatter" mechanism made quantitative, and it is *not* the readout-headroom
-figure the detector study warned about: the boxes did not grow, so nothing is being
-double-counted. It also cascades into the error budget, where it moves the
-shot-noise knee a decade — see [`tolerance_d2nn.md`](tolerance_d2nn.md).
+figure [the layout study](#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17)
+rules out: the boxes did not grow, so nothing is being double-counted. That study
+has since been re-run against these masks, and it is also where the same mechanism
+shows up as the readout becoming insensitive to box size. Capture also cascades
+into the error budget, where it moves the shot-noise knee a decade — see
+[`tolerance_d2nn.md`](tolerance_d2nn.md).
 
 MATLAB's independent as-built forward model reproduces **0.9040 exactly** with zero
 error injected, at 57 hops. That correctness anchor has held through every change
@@ -582,6 +655,10 @@ python -m apps.visualize_d2nn               # render trained masks + example
 python -m apps.d2nn_demo                    # standalone live classifier + 3D stage
 python -m apps.compare_demo                 # standalone two-model board + deep stage
 
+# re-score the 48 detector layouts; ~1 min at 5 masks, ~5 min at 56
+python -m apps.score_readout
+python -m apps.score_readout --ckpt exports/sweep/d2nn_L56_60k_e25.pt
+
 # the 5-mask browser bundle, 8-bit, with its torch cross-check fixture
 python -m apps.export_d2nn_web --bits 8 --label "5 masks"
 
@@ -593,6 +670,7 @@ python -m apps.export_d2nn_web \
     --caveat "buying those points costs 2x tighter phase control and 4.7x lower loss per mask"
 
 pytest -q tests/test_layers.py tests/test_models.py tests/test_detect.py tests/test_encode.py
+pytest -q tests/test_score_readout.py
 pytest -q tests/test_d2nn_crosscheck.py tests/test_stage_projection.py
 pytest -q tests/test_deep_model.py tests/test_stage_depth.py \
          tests/test_draw_cadence.py tests/test_web_contract.py tests/test_web_style_ids.py

@@ -868,6 +868,12 @@ BODY = r"""
       Early plates behave more like feature detectors, shuffling light around the whole beam; later
       ones behave more like lenses, gathering the light that identifies a class onto the right
       patch. About 60% of the light that enters ends up inside a detector box.</p>
+      <p>The other 40% is <strong>not waste waiting to be collected</strong>. Widening the boxes
+      to catch it was measured against 48 different detector layouts, and none of them beat the
+      one this network uses. Boxes wide enough to gather most of the light are wide enough to
+      overlap, and then each one starts counting light that belongs to its neighbour. The light
+      outside the boxes is not information going spare, it is the light the plates could not
+      find a use for.</p>
       <p>That steering picture is <strong>a story, not a proof</strong>, and it is worth saying so
       plainly. What is rigorously true is that the whole stack adds up to a single linear operation,
       and the plates are one way of building that operation out of parts you could actually

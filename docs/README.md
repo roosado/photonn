@@ -14,6 +14,7 @@ are right.
 | How light is moved across a gap, and where each propagator stops being valid | [`wave_optics.md`](wave_optics.md) |
 | What the diffractive network is, what its masks do optically, its power budget, and **why linearity caps it** | [`phase2_dnn.md`](phase2_dnn.md) |
 | What depth buys, and why more of it is not the answer | [`phase2_dnn.md` § What the optics can still buy](phase2_dnn.md#what-the-optics-can-still-buy) |
+| Whether the light that misses the detectors is recoverable accuracy | [`phase2_dnn.md` § The light that misses the boxes](phase2_dnn.md#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17) |
 | What the interferometer mesh is, and **why it and the glass stack are the same machine** | [`phase3_mesh.md`](phase3_mesh.md) |
 | How precisely the **diffractive network** must be built | [`tolerance_d2nn.md`](tolerance_d2nn.md) |
 | How precisely the **chip** must be built, and how the two failure modes differ | [`tolerance_mesh.md`](tolerance_mesh.md) |

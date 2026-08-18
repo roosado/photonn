@@ -82,6 +82,50 @@ body{margin:0;background:var(--bg);color:var(--ink);
   font-size:clamp(1.12rem,2vw,1.38rem);line-height:1.2;margin:.32rem 0 .28rem;}
 .pagenext .b{display:block;color:var(--ink-dim);font-size:.94rem;max-width:64ch;}
 
+/* In-page contents. One element, two presentations: a card in the flow of the page,
+   and at >=1500px the same list pinned in the right margin. 1500 is where a 176 px
+   rail plus its gap clears the 1120 px wrap on both sides -- narrower than that and
+   the content would have to come off centre to make room, which costs more than the
+   rail is worth. Below it the card is the whole feature and nothing is missing. */
+.toc{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:15px 18px 17px;margin:30px 0 4px;max-width:var(--measure);}
+.toc-k{font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .55rem;}
+.toc-list{list-style:none;margin:0;padding:0;}
+.toc-list li{margin:1px 0;}
+.toc-list a{display:flex;gap:9px;text-decoration:none;color:var(--ink-dim);
+  font-size:.88rem;line-height:1.35;border-radius:6px;padding:3px 7px;
+  border-left:2px solid transparent;transition:color .15s,background .15s,border-color .15s;}
+.toc-list a:hover{color:var(--ink);background:var(--beam-soft);}
+.toc-list a:focus-visible{outline:2px solid var(--beam);outline-offset:1px;}
+.toc-list a[aria-current="location"]{color:var(--beam);background:var(--beam-soft);
+  border-left-color:var(--beam);}
+.toc-n{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--beam);
+  min-width:1.1em;flex:none;}
+.toc-g{margin-top:.5rem;}
+.toc-s a{padding-left:18px;}
+.toc-g a{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);}
+.toc-g a:hover{color:var(--ink);}
+@media (min-width:1500px){
+  .toc{position:fixed;top:78px;left:calc(50% + 580px);width:176px;margin:0;padding:0 0 0 13px;
+    max-height:calc(100vh - 120px);overflow:auto;background:transparent;border:0;
+    border-left:1px solid var(--border);border-radius:0;}
+  .toc-list a{font-size:.82rem;}
+}
+/* Anchor jumps have to clear the sticky topbar, which is 42-46 px and taller once
+   the nav wraps. */
+.phase-head h2[id],.phase-head h3[id],.band-h[id]{scroll-margin-top:78px;}
+
+/* A family of error sources, and what the family is. Only /tolerance groups its
+   sections; everywhere else a section is a section. */
+.band{padding:44px 0 0;}
+.band-k{font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .3rem;}
+.band-h{font-family:var(--mono);font-size:1.02rem;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--beam);margin:0;}
+.band-b{color:var(--ink-dim);font-size:.95rem;margin:.4rem 0 0;max-width:58ch;}
+
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px;}
 .col{max-width:var(--measure);}
 .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;
@@ -112,7 +156,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   border:1px solid var(--border);border-radius:9px;padding:7px 11px;line-height:1;
   background:var(--beam-soft);white-space:nowrap;margin-top:4px;}
 .ph-num.next{color:var(--muted);background:transparent;border-style:dashed;}
-.phase-head h2{font-family:var(--serif);font-weight:600;text-wrap:balance;
+.phase-head h2,.phase-head h3{font-family:var(--serif);font-weight:600;text-wrap:balance;
   font-size:clamp(1.55rem,2.8vw,2.05rem);line-height:1.14;margin:.1rem 0 0;}
 .prose{color:var(--ink-dim);}
 .prose p{margin:.85rem 0;max-width:var(--measure);}
@@ -124,7 +168,8 @@ body{margin:0;background:var(--bg);color:var(--ink);
   white-space:nowrap;}
 /* Mathematics is MathML, rendered by the browser itself. Inline expressions sit in
    the run of the sentence; display ones get their own centred line and a rule-free
-   band so a long operator product is not competing with the prose around it. */
+   band so a long operator product is not competing with the prose around it.
+
    Identifier styling is left to the browser on purpose: MathML already italicises a
    single-letter <mi> and leaves a multi-letter one upright, which is exactly the
    convention wanted here (M is a matrix, exp is a function name).
@@ -251,10 +296,15 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     the whole idea can ever compute.</p>
   </section>
 
+  <nav class="toc" aria-label="On this page">
+  <p class="toc-k">On this page</p>
+  <ol class="toc-list"><li><a href="#plane-waves-delayed">Plane waves, delayed</a></li><li><a href="#haze-not-rays">Haze, not rays</a></li><li><a href="#optical-depth-is-not-depth">Optical depth is not depth</a></li></ol>
+</nav>
+
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">The propagator</p>
-      <h2>Decompose into plane waves, delay each one, add them back up</h2></div></div>
+      <h2 id="plane-waves-delayed">Decompose into plane waves, delay each one, add them back up</h2></div></div>
     <div class="prose col">
       <p>Any pattern of light, however complicated, can be written as a sum of <strong>plane
       waves</strong>: perfectly flat, evenly spaced wavefronts, each travelling in one particular
@@ -325,7 +375,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Drawing it without lying about it</p>
-      <h2>Why the 3D stack has haze in it and no rays</h2></div></div>
+      <h2 id="haze-not-rays">Why the 3D stack has haze in it and no rays</h2></div></div>
     <div class="prose col">
       <p>The light drawn <em>between</em> the mask planes on the front page is not decoration. One
       3&nbsp;mm gap can be cut into several shorter steps and re-run, because propagating a distance
@@ -352,7 +402,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">The limit, stated precisely</p>
-      <h2>Optical depth is not depth in the machine-learning sense</h2></div></div>
+      <h2 id="optical-depth-is-not-depth">Optical depth is not depth in the machine-learning sense</h2></div></div>
     <div class="prose col">
       <p>Crossing a gap is linear in the light. Passing through a mask is linear in the light. Doing
       one after the other is therefore still linear, and the whole stack collapses into a
@@ -610,6 +660,33 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   var io=new IntersectionObserver(function(es){es.forEach(function(e){
     if(e.isIntersecting){e.target.classList.add('in'); io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px'});
   els.forEach(function(el){io.observe(el);});
+})();
+(function(){
+  var links=document.querySelectorAll('.toc-list a[href^="#"]');
+  if(!links.length) return;
+  var map={},order=[];
+  links.forEach(function(a){var id=a.getAttribute('href').slice(1),el=document.getElementById(id);
+    if(el){map[id]=a; order.push(el);}});
+  if(!order.length) return;
+  function mark(){
+    var cur=order[0].id;
+    order.forEach(function(el){if(el.getBoundingClientRect().top<=90) cur=el.id;});
+    for(var k in map){if(k===cur){map[k].setAttribute('aria-current','location');}
+      else{map[k].removeAttribute('aria-current');}}
+  }
+  // A throttled scroll listener, not an IntersectionObserver. "Which section am I
+  // reading" is a question about every heading at once, and an observer answers only
+  // about the one that crossed -- and answers nothing at all when a click on this
+  // card jumps the page straight over the crossing, which is the commonest way this
+  // card is used. The reveal observer above cannot be reused either: it unobserves
+  // on first sight.
+  var queued=false;
+  function ping(){if(queued) return; queued=true;
+    setTimeout(function(){queued=false; mark();},100);}
+  addEventListener('scroll',ping,{passive:true});
+  addEventListener('resize',ping,{passive:true});
+  addEventListener('hashchange',mark);
+  mark();
 })();
 </script>
 <script>

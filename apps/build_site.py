@@ -29,9 +29,11 @@ from __future__ import annotations
 
 import base64
 import functools
+import html as _html
 import io
 import json
 import os
+import re
 from typing import NamedTuple
 
 from PIL import Image
@@ -327,6 +329,50 @@ body{margin:0;background:var(--bg);color:var(--ink);
   font-size:clamp(1.12rem,2vw,1.38rem);line-height:1.2;margin:.32rem 0 .28rem;}
 .pagenext .b{display:block;color:var(--ink-dim);font-size:.94rem;max-width:64ch;}
 
+/* In-page contents. One element, two presentations: a card in the flow of the page,
+   and at >=1500px the same list pinned in the right margin. 1500 is where a 176 px
+   rail plus its gap clears the 1120 px wrap on both sides -- narrower than that and
+   the content would have to come off centre to make room, which costs more than the
+   rail is worth. Below it the card is the whole feature and nothing is missing. */
+.toc{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:15px 18px 17px;margin:30px 0 4px;max-width:var(--measure);}
+.toc-k{font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .55rem;}
+.toc-list{list-style:none;margin:0;padding:0;}
+.toc-list li{margin:1px 0;}
+.toc-list a{display:flex;gap:9px;text-decoration:none;color:var(--ink-dim);
+  font-size:.88rem;line-height:1.35;border-radius:6px;padding:3px 7px;
+  border-left:2px solid transparent;transition:color .15s,background .15s,border-color .15s;}
+.toc-list a:hover{color:var(--ink);background:var(--beam-soft);}
+.toc-list a:focus-visible{outline:2px solid var(--beam);outline-offset:1px;}
+.toc-list a[aria-current="location"]{color:var(--beam);background:var(--beam-soft);
+  border-left-color:var(--beam);}
+.toc-n{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--beam);
+  min-width:1.1em;flex:none;}
+.toc-g{margin-top:.5rem;}
+.toc-s a{padding-left:18px;}
+.toc-g a{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);}
+.toc-g a:hover{color:var(--ink);}
+@media (min-width:1500px){
+  .toc{position:fixed;top:78px;left:calc(50% + 580px);width:176px;margin:0;padding:0 0 0 13px;
+    max-height:calc(100vh - 120px);overflow:auto;background:transparent;border:0;
+    border-left:1px solid var(--border);border-radius:0;}
+  .toc-list a{font-size:.82rem;}
+}
+/* Anchor jumps have to clear the sticky topbar, which is 42-46 px and taller once
+   the nav wraps. */
+.phase-head h2[id],.phase-head h3[id],.band-h[id]{scroll-margin-top:78px;}
+
+/* A family of error sources, and what the family is. Only /tolerance groups its
+   sections; everywhere else a section is a section. */
+.band{padding:44px 0 0;}
+.band-k{font-family:var(--mono);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .3rem;}
+.band-h{font-family:var(--mono);font-size:1.02rem;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--beam);margin:0;}
+.band-b{color:var(--ink-dim);font-size:.95rem;margin:.4rem 0 0;max-width:58ch;}
+
 .wrap{max-width:1120px;margin:0 auto;padding:0 24px;}
 .col{max-width:var(--measure);}
 .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.2em;
@@ -357,7 +403,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
   border:1px solid var(--border);border-radius:9px;padding:7px 11px;line-height:1;
   background:var(--beam-soft);white-space:nowrap;margin-top:4px;}
 .ph-num.next{color:var(--muted);background:transparent;border-style:dashed;}
-.phase-head h2{font-family:var(--serif);font-weight:600;text-wrap:balance;
+.phase-head h2,.phase-head h3{font-family:var(--serif);font-weight:600;text-wrap:balance;
   font-size:clamp(1.55rem,2.8vw,2.05rem);line-height:1.14;margin:.1rem 0 0;}
 .prose{color:var(--ink-dim);}
 .prose p{margin:.85rem 0;max-width:var(--measure);}
@@ -369,7 +415,8 @@ body{margin:0;background:var(--bg);color:var(--ink);
   white-space:nowrap;}
 /* Mathematics is MathML, rendered by the browser itself. Inline expressions sit in
    the run of the sentence; display ones get their own centred line and a rule-free
-   band so a long operator product is not competing with the prose around it. */
+   band so a long operator product is not competing with the prose around it.
+
    Identifier styling is left to the browser on purpose: MathML already italicises a
    single-letter <mi> and leaves a multi-letter one upright, which is exactly the
    convention wanted here (M is a matrix, exp is a function name).
@@ -522,6 +569,117 @@ def next_link(key: str, kicker: str = "Next") -> str:
         f'<span class="k">{kicker}</span>'
         f'<span class="t">{page.head} &rarr;</span>'
         f'<span class="b">{page.blurb}</span></a>'
+    )
+
+
+# ---------------------------------------------------------------- IN-PAGE INDEX
+# Section navigation is generated from the markup, never authored twice. Every
+# section heading on every page sits inside a `.phase-head` and is preceded by its
+# own `<p class="eyebrow">`, so one scan finds them all, gives each an id derived
+# from its text, and returns the list the contents card is rendered from. Adding a
+# section to a page therefore adds it to that page's index, with nothing to
+# remember -- the same bargain PAGES makes for the topbar.
+
+#: A heading and the eyebrow above it, as every page writes them.
+_HEADING = re.compile(
+    r'<p class="eyebrow">(?P<eyebrow>.*?)</p>\s*\n\s*'
+    r'<(?P<tag>h2|h3)(?P<attrs>[^>]*)>(?P<text>.*?)</(?P=tag)>',
+    re.S,
+)
+#: A band heading: the family a run of sections belongs to (only /tolerance has these).
+_BAND = re.compile(r'<h2 class="band-h"(?P<attrs>[^>]*)>(?P<text>.*?)</h2>', re.S)
+#: "Source 4 of 6" -> 4. The eyebrows already number the series; the index reuses it
+#: rather than counting, so a renumbering in the prose cannot disagree with the card.
+_SOURCE_NUM = re.compile(r'\bSource\s+(\d+)\b')
+_TOC_ATTR = re.compile(r'\s*data-toc="([^"]*)"')
+
+
+def strip_tags(markup: str) -> str:
+    """Plain text of a fragment: inline tags dropped, entities resolved."""
+    return _html.unescape(re.sub(r"<[^>]+>", "", markup)).strip()
+
+
+def slugify(text: str) -> str:
+    """A stable id from heading text."""
+    slug = re.sub(r"[^a-z0-9]+", "-", strip_tags(text).lower()).strip("-")
+    return slug or "section"
+
+
+def toc_label(text: str) -> str:
+    """The short form of a heading, for a 176 px rail.
+
+    Section headings are written as ``Topic: what it does to you`` wherever there is
+    a topic to name, so the part before the colon is already the label. Headings with
+    no colon are short enough to use whole, and anything that is neither carries an
+    explicit ``data-toc``.
+    """
+    plain = strip_tags(text)
+    head = plain.split(":", 1)[0].strip()
+    return head if 0 < len(head) < len(plain) else plain
+
+
+def section_index(body: str):
+    """Give every section heading an id; return ``(html, entries)``.
+
+    ``entries`` is in document order, each ``{level, id, label, num}``. ``level`` is
+    ``"band"`` for a family heading and ``"section"`` for a section within one.
+    """
+    entries, seen = [], {}
+
+    def unique(slug: str) -> str:
+        seen[slug] = seen.get(slug, 0) + 1
+        return slug if seen[slug] == 1 else f"{slug}-{seen[slug]}"
+
+    def take(text: str, attrs: str, level: str, num=None):
+        """Record one entry and return the attribute string its heading should carry."""
+        override = _TOC_ATTR.search(attrs)
+        label = strip_tags(override.group(1)) if override else toc_label(text)
+        attrs = _TOC_ATTR.sub("", attrs)
+        ident = unique(slugify(label))
+        entries.append({"level": level, "id": ident, "label": label, "num": num})
+        return f' id="{ident}"{attrs}'
+
+    def band(m):
+        attrs = take(m.group("text"), m.group("attrs"), "band")
+        return f'<h2 class="band-h"{attrs}>{m.group("text")}</h2>'
+
+    def heading(m):
+        # `level` is the heading tag, so the card's nesting is the page's own
+        # outline: a section written as <h3> belongs to the band above it and is
+        # indented under it, and one written as <h2> is not.
+        eyebrow, tag = m.group("eyebrow"), m.group("tag")
+        num = _SOURCE_NUM.search(strip_tags(eyebrow))
+        attrs = take(m.group("text"), m.group("attrs"), tag,
+                     num.group(1) if num else None)
+        return (f'<p class="eyebrow">{eyebrow}</p>\n      '
+                f'<{tag}{attrs}>{m.group("text")}</{tag}>')
+
+    # Bands first: their heading is an <h2> with no eyebrow, so the two patterns
+    # cannot both match the same element, and running bands first keeps the entries
+    # in document order for the page that has them.
+    body = _BAND.sub(band, body)
+    body = _HEADING.sub(heading, body)
+    entries.sort(key=lambda e: body.index(f'id="{e["id"]}"'))
+    return body, entries
+
+
+def toc(entries) -> str:
+    """Render the contents card. Empty for a page with nothing to index."""
+    if not entries:
+        return ""
+    items = []
+    for e in entries:
+        cls = {"band": ' class="toc-g"', "h3": ' class="toc-s"'}.get(e["level"], "")
+        num = f'<span class="toc-n">{e["num"]}</span>' if e["num"] else ""
+        items.append(f'<li{cls}><a href="#{e["id"]}">{num}{e["label"]}</a></li>')
+    return (
+        # No `reveal` here: this is navigation chrome, like the topbar, not
+        # content. `.reveal` starts at opacity 0 and waits for an observer, so a
+        # reader landing on a #fragment could arrive at an index they cannot see.
+        '<nav class="toc" aria-label="On this page">\n'
+        '  <p class="toc-k">On this page</p>\n'
+        '  <ol class="toc-list">' + "".join(items) + "</ol>\n"
+        "</nav>"
     )
 
 
@@ -740,6 +898,8 @@ BODY = r"""
     </div>
   </section>
 
+  @@TOC@@
+
   <div class="explorer-band reveal">
     <div class="pe-host"><div id="d2nn"></div></div>
     <p class="cap">Live. Pick a digit from the set of test images the model has never been trained
@@ -758,7 +918,7 @@ BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">What you just watched</p>
-      <h2>Every panel is real light, not an illustration</h2></div></div>
+      <h2 data-toc="Real light, not a picture">Every panel is real light, not an illustration</h2></div></div>
     <div class="prose col">
       <p>Light is a wave, and a wave gives you two things to adjust. How tall it is, its
       <strong>amplitude</strong>, is what makes light bright or dim. Where it sits in its
@@ -893,7 +1053,7 @@ BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Choosing the task</p>
-      <h2>Why a digit classifier, and only a digit classifier</h2></div></div>
+      <h2 data-toc="Why digits, and only digits">Why a digit classifier, and only a digit classifier</h2></div></div>
     <div class="prose col">
       <p>The task is <strong>MNIST</strong>, a collection of 70,000 handwritten digits that
       machine-learning work has used as a first test for decades. It is the smallest honest version
@@ -912,7 +1072,7 @@ BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Read the failures, not just the wins</p>
-      <h2>It is wrong about one digit in four</h2></div></div>
+      <h2 data-toc="Where it gets things wrong">It is wrong about one digit in four</h2></div></div>
     <div class="prose col">
       <p>The network reads <strong>0.799</strong> of the test digits correctly, so the gallery
       deliberately includes ones it <strong>gets wrong</strong>. Hiding them would misrepresent the
@@ -950,7 +1110,7 @@ BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Where this goes</p>
-      <h2>What it would take to actually build one</h2></div></div>
+      <h2 data-toc="What it would take to build">What it would take to actually build one</h2></div></div>
     <div class="prose col">
       <p>Everything above ran in simulation, and simulation is where optical neural networks look
       easy. The masks are exact. The plates sit at exactly 3&nbsp;mm. Every pixel takes exactly the
@@ -1014,6 +1174,33 @@ PAGE_SCRIPT = r"""<script>
     if(e.isIntersecting){e.target.classList.add('in'); io.unobserve(e.target);}});},{rootMargin:'0px 0px -8% 0px'});
   els.forEach(function(el){io.observe(el);});
 })();
+(function(){
+  var links=document.querySelectorAll('.toc-list a[href^="#"]');
+  if(!links.length) return;
+  var map={},order=[];
+  links.forEach(function(a){var id=a.getAttribute('href').slice(1),el=document.getElementById(id);
+    if(el){map[id]=a; order.push(el);}});
+  if(!order.length) return;
+  function mark(){
+    var cur=order[0].id;
+    order.forEach(function(el){if(el.getBoundingClientRect().top<=90) cur=el.id;});
+    for(var k in map){if(k===cur){map[k].setAttribute('aria-current','location');}
+      else{map[k].removeAttribute('aria-current');}}
+  }
+  // A throttled scroll listener, not an IntersectionObserver. "Which section am I
+  // reading" is a question about every heading at once, and an observer answers only
+  // about the one that crossed -- and answers nothing at all when a click on this
+  // card jumps the page straight over the crossing, which is the commonest way this
+  // card is used. The reveal observer above cannot be reused either: it unobserves
+  // on first sight.
+  var queued=false;
+  function ping(){if(queued) return; queued=true;
+    setTimeout(function(){queued=false; mark();},100);}
+  addEventListener('scroll',ping,{passive:true});
+  addEventListener('resize',ping,{passive:true});
+  addEventListener('hashchange',mark);
+  mark();
+})();
 </script>"""
 
 # ------------------------------------------------------------------------ PHYSICS
@@ -1036,10 +1223,12 @@ PHYSICS_BODY = r"""
     the whole idea can ever compute.</p>
   </section>
 
+  @@TOC@@
+
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">The propagator</p>
-      <h2>Decompose into plane waves, delay each one, add them back up</h2></div></div>
+      <h2 data-toc="Plane waves, delayed">Decompose into plane waves, delay each one, add them back up</h2></div></div>
     <div class="prose col">
       <p>Any pattern of light, however complicated, can be written as a sum of <strong>plane
       waves</strong>: perfectly flat, evenly spaced wavefronts, each travelling in one particular
@@ -1110,7 +1299,7 @@ PHYSICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Drawing it without lying about it</p>
-      <h2>Why the 3D stack has haze in it and no rays</h2></div></div>
+      <h2 data-toc="Haze, not rays">Why the 3D stack has haze in it and no rays</h2></div></div>
     <div class="prose col">
       <p>The light drawn <em>between</em> the mask planes on the front page is not decoration. One
       3&nbsp;mm gap can be cut into several shorter steps and re-run, because propagating a distance
@@ -1137,7 +1326,7 @@ PHYSICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">The limit, stated precisely</p>
-      <h2>Optical depth is not depth in the machine-learning sense</h2></div></div>
+      <h2 data-toc="Optical depth is not depth">Optical depth is not depth in the machine-learning sense</h2></div></div>
     <div class="prose col">
       <p>Crossing a gap is linear in the light. Passing through a mask is linear in the light. Doing
       one after the other is therefore still linear, and the whole stack collapses into a
@@ -1232,10 +1421,12 @@ CHIP_BODY = r"""
     exactly one number, and that number sets everything else.</p>
   </section>
 
+  @@TOC@@
+
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">The other optical computer</p>
-      <h2>An interferometer is two splitters around an adjustable delay</h2></div></div>
+      <h2 data-toc="What an interferometer is">An interferometer is two splitters around an adjustable delay</h2></div></div>
     <div class="prose col">
       <p>On a chip, light does not spread through open air. It runs along <strong>waveguides</strong>,
       narrow channels of silicon that trap light the way a pipe carries water. Each channel carries
@@ -1446,6 +1637,8 @@ TOLERANCE_BODY = r"""
     </div>
   </section>
 
+  @@TOC@@
+
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Method</p>
@@ -1497,10 +1690,17 @@ TOLERANCE_BODY = r"""
     </div>
   </section>
 
+  <div class="band col reveal">
+    <p class="band-k">Part 1 of 2</p>
+    <h2 class="band-h">Fabrication</h2>
+    <p class="band-b">How precisely each part has to be made. Six sources, every one of them
+    measured, and one of them decides the answer.</p>
+  </div>
+
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Source 1 of 6 &middot; the one that fails</p>
-      <h2>Crosstalk: pixels will not stay out of each other</h2></div></div>
+      <h3>Crosstalk: pixels will not stay out of each other</h3></div></div>
     <div class="prose col">
       <p>A phase mask is only a mask because neighbouring pixels can hold different delays. Set one
       pixel and its neighbours shift too, because heat spreads through the substrate and the
@@ -1524,7 +1724,7 @@ TOLERANCE_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Source 2 of 6</p>
-      <h2>Delay error: every pixel a little bit wrong</h2></div></div>
+      <h3>Delay error: every pixel a little bit wrong</h3></div></div>
     <div class="prose col">
       <p>Nothing sets a phase exactly. Etch depth varies across a plate, and a modulator addressed
       by a voltage lands near the value it was asked for rather than on it. The error is
@@ -1546,7 +1746,7 @@ TOLERANCE_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Source 3 of 6</p>
-      <h2>Detector noise: light arrives in countable lumps</h2></div></div>
+      <h3>Detector noise: light arrives in countable lumps</h3></div></div>
     <div class="prose col">
       <p>The readout is ten sums of brightness, and brightness is a number of photons. Dim the beam
       far enough and those counts get noisy in a way no amount of care in the optics can fix, since
@@ -1568,7 +1768,7 @@ TOLERANCE_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Source 4 of 6 &middot; the subtle one</p>
-      <h2>Lost light: no effect at all, until suddenly it is fatal</h2></div></div>
+      <h3>Lost light: no effect at all, until suddenly it is fatal</h3></div></div>
     <div class="prose col">
       <p>Every surface reflects a little and every millimetre of glass absorbs a little. The
       intuition is that this must degrade the answer, and the intuition is <em>wrong</em>. The
@@ -1593,7 +1793,7 @@ TOLERANCE_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Source 5 of 6</p>
-      <h2>Wavelength drift: the colour the design assumed</h2></div></div>
+      <h3>Wavelength drift: the colour the design assumed</h3></div></div>
     <div class="prose col">
       <p>The whole machine is built around one colour of light, 532&nbsp;nm green. Let the laser
       drift and two things go wrong at once. The plates are a fixed depth of glass, so the delay
@@ -1615,7 +1815,7 @@ TOLERANCE_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Source 6 of 6</p>
-      <h2>Coarse control: only so many settings per pixel</h2></div></div>
+      <h3>Coarse control: only so many settings per pixel</h3></div></div>
     <div class="prose col">
       <p>The design asks each pixel for a phase anywhere in a continuous range. Real hardware offers
       a fixed number of steps, set by the resolution of whatever drives it. The continuum collapses
@@ -1635,7 +1835,7 @@ TOLERANCE_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">What the six add up to</p>
-      <h2>One source decides it, and it is not a close call</h2></div></div>
+      <h3 data-toc="What the six add up to">One source decides it, and it is not a close call</h3></div></div>
     <div class="prose col">
       <p>Five of the six are comfortable, several by orders of magnitude. Delay accuracy has a
       factor of ten in hand, bit depth has five bits, detection has nine decades, wavelength is a
@@ -1648,20 +1848,43 @@ TOLERANCE_BODY = r"""
       addressing scheme or a fabricated plate rather than a programmable one would all move it.
       What the number does settle is that the binding constraint is a <em>hardware</em> problem
       rather than a training one, and no amount of retraining touches it.</p>
-      <p>There is also something this budget does not cover at all. Every source here is a
-      <strong>device</strong> error, something that goes wrong inside a component. None of them is
-      a <strong>geometry</strong> error: plates a few microns out of position, rotated a fraction of
-      a degree, or registered slightly off against each other. Nobody assembles a five-plane optical
-      stack with the planes exactly 3.000&nbsp;mm apart. For a free-space build that is very
-      plausibly the harder problem, and this study has <strong>nothing measured</strong> to say
-      about it.</p>
+    </div>
+  </section>
+
+  <div class="band col reveal">
+    <p class="band-k">Part 2 of 2</p>
+    <h2 class="band-h">Setup</h2>
+    <p class="band-b">Where the parts have to sit once they are made. Nothing here is measured
+    yet, and for a free-space build it is plausibly the harder half.</p>
+  </div>
+
+  <section class="phase planned reveal">
+    <div class="phase-head col">
+      <span class="ph-num next">next</span>
+      <div><p class="eyebrow">Not measured &middot; <span class="badge-next">Planned</span></p>
+      <h3 data-toc="Where the parts sit">Nobody assembles a stack with the planes exactly 3.000&nbsp;mm apart</h3></div></div>
+    <div class="prose col">
+      <p>Every source above is a <strong>device</strong> error, something that goes wrong inside a
+      component. None of them is a <strong>geometry</strong> error: plates a few microns out of
+      position, rotated a fraction of a degree, or registered slightly off against each other. A
+      real bench has all four, and no amount of care removes them &mdash; it only makes them
+      smaller. The four that matter are the spacing between planes, how well one plate is
+      registered against the next, a systematic gain on every delay at once, and a detector sitting
+      slightly off where the design put it.</p>
+      <p>These are a different kind of problem from the six above, which is why they get their own
+      half of the page rather than a seventh slot in the ranking. A fabrication error is fixed once
+      the part is made. An alignment error is set at assembly, drifts with temperature, and can in
+      principle be calibrated out &mdash; so the question is not only how large it is but whether
+      the machine can be re-tuned against it. <strong>This study has nothing measured to say about
+      any of it.</strong> Until it does, the tolerances on this page are a lower bound on how hard
+      the build is, not an estimate of it.</p>
     </div>
   </section>
 
   <section class="phase reveal">
     <div class="phase-head col">
-      <div><p class="eyebrow">The same treatment, on the chip</p>
-      <h2>The other machine fails a different way</h2></div></div>
+      <div><p class="eyebrow">The same treatment, on the interferometer chip</p>
+      <h2 data-toc="The interferometer chip">The interferometer chip fails a different way</h2></div></div>
     <div class="prose col">
       <p>Everything above is the stack of glass. The
       <a class="link" href="@@HREF_chip@@">interferometer mesh &rarr;</a> has now been through the
@@ -1801,10 +2024,12 @@ OPTICS_BODY = r"""
     </div>
   </section>
 
+  @@TOC@@
+
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">What scaling actually looks like</p>
-      <h2>Eleven times the masks, ten points of accuracy</h2></div></div>
+      <h2 data-toc="What depth buys">Eleven times the masks, ten points of accuracy</h2></div></div>
     <div class="prose col">
       <p>The network on the front page uses five masks. The obvious question is what happens with more, and
       the honest way to ask it is to hold everything else fixed: same total amount of light
@@ -1842,7 +2067,7 @@ OPTICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">See both machines run</p>
-      <h2>The 5-mask and 56-mask networks, same digit</h2></div></div>
+      <h2 data-toc="5 masks against 56">The 5-mask and 56-mask networks, same digit</h2></div></div>
     <div class="prose col">
       <p>Since more masks keep paying, the deepest arrangement worth the computer time was trained
       properly rather than merely ranked: <strong>56 masks</strong> at 0.53&nbsp;mm gaps, the full
@@ -1920,7 +2145,7 @@ OPTICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">What the extra masks cost</p>
-      <h2>The same budget, re-run against the 56-mask network</h2></div></div>
+      <h2 data-toc="The deep model&rsquo;s budget">The same budget, re-run against the 56-mask network</h2></div></div>
     <div class="prose col">
       <p>The <a class="link" href="@@HREF_tolerance@@">error budget &rarr;</a> was re-run in full
       against the 56-mask network, scored against its own correspondingly stricter pass mark of
@@ -2004,7 +2229,7 @@ OPTICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Why more of the same runs out</p>
-      <h2>Depth cannot fix what depth is not the problem with</h2></div></div>
+      <h2 data-toc="The linearity wall">Depth cannot fix what depth is not the problem with</h2></div></div>
     <div class="prose col">
       <p>The flattening curve is not bad luck, and it is not a training failure. It follows from
       what this machine is. <a class="link" href="@@HREF_physics@@">The physics page shows &rarr;</a>
@@ -2065,7 +2290,7 @@ OPTICS_BODY = r"""
   <section class="phase reveal">
     <div class="phase-head col">
       <div><p class="eyebrow">Reading the numbers on this page honestly</p>
-      <h2>Two protocols, and a confound worth ruling out</h2></div></div>
+      <h2 data-toc="Protocols and confounds">Two protocols, and a confound worth ruling out</h2></div></div>
     <div class="prose col">
       <p>The sweep accuracies come from a deliberately <strong>short protocol</strong>, 20,000
       images for 12 passes, because the question there is which arrangement wins rather than what
@@ -2169,9 +2394,14 @@ def _chrome(body: str, key: str, next_key: str, kicker: str = "Next") -> str:
     """Fill in everything every page shares: nav, hand-off, page script, figures.
 
     Link tokens are deliberately left in place -- ``resolve_links`` runs last, so
-    one rendered body can be emitted twice, once relative and once absolute.
+    one rendered body can be emitted twice, once relative and once absolute. The
+    in-page index is filled here rather than later because it needs the ids
+    :func:`section_index` writes into the headings; its links are ``#fragment``
+    and never page tokens, so it is indifferent to that ordering.
     """
-    html = body.replace("@@TOPBAR@@", topbar(key))
+    html, entries = section_index(body)
+    html = html.replace("@@TOC@@", toc(entries))
+    html = html.replace("@@TOPBAR@@", topbar(key))
     html = html.replace("@@NEXT@@", next_link(next_key, kicker))
     html = html.replace("@@PAGE_SCRIPT@@", mount_queue_bundle() + PAGE_SCRIPT)
     return _figures(_math(html))

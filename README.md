@@ -23,7 +23,8 @@ Four more pages read on from it:
 - [**the same machine built as a chip**](https://roosado.github.io/photonn/chip.html)
 - [**how precisely it would have to be built**](https://roosado.github.io/photonn/tolerance.html)
   — the study, one section per error source, each with a widget showing what that error
-  physically does, closing on the chip, which fails a different way
+  physically does, split into what fabrication has to get right and what setup does, closing on
+  the chip, which fails a different way
 - [**how much better the optics could be**](https://roosado.github.io/photonn/optics.html) —
   what depth buys, and why more of it is not the answer
 
@@ -60,6 +61,7 @@ it should be claiming. Each row links to where that work is written up in full.
 | **10 Aug** | The site becomes **five pages that lead with the machine and land on the fabrication question**, and five tolerance numbers that had been stale on the live site for months are corrected. | [`site/README.md`](site/README.md) |
 | **14 Aug** | The site is **re-argued around the linearity wall**, `/tolerance` becomes one section per error source with a widget for each, and models start being named by depth rather than by status. | [`site/README.md`](site/README.md) |
 | **17 Aug** | **Phase 4, second half.** The same budget run against the mesh, which fails a different way: **10× tighter on phase**, coupler imbalance binding for the first time, and a quarter of one mesh needing no tolerance at all. | [`tolerance_mesh.md`](docs/tolerance_mesh.md) |
+| **17 Aug** | Every page gains an **in-page contents card**, becoming a margin rail on wide screens, and `/tolerance` splits its error sources into two families: how precisely each part is made, and where the parts sit. The second is empty and says so. | [`site/README.md`](site/README.md) |
 | **17 Aug** | The detector layout **re-scored against the masks that ship**, on data that is neither trained on nor the frozen test set. The shipped boxes still win, and the 40 % of light that misses them is still not headroom — but depth turns out to make the readout almost indifferent to box size. | [`phase2_dnn.md`](docs/phase2_dnn.md#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17) |
 
 **Where things are written down.** [`docs/`](docs/README.md) is the reference — one file per
@@ -91,16 +93,18 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`255 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`303 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
 `test_mount_queue.py` — require Node on `PATH` and skip cleanly if it is absent.
 
-Three things the suite covers that a browser cannot, because the driven Chrome tab here is
+Four things the suite covers that a browser cannot, because the driven Chrome tab here is
 always hidden and so never paints or lays out: the widget start-up gate
 (`test_mount_queue.py`), the captions rendered from bundle provenance
-(`test_web_contract.py`), and the error widgets' layout at several widths and pixel ratios
-(`test_error_widgets.py`).
+(`test_web_contract.py`), the error widgets' layout at several widths and pixel ratios
+(`test_error_widgets.py`), and the contents card's active-section mark
+(`test_toc_spy.py`) — that tab scrolls without ever delivering a `scroll` event, which is
+exactly the signal the mark is built on.
 
 ## The handoff
 

@@ -19,11 +19,14 @@ They read in order, and the topbar lists all five:
    phase shifters. Prose and one figure only; the interactive correspondence widget was removed
    because the table already made its argument. It hands off to `/tolerance` on the one thing
    that separates the two machines: how they fail.
-4. **`tolerance.html`** — the fabrication error budget, as **one section per error source**.
-   Each carries a purpose-built widget showing what that error physically does, its measured
-   tolerance curve, and the one number that matters. Then the ranking: five sources are
-   comfortable, crosstalk fails by 4×, and geometry is not modelled at all. **Closes on the same
-   treatment applied to the chip**, which fails a different way — ten times tighter on delays
+4. **`tolerance.html`** — the fabrication error budget, as **one section per error source**,
+   grouped into two families: **Fabrication**, how precisely each part has to be made, and
+   **Setup**, where the parts have to sit once they are. Each source carries a purpose-built
+   widget showing what that error physically does, its measured tolerance curve, and the one
+   number that matters. Then the ranking: five sources are comfortable, crosstalk fails by 4×,
+   and the whole Setup half is **not measured at all** — it holds one section, badged *Planned*,
+   which is the slot issue #6 fills. **Closes on the same treatment applied to the interferometer
+   chip**, which fails a different way — ten times tighter on delays
    because 72 columns of interferometers in series carry each other's errors forward, plus a
    constraint the stack cannot have at all (couplers that split unevenly, on the slider), and a
    quarter of one mesh that needs no fabrication tolerance whatever. That section sits here and
@@ -37,6 +40,56 @@ They read in order, and the topbar lists all five:
 Plus **`_artifact_body.html`** — a body-only variant of the front page for publishing as a
 claude.ai Artifact (that host supplies its own `<head>`/`<body>`, and needs absolute links since
 it has no sibling files). Gitignored; not part of the deployed site.
+
+## Finding your way down a page
+
+Every page carries an **in-page contents card** under its hero, and above 1500 px the same list
+pins itself in the right margin as a rail with the section you are reading marked. It is one
+element in two presentations, not two implementations: below the breakpoint the rail rules
+simply do not apply, and the card stays where it is in the flow. 1500 px is where a 176 px rail
+plus its gap clears the 1120 px content column on both sides; anything narrower would mean
+pushing the prose off centre, which costs more than the rail is worth.
+
+**The card is generated from the markup, never authored beside it** (`section_index`, `toc` in
+`apps/build_site.py`) — the same bargain `PAGES` makes for the topbar. Every section heading sits
+inside a `.phase-head` preceded by its own `<p class="eyebrow">`, so one scan finds them all,
+gives each an id from its text, and returns the list. **Adding a section to a page adds it to
+that page's index, with nothing to remember.** Two conventions feed it:
+
+- The **number** comes from an eyebrow reading `Source N of M`, so the card cannot disagree with
+  the prose about which source is which.
+- The **label** is the heading text up to its first colon (`Crosstalk: pixels will not stay out
+  of each other` → *Crosstalk*), because section headings are written as `Topic: gloss` wherever
+  there is a topic to name. Headings that are whole sentences carry an explicit `data-toc`, which
+  is stripped before the page is written and so costs nothing in the built file.
+- **Nesting follows the outline**, not sibling order. `/tolerance` groups its sources into
+  families with a `<h2 class="band-h">` and demotes the sources themselves to `<h3>`, styled
+  identically. The closing chip comparison stays an `<h2>` and so is *not* indented under a
+  family — which is correct, since it is a comparison rather than a seventh error source.
+
+**The active mark is `aria-current="location"`, never `"page"`.** `tests/test_site_links.py`
+asserts exactly one `aria-current="page"` anchor per page and that it is the topbar's own entry;
+`location` is both the right ARIA value for an in-page index and what keeps that assertion
+meaningful.
+
+**It is driven by a throttled `scroll` listener, not an `IntersectionObserver`, and that is
+deliberate.** "Which section am I reading" is a question about every heading at once, and an
+observer answers only about the one that crossed — worse, it reports *nothing at all* when a
+click on the card jumps the page straight over the crossing, which is the commonest way the card
+is used. The reveal observer cannot be reused either: it unobserves on first sight. The first
+version of this was observer-based, looked correct in a screenshot, and never updated.
+
+That failure is invisible to the browser here: the driven Chrome tab is always hidden, and while
+the page really does scroll (`window.scrollY` changes) **no `scroll` event is ever delivered and
+no `IntersectionObserver` callback fires** — measured on this page, not assumed. So the mark is
+checked under Node against the *built* page, with scroll position driven by hand:
+`tests/toc_spy_runner.js` + `tests/test_toc_spy.py`. `tests/test_site_toc.py` covers the rest —
+every fragment link resolving inside its own page, id uniqueness, and the grouping.
+
+Anchor jumps clear the sticky topbar through `scroll-margin-top: 78px` on any heading carrying an
+id. On `/tolerance` a jump deep into the page can land on a widget still showing *Warming up…*:
+the error widgets are deferred until the reader nears them, and a jump outruns that by a frame or
+two. It resolves itself.
 
 > `classifier.html` **was deleted** in the 2026-08-10 redesign. Its reader-facing half became the
 > front page and its methodology moved to `physics.html`. `tests/test_site_links.py` fails if

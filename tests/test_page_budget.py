@@ -32,7 +32,14 @@ KB = 1024
 #: headroom over what each page actually weighs.
 BUDGET = {
     "index.html": 430,        # the live classifier (8-bit) + the 3D stage + two plates
-    "physics.html": 70,       # prose + the diffraction explorer; the cheap one
+    # Raised from 70 when the in-page contents card landed. The card's CSS lives in
+    # the one shared stylesheet, so every page pays for it whether or not it has
+    # enough sections to need one -- and /physics, with three, is the page that
+    # benefits least while paying the same 3 KB. At 70 it had 2.6 KB left, which is
+    # a tripwire on the next paragraph rather than a guard on the payload. The
+    # site-wide TOTAL_BUDGET_KB is the guard that actually catches bloat, and it is
+    # unchanged with 60 KB spare.
+    "physics.html": 80,       # prose + the diffraction explorer; the cheap one
     "chip.html": 150,         # the mesh topology plate; the analogy widget is gone
     # Raised from 200 when the chip's half of the error budget landed here rather
     # than on /chip -- in reading order the comparison only works once the stack's

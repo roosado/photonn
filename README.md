@@ -64,6 +64,8 @@ it should be claiming. Each row links to where that work is written up in full.
 | **17 Aug** | **The other half of Phase 4.** The budget stops being about devices only and measures where the parts *sit*: plate registration at **0.8 µm** is now the tightest number in the study, a bound quoted for three phases turns out not to be a tolerance, and three errors that each pass alone **fail together**. | [`tolerance_d2nn.md`](docs/tolerance_d2nn.md#geometry-where-the-parts-sit) |
 | **17 Aug** | Every page gains an **in-page contents card**, becoming a margin rail on wide screens, and `/tolerance` splits its error sources into two families: how precisely each part is made, and where the parts sit. The second is empty and says so. | [`site/README.md`](site/README.md) |
 | **17 Aug** | The detector layout **re-scored against the masks that ship**, on data that is neither trained on nor the frozen test set. The shipped boxes still win, and the 40 % of light that misses them is still not headroom — but depth turns out to make the readout almost indifferent to box size. | [`phase2_dnn.md`](docs/phase2_dnn.md#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17) |
+| **19 Aug** | The front page's amplitude/phase paragraph becomes a **widget**: two waves, one slider, and a detector reading that goes to zero when they are held half a wavelength apart. Drawn from the closed form it illustrates, and held to it to 1e-12. | [`site/README.md`](site/README.md) |
+| **19 Aug** | The front page stops promising a **glass specification** and starts promising the failure modes: what limits these machines, which flaws break them, and **where light could actually pay** — focal-plane sensing, cytometry, RF front ends, orbit — with the GPU comparison left exactly as unflattering as it was. The "two families of machine" claim is retired. | [`site/README.md`](site/README.md) |
 
 **Where things are written down.** [`docs/`](docs/README.md) is the reference — one file per
 question, indexed. [`site/README.md`](site/README.md) covers the generated pages and how the
@@ -93,16 +95,18 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`308 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`329 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
-`test_mount_queue.py` — require Node on `PATH` and skip cleanly if it is absent.
+`test_interference_widget.py`, `test_mount_queue.py` — require Node on `PATH` and skip cleanly
+if it is absent.
 
-Four things the suite covers that a browser cannot, because the driven Chrome tab here is
-always hidden and so never paints or lays out: the widget start-up gate
+Five things the suite covers that a browser cannot, because the driven Chrome tab here is
+always hidden and so delivers no observer callbacks: the widget start-up gate
 (`test_mount_queue.py`), the captions rendered from bundle provenance
 (`test_web_contract.py`), the error widgets' layout at several widths and pixel ratios
-(`test_error_widgets.py`), and the contents card's active-section mark
+(`test_error_widgets.py`), the interference widget's drawing against the closed form it
+illustrates (`test_interference_widget.py`), and the contents card's active-section mark
 (`test_toc_spy.py`) — that tab scrolls without ever delivering a `scroll` event, which is
 exactly the signal the mark is built on.
 

@@ -292,11 +292,10 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     <div class="underbar"></div>
     <p class="standfirst">A handwritten digit is written into a beam of light. The beam crosses
     five plates of glass, each with a pattern etched into its surface, and the answer is simply
-    <b>where the light lands</b>. Nothing in that sentence is electronic. The etched patterns are
-    what this network learned: they hold everything an ordinary neural network would keep as
-    numbers in memory. It runs below, in your browser. Then this site asks the question that
-    decides whether such a thing could ever be built: <b>how precisely would the glass have to be
-    made?</b></p>
+    <b>where the light lands</b>. Nothing in that sentence is electronic: the etched patterns hold
+    everything an ordinary neural network would keep as numbers in memory. It runs below, in your
+    browser. The rest of this site asks what a machine like this can and cannot do, and
+    <b>which of the flaws in a real one takes the answer away first</b>.</p>
     <div class="stat-strip">
       <div class="stat"><span class="v">0.799</span><span class="l">of handwritten digits read correctly by the optics alone. Guessing scores 0.10</span></div>
       <div class="stat"><span class="v">5<small> plates</small></span><span class="l">of patterned glass are the entire trained network</span></div>
@@ -333,20 +332,23 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <strong>amplitude</strong>, is what makes light bright or dim. Where it sits in its
       up-and-down cycle, its <strong>phase</strong>, is what decides whether two waves meeting
       each other reinforce or cancel. Your eye sees the first and is completely blind to the
-      second. This machine runs on both.</p>
+      second. This machine runs on both: <strong>hold one wave back by half a wavelength and
+      two beams of light add up to darkness</strong>.</p>
+    </div>
+    <div class="pe-host reveal"><div id="interfere"></div></div>
+    <div class="prose col">
       <p>So the <strong>entrance field</strong> is your digit written into the brightness
       <em>and</em> the phase of the beam. The five small frames are the brightness arriving at each
       plate. Each plate is a <strong>phase mask</strong>, a surface that holds the light back by a
-      different amount at every point across it, and that is the name this site uses for them from
-      here on. Watch the digit dissolve into a fine scramble that means nothing to the eye and
-      everything to the detectors. The <strong>detector plane</strong> is the brightness at the far
-      end, with the ten class regions drawn on it, and the answer is simply <strong>whichever box
-      collects the most light</strong>. That is the entire readout: no electronic layer, no learned
-      classifier on top, just ten sums.</p>
-      <p>The 3D view is the same run drawn as a physical object: seven parallel planes strung along
-      the path of the beam, each carrying the light actually computed on it, with the light
-      <em>between</em> them drawn as haze. That haze is not a shading effect. It is the real light
-      at those in-between depths, worked out the same way as everything else, and
+      different amount at every point across it, and that is the name this site uses from here on.
+      Watch the digit dissolve into a fine scramble that means nothing to the eye and everything to
+      the detectors. The <strong>detector plane</strong> is the brightness at the far end with the
+      ten class regions drawn on it, and the answer is <strong>whichever box collects the most
+      light</strong>: no electronic layer, no learned classifier on top, just ten sums.</p>
+      <p>The 3D view is the same run drawn as a physical object: seven parallel planes along the
+      path of the beam, each carrying the light actually computed on it, with the light
+      <em>between</em> them drawn as haze. The haze is not shading. It is the real light at those
+      in-between depths, worked out the same way as everything else, and
       <a class="link" href="physics.html">the physics page shows why that is exact rather than
       an interpolation &rarr;</a> Toggle <em>Mask phase</em> to swap the arriving light for the
       etched surface that acts on it.</p>
@@ -383,20 +385,34 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <p>How little light does it need? The error budget measures exactly that. Accuracy holds flat
       from 1&nbsp;mW all the way down to <strong>1&nbsp;pW over a 1&nbsp;ms exposure</strong>, which
       is about <strong>one femtojoule of light per classification</strong>, and only below that does
-      it fall off a cliff.</p>
-      <p>Now the honest part, because this is the number everyone gets wrong. That femtojoule is the
-      energy <em>in the light</em>, not the energy to run the machine. The laser, the modulator that
-      writes the digit into the beam, the ten detectors and their converters all cost more, and
-      <strong>this project models none of them.</strong> The design&rsquo;s nominal operating point is
-      1&nbsp;mW for 1&nbsp;ms, which is a microjoule per classification. That is <em>worse</em> than
-      a GPU, and it is stated here so that nobody, including us, quotes this page as a win. The
-      narrow claim is the only one the evidence supports: <strong>the part the optics does is nearly
-      free, and everything around it is the engineering problem.</strong> That is roughly where the
-      field itself sits.<sup class="r">4</sup></p>
-      <p>Two families of machine chase this. One sends a beam through open air and trained plates,
-      which is what runs above.<sup class="r">2</sup> The other guides light along channels etched
-      into a silicon chip and mixes it in small steps.<sup class="r">3</sup> This project builds
-      both, and <a class="link" href="chip.html">they turn out to be the same machine
+      it fall off a cliff.
+      <a class="link" href="tolerance.html#detector-noise">Starve it further and watch the
+      answer come apart, photon by photon &rarr;</a></p>
+      <p>That femtojoule is the energy <em>in the light</em>, not the energy to run the machine. The
+      laser, the modulator that writes the digit into the beam, the ten detectors and their
+      converters all cost more, and <strong>this project models none of them.</strong> At the
+      design&rsquo;s nominal operating point, 1&nbsp;mW for 1&nbsp;ms, a classification costs a
+      microjoule, which a GPU beats comfortably. The claim the evidence supports is the narrow one:
+      <strong>the part the optics does is nearly free, and everything around it is the engineering
+      problem.</strong> That is roughly where the field itself sits.<sup class="r">4</sup></p>
+      <p>So the useful question is not whether light replaces a processor, but where free
+      connections and an answer in 60&nbsp;ps are worth the hardware around them. The candidates
+      share a shape: <strong>the signal is already light</strong>, so nobody pays extra to put it
+      there. Classify at a camera&rsquo;s focal plane, before a pixel is digitised, and the optics
+      does the first layer for nothing.<sup class="r">5</sup> Sort cells in a microscope faster than
+      the readout can report them. Sit in front of a radar or radio receiver, where the digitiser
+      rather than the arithmetic is the bottleneck.<sup class="r">6</sup> Go to orbit, where a plate
+      of glass holds no charge for a cosmic ray to upset, which is part of why silicon photonics is
+      being qualified for space at all.<sup class="r">7</sup> Every one of those still needs the
+      hardware built to a precision nobody has quoted, which is what the rest of this site
+      measures.</p>
+      <p>The stack above is the version you can watch: the whole trained operator is drawn on the
+      glass, and the answer is a place on a screen.<sup class="r">2</sup> Most hardware actually
+      being built is not free-space at all. It guides light along channels etched into silicon and
+      mixes it in small steps,<sup class="r">3</sup> and there are further schemes again. What they
+      share is the part that matters here, a linear transformation performed by light itself, so
+      what the plates demonstrate carries over. This project builds the chip too, and
+      <a class="link" href="chip.html">they turn out to be the same machine
       &rarr;</a></p>
       <ol class="refs">
         <li><b>1</b>M. Horowitz, &ldquo;Computing&rsquo;s energy problem (and what we can do about
@@ -411,6 +427,16 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
         <li><b>4</b>G. Wetzstein <em>et al.</em>, &ldquo;Inference in artificial intelligence with deep
         optics and photonics,&rdquo; <em>Nature</em> <b>588</b>, 39 (2020).
         <a href="https://www.nature.com/articles/s41586-020-2973-6">doi:10.1038/s41586-020-2973-6</a></li>
+        <li><b>5</b>J. Chang <em>et al.</em>, &ldquo;Hybrid optical-electronic convolutional neural
+        networks with optimized diffractive optics for image classification,&rdquo;
+        <em>Scientific Reports</em> <b>8</b>, 12324 (2018).
+        <a href="https://www.nature.com/articles/s41598-018-30619-y">doi:10.1038/s41598-018-30619-y</a></li>
+        <li><b>6</b>D. Marpaung, J. Yao and J. Capmany, &ldquo;Integrated microwave photonics,&rdquo;
+        <em>Nature Photonics</em> <b>13</b>, 80 (2019).
+        <a href="https://www.nature.com/articles/s41566-018-0310-5">doi:10.1038/s41566-018-0310-5</a></li>
+        <li><b>7</b>D. Mao <em>et al.</em>, &ldquo;Space-qualifying silicon photonic modulators and
+        circuits,&rdquo; <em>Science Advances</em> <b>10</b>, eadi9171 (2024).
+        <a href="https://www.science.org/doi/10.1126/sciadv.adi9171">doi:10.1126/sciadv.adi9171</a></li>
       </ol>
     </div>
   </section>
@@ -467,14 +493,14 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <p>The task is <strong>MNIST</strong>, a collection of 70,000 handwritten digits that
       machine-learning work has used as a first test for decades. It is the smallest honest version
       of the job: a real problem with a real error rate, it fits across the beam without contrivance,
-      and, the part that matters here, it is <strong>easy enough that the optics stays the
-      interesting part</strong>. The moment a task needs serious electronics bolted on the end to
-      work at all, the optical network stops being the thing under study.</p>
+      and it is <strong>easy enough that the optics stays the interesting part</strong>. The moment a
+      task needs serious electronics bolted on the end to work at all, the optical network stops
+      being the thing under study.</p>
       <p>So the same ten digits are reused at every stage: the stack of plates, the silicon chip, and
-      every one of the error sweeps that follow. One task, scored the same way on the same fixed
-      set of 2,000 images the models never train on, is what makes those results <strong>comparable
-      to each other</strong>, and that is worth far more here than a higher score on a harder task
-      would be. The machine-learning content is deliberately minimal and stays that way.</p>
+      every one of the error sweeps that follow. One task, scored the same way on the same fixed set
+      of 2,000 images the models never train on, is what makes those results <strong>comparable to
+      each other</strong>, which is worth more here than a higher score on a harder task. The
+      machine-learning content is deliberately minimal and stays that way.</p>
     </div>
   </section>
 
@@ -524,17 +550,19 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <p>Everything above ran in simulation, and simulation is where optical neural networks look
       easy. The masks are exact. The plates sit at exactly 3&nbsp;mm. Every pixel takes exactly the
       phase it was trained to take, and its neighbour&rsquo;s phase does not leak into it.</p>
-      <p>A <strong>fabricated</strong> one, meaning one actually cut into real glass, has none of
-      that. Etch depths vary. The device that writes the delays can
-      only set them so finely, and its electric field spills sideways so that each pixel smears into
-      the next. The laser drifts off its colour. Light is lost at every surface.
-      <strong>None of those are bugs to be fixed. They are the specification.</strong> The only
-      question that decides whether this design could be built is how much of each it survives, and
-      that is a number, not an opinion.</p>
-      <p>Getting that number is what the rest of this project is. The trained delays are handed over
-      to a second, independent model of the machine <em>as it would really be built</em>, which then
-      breaks the network on purpose, one imperfection at a time. <strong>One of the six imperfections
-      already fails against hardware you can buy today</strong>, and
+      <p>A real one has none of that, and it goes wrong in two distinct ways. Things wrong
+      <strong>inside a part</strong>: etch depths vary, the device that writes the delays can only
+      set them so finely, its field spills sideways so each pixel smears into the next, the laser
+      drifts off its colour, and light is lost at every surface. And things wrong about
+      <strong>where the parts sit</strong>: a plate mounted a micron off centre, a gap set to
+      3.1&nbsp;mm rather than 3.0. The first kind is fixed the moment the part is made; the second
+      is decided at assembly and can sometimes be calibrated back out.
+      <strong>Neither kind is a bug to be fixed. They are the specification.</strong></p>
+      <p>How much of each the network survives is a number, not an opinion, and getting it is what
+      the rest of this project is. The trained delays are handed to a second, independent model of
+      the machine <em>as it would really be built</em>, which breaks the network on purpose: ten
+      imperfections, one at a time, then several together. <strong>One of them already fails against
+      hardware you can buy today</strong>, and
       <a class="link" href="tolerance.html">it is not the one you would guess &rarr;</a></p>
     </div>
   </section>
@@ -776,6 +804,404 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   addEventListener('hashchange',mark);
   mark();
 })();
+</script>
+<script>
+/*
+ * interfere.js -- two waves, one slider, on the front page.
+ *
+ * The section "Every panel is real light" opens on the sentence the rest of the
+ * site rests on: amplitude is what makes light bright, phase is what decides
+ * whether two waves reinforce or cancel, and your eye sees the first and is
+ * blind to the second. Everything downstream depends on the reader believing
+ * that -- the plates only compute because delays make light add in one detector
+ * box and cancel in the other nine, and the whole tolerance study is about how
+ * far a delay may slip before the cancelling stops working. Then the page shows
+ * a 128^2 field where the effect is present everywhere and visible nowhere.
+ *
+ * So: two equal waves, a slider that holds the second one back, and a swatch
+ * showing what a detector would read. That is the entire widget. It is not a
+ * second diffraction explorer -- there is no amplitude control, no wavelength,
+ * no second frequency, and no animation.
+ *
+ * NO requestAnimationFrame. A travelling-wave version would read well and could
+ * not be verified here: the driven Chrome tab is always hidden and never fires
+ * animation frames, which has already cost this project one silently dead
+ * feature. A still frame plus a slider says the same thing and is checkable
+ * under Node.
+ *
+ * The physics is exact and has a closed form, which is what makes this the
+ * cheapest honest widget on the site:
+ *
+ *     cos(kx) + cos(kx - d)  =  2*cos(d/2) * cos(kx - d/2)
+ *
+ * `samples()` computes the left side pointwise and the drawing consumes it;
+ * `envelope()` is the right side's amplitude. tests/test_interference_widget.py
+ * checks one against the other, so the picture cannot drift from the identity
+ * it is illustrating.
+ *
+ * Usage:  window.PhotonnInterfere.mount(el)
+ */
+(function () {
+  "use strict";
+
+  const STYLE_ID = "if-style";
+  const MAX_DPR = 2;
+  function dpr() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
+  const CSS = `
+.if-root{--if-fg:#1b1f24;--if-muted:#5a6472;--if-panel:#f4f6f9;--if-border:#d7dde5;
+  --if-accent:#3b6ea5;
+  color:var(--if-fg);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:var(--if-panel);border:1px solid var(--if-border);border-radius:10px;padding:13px 15px;}
+@media (prefers-color-scheme:dark){.if-root{--if-fg:#e6eaf0;--if-muted:#9aa6b5;
+  --if-panel:#1c2128;--if-border:#30363d;--if-accent:#6ea8e0;}}
+:root[data-theme="dark"] .if-root{--if-fg:#e6eaf0;--if-muted:#9aa6b5;--if-panel:#1c2128;
+  --if-border:#30363d;--if-accent:#6ea8e0;}
+:root[data-theme="light"] .if-root{--if-fg:#1b1f24;--if-muted:#5a6472;--if-panel:#f4f6f9;
+  --if-border:#d7dde5;--if-accent:#3b6ea5;}
+.if-row{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:11px;}
+.if-row label{font-size:11px;font-weight:600;color:var(--if-muted);text-transform:uppercase;
+  letter-spacing:.04em;display:block;margin-bottom:3px;}
+.if-row input[type=range]{width:240px;max-width:100%;accent-color:var(--if-accent);display:block;}
+.if-val{font-variant-numeric:tabular-nums;font-weight:600;font-size:14px;white-space:nowrap;}
+/* The meter is the point of the widget, not decoration: it is the only thing on
+   the page that shows phase turning into something the eye can see. */
+.if-meter{display:flex;gap:9px;align-items:center;margin-left:auto;}
+.if-swatch{width:36px;height:36px;border-radius:6px;border:1px solid var(--if-border);
+  display:block;flex:none;background:#000;}
+.if-read{font-size:11px;color:var(--if-muted);text-transform:uppercase;letter-spacing:.04em;
+  line-height:1.35;}
+.if-read b{display:block;font-size:15px;color:var(--if-fg);text-transform:none;
+  letter-spacing:0;font-variant-numeric:tabular-nums;}
+/* One wide plot, capped so it does not sprawl into a letterbox on a desktop.
+   Its canvas measures this pane before drawing -- see fitCanvas. */
+.if-plot{max-width:640px;margin:0 auto;}
+.if-plot canvas{width:100%;height:auto;display:block;border-radius:6px;background:#0b0d10;}
+.if-cap{font-size:11px;color:var(--if-muted);margin:5px 0 0;text-align:center;line-height:1.35;}
+.if-note{font-size:12px;color:var(--if-muted);margin:11px 0 0;line-height:1.5;}
+.if-note b{color:var(--if-fg);}
+@media (max-width:560px){
+  .if-row{gap:10px;margin-bottom:9px;}
+  .if-row input[type=range]{width:min(240px,58vw);}
+  .if-meter{margin-left:0;}
+  .if-cap{font-size:10px;line-height:1.3;}
+}
+`;
+
+  function injectStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const s = document.createElement("style");
+    s.id = STYLE_ID;
+    s.textContent = CSS;
+    document.head.appendChild(s);
+  }
+
+  function el(tag, cls, html) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  // ------------------------------------------------------------------ physics
+  //: wavelengths drawn across the pane. Three is enough to read the shift as a
+  //: shift rather than as a different wave, and few enough to stay legible on a
+  //: phone at ~280 px.
+  const CYCLES = 3;
+
+  /** Amplitude of the sum, in units of one wave: 2 in step, 0 exactly opposed. */
+  function envelope(dphi) { return 2 * Math.cos(dphi / 2); }
+
+  /**
+   * Brightness of the sum as a fraction of the most the pair can reach.
+   *
+   * Brightness is amplitude squared -- the one non-linear step in the whole
+   * machine (see the front page's |E|^2). Normalised to the in-step case so the
+   * readout is 1.00 at 0, exactly 0.50 at a quarter wave, and 0.00 at a half.
+   */
+  function brightness(dphi) {
+    const e = envelope(dphi) / 2;
+    return e * e;
+  }
+
+  /**
+   * The two waves and their sum, sampled across the pane.
+   *
+   * The second wave is *held back* by `dphi` (cos(kx - d), crest later), which is
+   * what a phase mask physically does to the light passing through it, so the
+   * slider reads as a delay rather than as an abstract offset.
+   */
+  function samples(dphi, n) {
+    const out = {
+      t: new Float64Array(n),
+      a: new Float64Array(n),
+      b: new Float64Array(n),
+      sum: new Float64Array(n),
+    };
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) : 0;
+      const kx = t * CYCLES * 2 * Math.PI;
+      out.t[i] = t;
+      out.a[i] = Math.cos(kx);
+      out.b[i] = Math.cos(kx - dphi);
+      out.sum[i] = out.a[i] + out.b[i];
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ drawing
+  // The plot stays dark in both themes, as the tolerance page's plots do: the
+  // canvas cannot read a CSS variable without getComputedStyle, and one set of
+  // stroke colours chosen for one background is worth more than two half-tuned
+  // ones. Only the card around it follows the theme.
+  const PLOT_BG = "#0b0d10";
+  const AXIS = "#39414f";
+  const MUTED = "#9aa6b5";
+  const WAVE_A = "#6ea8e0";
+  const WAVE_B = "#e0a25f";
+  const SUM = "#f2f5f9";
+
+  /**
+   * Size the canvas to the width it is *actually* laid out at, so one drawing
+   * unit is one CSS pixel in both directions.
+   *
+   * A fixed drawing space scaled by width:100% stretches x without stretching y,
+   * which flattens the plot on a desktop and stretches it on a phone, labels and
+   * all. errors.js shipped exactly that bug in its two plot widgets.
+   *
+   * setTransform is right here: resizing a canvas resets its context, so this
+   * establishes the dpr scale rather than replacing one already in place.
+   */
+  function fitCanvas(c, heightFor) {
+    const r = dpr();
+    const W = Math.max(240, Math.round(c.getBoundingClientRect().width || 420));
+    const H = Math.round(heightFor(W));
+    c.width = Math.round(W * r);
+    c.height = Math.round(H * r);
+    c.style.height = H + "px";
+    const ctx = c.getContext("2d");
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+    return { ctx, W, H };
+  }
+
+  /**
+   * Re-run `fn` when `target` changes width, and only then.
+   *
+   * Guarded on the measured width because `fn` sets the canvas height, which is
+   * itself a resize: an unguarded observer would answer its own callback for
+   * ever.
+   */
+  function onWidthChange(target, fn) {
+    let last = -1;
+    const check = function () {
+      const w = Math.round(target.getBoundingClientRect().width);
+      if (w === last) return;
+      last = w;
+      fn();
+    };
+    if (typeof window.ResizeObserver === "function") {
+      new window.ResizeObserver(check).observe(target);
+    } else {
+      window.addEventListener("resize", check);
+    }
+  }
+
+  function curve(ctx, s, key, x0, span, mid, unit, colour, width) {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    const v = s[key];
+    for (let i = 0; i < v.length; i++) {
+      const x = x0 + s.t[i] * span;
+      const y = mid - v[i] * unit;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  function draw(c, dphi) {
+    const { ctx, W, H } = fitCanvas(c, (w) => Math.max(152, Math.min(230, w * 0.42)));
+    const padL = 12, padR = 12, padT = 30, padB = 20;
+    const span = W - padL - padR;
+    const box = H - padT - padB;
+    const mid = padT + box / 2;
+    // +-2.3 of headroom, so the in-step sum at +-2 clears the frame.
+    const unit = box / 2 / 2.3;
+    const s = samples(dphi, Math.max(96, Math.round(span)));
+
+    ctx.fillStyle = PLOT_BG;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = AXIS;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, mid);
+    ctx.lineTo(padL + span, mid);
+    ctx.stroke();
+
+    curve(ctx, s, "a", padL, span, mid, unit, WAVE_A, 1.3);
+    curve(ctx, s, "b", padL, span, mid, unit, WAVE_B, 1.3);
+    curve(ctx, s, "sum", padL, span, mid, unit, SUM, 2.4);
+
+    // The delay, drawn where it happens: wave 1 crests at x = 0, wave 2 crests
+    // dphi later. The bracket between the two crests is the slider's value made
+    // physical, which is the whole reason the second wave is written cos(kx - d).
+    const shift = (dphi / (CYCLES * 2 * Math.PI)) * span;
+    if (shift > 3) {
+      const y = 15;
+      ctx.strokeStyle = MUTED;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(padL, y + 3); ctx.lineTo(padL, mid - unit);
+      ctx.moveTo(padL + shift, y + 3); ctx.lineTo(padL + shift, mid - unit);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(padL, y); ctx.lineTo(padL + shift, y);
+      ctx.stroke();
+      if (shift > 46) {
+        ctx.fillStyle = MUTED;
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("delay", padL + shift / 2, y - 4);
+      }
+    }
+
+    // Legend, in the canvas rather than the DOM: these three colours are chosen
+    // against a dark plot and would not survive on a light card.
+    ctx.font = "11px ui-monospace, monospace";
+    ctx.textAlign = "left";
+    const keys = [["wave 1", WAVE_A], ["wave 2", WAVE_B], ["their sum", SUM]];
+    let kx = padL;
+    for (let i = 0; i < keys.length; i++) {
+      ctx.fillStyle = keys[i][1];
+      ctx.fillRect(kx, H - 12, 9, 3);
+      ctx.fillText(keys[i][0], kx + 13, H - 6);
+      kx += 13 + ctx.measureText(keys[i][0]).width + 14;
+    }
+  }
+
+  // -------------------------------------------------------------------- mount
+  function fmt(x, n) { return x.toFixed(n); }
+
+  /**
+   * sRGB level for a brightness fraction.
+   *
+   * The swatch is a light meter, so it has to *emit* the fraction it prints. A
+   * display is gamma-encoded, so a pixel value of 128 emits about a fifth of full
+   * light, not half -- writing 255*b would make every reading look far darker
+   * than the number beside it.
+   */
+  function swatchColour(b) {
+    const v = Math.round(255 * Math.pow(Math.max(0, Math.min(1, b)), 1 / 2.2));
+    return "rgb(" + v + "," + v + "," + v + ")";
+  }
+
+  function mount(container, opts) {
+    opts = opts || {};
+    injectStyle();
+    const root = el("div", "if-root");
+    container.innerHTML = "";
+    container.appendChild(root);
+
+    const row = el("div", "if-row");
+    root.appendChild(row);
+
+    const ctl = el("div");
+    ctl.appendChild(el("label", null, "Hold the second wave back"));
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = String(2 * Math.PI);
+    input.step = "0.01";
+    // Opens off zero on purpose: at zero the two waves lie on top of each other
+    // and the picture reads as one wave, which is the opposite of the point.
+    input.value = String(opts.dphi != null ? opts.dphi : 2);
+    input.setAttribute("aria-label", "Delay of the second wave, in radians");
+    ctl.appendChild(input);
+    row.appendChild(ctl);
+
+    const val = el("span", "if-val", "");
+    const valWrap = el("div");
+    valWrap.appendChild(val);
+    row.appendChild(valWrap);
+
+    const meter = el("div", "if-meter");
+    const swatch = el("span", "if-swatch");
+    const read = el("span", "if-read", "");
+    meter.appendChild(swatch);
+    meter.appendChild(read);
+    row.appendChild(meter);
+
+    const plot = el("div", "if-plot");
+    const canvas = el("canvas");
+    plot.appendChild(canvas);
+    plot.appendChild(el("p", "if-cap",
+      "Two waves of equal brightness, and their sum. Wave 1 crests at the left edge; "
+      + "wave 2 crests wherever the slider puts it."));
+    root.appendChild(plot);
+
+    const note = el("p", "if-note");
+    root.appendChild(note);
+
+    function update() {
+      const dphi = +input.value;
+      const amp = Math.abs(envelope(dphi));
+      const b = brightness(dphi);
+
+      draw(canvas, dphi);
+
+      val.textContent = fmt(dphi / (2 * Math.PI), 2) + " λ · "
+        + fmt(dphi, 2) + " rad";
+      swatch.style.background = swatchColour(b);
+      read.innerHTML = "what a detector reads<b>" + fmt(b, 2) + "</b>";
+
+      let head;
+      if (b > 0.98) {
+        head = "<b>In step.</b> Crest meets crest, the waves add, and the sum is twice as "
+          + "tall as either one: <b>four times</b> the brightness of a single wave.";
+      } else if (b < 0.02) {
+        head = "<b>Exactly out of step</b>, half a wavelength apart. Every crest meets a "
+          + "trough, the sum is flat, and <b>the light is gone</b>. Nothing absorbed it; "
+          + "the two waves simply cancel.";
+      } else {
+        head = "Partly out of step. The sum stands <b>" + fmt(amp, 2) + "×</b> one "
+          + "wave, so a detector here collects <b>" + fmt(b, 2) + "</b> of the light it "
+          + "would collect with the two in step.";
+      }
+      note.innerHTML = head + " Neither wave changed brightness, only <em>when</em> the "
+        + "second one arrives, and your eye cannot see that difference until the two are "
+        + "added together. Setting that delay is the only thing a phase mask does, at "
+        + "16,384 points at once, five plates deep.";
+    }
+
+    input.addEventListener("input", update);
+    onWidthChange(canvas, update);
+    update();
+  }
+
+  // envelope/brightness/samples are exported because the drawing is only worth
+  // trusting if something checks it against the identity it illustrates:
+  // tests/test_interference_widget.py holds samples() to 2cos(d/2)cos(kx-d/2).
+  const api = { mount, envelope, brightness, samples, CYCLES };
+  if (typeof window !== "undefined") window.PhotonnInterfere = api;
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+})();
+
+</script>
+<script>
+  (function () {
+    function boot(el) {
+      window.PhotonnInterfere.mount(el);
+    }
+    if (window.PhotonnMount) window.PhotonnMount("interfere", boot);
+    else if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', function () { boot(document.getElementById("interfere")); });
+    } else {
+      boot(document.getElementById("interfere"));
+    }
+  })();
 </script>
 <script>
 /*

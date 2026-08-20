@@ -12,6 +12,18 @@ They read in order, and the topbar lists all five:
    phase mask actually computes, why anyone would build a computer out of light, and why the
    network is wrong about one digit in four — with the **confusion matrix of the ideal model**
    showing which digits it actually trades (5→3, 8→3, 9↔4).
+   **The amplitude/phase paragraph is now operable** (2026-08-19): `interfere.js` puts two waves
+   and a slider under it, so a reader can hold one back half a wavelength and watch two beams of
+   light add up to darkness before being asked to believe the same thing about 16,384 points at
+   once.
+   **The motivation section argues in three moves** (2026-08-19): the memory-traffic case for
+   optics, then the honest energy accounting where a GPU wins on the same numbers, then the
+   niches where *the signal is already light* and free connections are worth the hardware
+   around them — focal-plane classification, cytometry, RF front ends, orbit, each cited. It
+   no longer claims optical computing comes in exactly two families; the free-space stack is
+   presented as the version a reader can watch, with the chip as the same linear operator
+   built differently. The page's own promise is the failure modes, not a glass specification:
+   **"which of the flaws in a real one takes the answer away first."**
 2. **`physics.html`** — the angular-spectrum propagator, the sampling limit `z_crit` that bounds
    it, the **live diffraction explorer** with a reading guide for its controls, and the proof
    that the whole stack collapses to one linear operator followed by a single `|E|²`.
@@ -89,6 +101,12 @@ checked under Node against the *built* page, with scroll position driven by hand
 `tests/toc_spy_runner.js` + `tests/test_toc_spy.py`. `tests/test_site_toc.py` covers the rest —
 every fragment link resolving inside its own page, id uniqueness, and the grouping.
 
+**A link may also point into a section of another page** (`/index` sends the power-budget
+paragraph to `tolerance.html#detector-noise`). `test_every_internal_link_resolves` splits the
+fragment off and checks it against the target page's ids, because section ids are generated
+from heading text: rewording a heading moves its id, and the browser answers a dead fragment
+by silently landing at the top of the page.
+
 Anchor jumps clear the sticky topbar through `scroll-margin-top: 78px` on any heading carrying an
 id. On `/tolerance` a jump deep into the page can land on a widget still showing *Warming up…*:
 the error widgets are deferred until the reader nears them, and a jump outruns that by a frame or
@@ -161,6 +179,7 @@ scans every committed bundle and fails on any status word.
 
 | File | Page | What it does |
 |---|---|---|
+| `interfere.js` | index | two waves reinforcing and cancelling, on one slider |
 | `d2nn.js` + `d2nn_demo.js` | index | the live classifier |
 | `d2nn_stage.js` | index, optics | the 3D optical stack |
 | `explorer.js` | physics | the diffraction explorer |
@@ -169,6 +188,19 @@ scans every committed bundle and fails on any status word.
 | `scaling.js` | optics | accuracy against mask count |
 | `d2nn_compare.js` | optics | 5 masks vs 56 masks, one digit |
 | `analogy.js` | *(none)* | kept for `apps/analogy_demo.py`; the site no longer mounts it |
+
+`interfere.js` is the smallest of them and the only one whose physics has a **closed form**:
+`cos(kx) + cos(kx − d) = 2cos(d/2)cos(kx − d/2)`. It computes the left side pointwise and draws
+that; `envelope()` is the right side, and it is what the readout and the brightness swatch are
+formatted from. `tests/test_interference_widget.py` holds the two to **1e-12**, so the picture
+cannot drift from the identity its caption states, and asserts the two endpoints by name — in
+step the sum stands at twice one wave, exactly opposed the drawn curve is **flat to 1e-12**, not
+merely dim. Three further constraints are deliberate and tested: it never animates (a
+travelling-wave version could not be verified, since the driven tab fires no animation frames);
+its canvas measures its pane before drawing, one unit per CSS pixel, which is the `errors.js`
+plot bug guarded before it could be repeated; and the swatch is **sRGB-encoded**, so half the
+light renders as a patch that emits half the light rather than the fifth a linear `255*b` would
+give.
 
 `errors.js` is **mechanism only**: it never runs a classifier and computes no accuracy, so
 it cannot contradict the measured curve beside it. Both models it draws are the real thing. The
@@ -204,8 +236,14 @@ shapes with **two layout rules that are load-bearing** (both were broken and fix
 > inside it — including inside a CSS comment — terminates the literal and breaks the whole
 > widget. This has happened once; the Node runner above is what caught it.
 
-Neither rule can be checked in a driven browser — that tab is always hidden, so it never lays
-anything out. `tests/error_widget_runner.js` mounts all seven kinds against a DOM stand-in at
+Neither rule can be checked reliably in a driven browser. That tab is always hidden, and while
+it *does* lay out — `getBoundingClientRect` returns real numbers there, measured 2026-08-19
+against `/index` served over `localhost`, which is the only scheme the extension accepts —
+**it delivers no observer callbacks**: nothing reveals, so the page screenshots as a blank
+field until `.in` is added by hand, and no `ResizeObserver` fires, so a canvas keeps the bitmap
+from whatever width the background tab first laid out at while displaying at another. Both look
+exactly like widget bugs and are not.
+`tests/error_widget_runner.js` mounts all seven kinds against a DOM stand-in at
 300/480/1042 px and device pixel ratios 1 and 2, and `tests/test_error_widgets.py` asserts that
 every canvas's **bitmap aspect equals the aspect it is displayed at**, plus the stylesheet rules
 above. The runner's mini-flexbox **parses its rules out of `errors.js`'s own CSS** rather than

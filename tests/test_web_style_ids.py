@@ -45,7 +45,7 @@ def test_at_least_the_known_widgets_declare_one():
     """Guard the guard: a renamed constant would make this file assert nothing."""
     claims = style_ids()
     owners = {f for files in claims.values() for f in files}
-    for expected in ("d2nn_stage.js", "digit_source.js", "d2nn_compare.js"):
+    for expected in ("d2nn_stage.js", "digit_source.js", "d2nn_compare.js", "interfere.js"):
         assert expected in owners, f"{expected} no longer declares a STYLE_ID"
 
 
@@ -57,7 +57,8 @@ def test_no_two_widgets_share_a_style_id():
     )
 
 
-@pytest.mark.parametrize("widget", ["d2nn_stage.js", "digit_source.js", "d2nn_compare.js"])
+@pytest.mark.parametrize("widget", ["d2nn_stage.js", "digit_source.js", "d2nn_compare.js",
+                                   "interfere.js"])
 def test_the_injected_css_is_namespaced_to_the_id_owner(widget):
     """A widget's rules should live under its own root class.
 

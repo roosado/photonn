@@ -50,11 +50,21 @@ def test_every_internal_link_resolves(page):
     targets = {h for h in HREF.findall(html) if not h.startswith(("http://", "https://", "#", "mailto:"))}
     assert targets, f"{page.file} has no internal links at all; the topbar is missing"
     for target in targets:
-        # "./" is the site root, which is index.html once served.
-        resolved = "index.html" if target == "./" else target
+        # "./" is the site root, which is index.html once served. A link may also
+        # point into a *section* of another page ("tolerance.html#detector-noise"),
+        # so the fragment is split off here and checked below -- a deep link is
+        # exactly the kind that rots silently when a heading is reworded, since
+        # the browser just lands at the top of the page instead.
+        file_part, _, fragment = target.partition("#")
+        resolved = "index.html" if file_part in ("", "./") else file_part
         assert os.path.exists(os.path.join(SITE, resolved)), (
             f"{page.file} links to {target!r}, which is not a file in site/"
         )
+        if fragment:
+            assert f'id="{fragment}"' in page_text(resolved), (
+                f"{page.file} links to {target!r}, but {resolved} has no such id. "
+                "Section ids come from the heading text, so rewording a heading moves them."
+            )
 
 
 @pytest.mark.parametrize("page", PAGES, ids=lambda p: p.key)

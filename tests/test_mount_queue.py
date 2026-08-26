@@ -43,7 +43,20 @@ def test_nothing_runs_before_the_first_paint(out):
 
 
 def test_every_widget_starts_itself_in_document_order(out):
-    """No taps, no buttons, no small-screen fallback -- just sequenced."""
+    """No taps, no buttons, no small-screen fallback -- just sequenced.
+
+    Mounted out of order on purpose, because this used to assert call order and
+    call order is not the guarantee. Every page's inline mount scripts sit
+    together at the foot of the document, so the order they run in is the order
+    the build pasted their tokens -- and on /index those two disagree: the
+    interference widget's token was placed above the classifier's while its
+    container sits below it. The queue reads the order off the DOM, so a token
+    pasted in the wrong place cannot reorder what the reader sees start.
+    """
+    assert out["ordering"]["mountedIn"] == ["c", "a", "b"], (
+        "the scramble is the point of this test; a mount order that already "
+        "matches document order would assert nothing"
+    )
     assert out["ordering"]["final"] == ["a", "b", "c"]
     assert out["ordering"]["pendingClassCleared"], "the 'warming up' class outlived the mount"
 

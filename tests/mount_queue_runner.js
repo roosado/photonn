@@ -35,6 +35,15 @@ function makeEnv(opts) {
       remove(c) { el._all[id].classes.delete(c); },
       contains(c) { return el._all[id].classes.has(c); },
     },
+    // `ids` is the document order, so an index comparison is the whole model.
+    // Returns the two flags the scheduler reads, with a browser's meaning:
+    // 2 = the argument PRECEDES this node, 4 = it FOLLOWS it.
+    compareDocumentPosition(other) {
+      const order = o.ids || [];
+      const here = order.indexOf(id), there = order.indexOf(other.id);
+      if (here < 0 || there < 0 || here === there) return 0;
+      return there < here ? 2 : 4;
+    },
   });
   el._all = {};
   for (const id of o.ids || []) el._all[id] = el(id);
@@ -114,14 +123,17 @@ function load(env) {
 
 const out = {};
 
-// 1. Nothing runs before the first paint; then jobs run one at a time, in order.
+// 1. Nothing runs before the first paint; then jobs run one at a time, in the
+//    order the reader meets them -- which is deliberately not the order they are
+//    mounted in here. A page's inline mount scripts all sit together at the foot
+//    of the document, so their order is whatever the build pasted, and on /index
+//    that already disagrees with where the widgets sit.
 {
   const env = makeEnv({ ids: ["a", "b", "c"] });
   const mount = load(env);
   const order = [];
-  mount("a", () => order.push("a"));
-  mount("b", () => order.push("b"));
-  mount("c", () => order.push("c"));
+  const mountedIn = ["c", "a", "b"];
+  for (const id of mountedIn) mount(id, () => order.push(id));
   env.tick(0);
   const beforePaint = order.slice();
   env.paint();
@@ -129,6 +141,7 @@ const out = {};
   const afterOneDrain = order.slice();
   env.tick(50);
   out.ordering = {
+    mountedIn: mountedIn,
     beforePaint: beforePaint,
     afterFirstDrain: afterOneDrain,
     final: order,

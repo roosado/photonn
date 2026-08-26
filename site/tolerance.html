@@ -794,9 +794,10 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
  *   1. Nothing runs until the first paint has happened, so the page is readable
  *      immediately and the reader has something to look at while the machines
  *      warm up.
- *   2. Widgets start one at a time, in document order, with a yield between them.
- *      The main thread is never held for more than one widget's mount, so the
- *      page keeps responding to scrolls and taps throughout.
+ *   2. Widgets start one at a time, in document order -- read off the DOM, not
+ *      taken from the order the mount calls happen to run in -- with a yield
+ *      between them. The main thread is never held for more than one widget's
+ *      mount, so the page keeps responding to scrolls and taps throughout.
  *   3. A widget far below the fold waits until the reader is approaching it. It
  *      still starts by itself -- no tap, no button, nothing to discover -- just
  *      not while it is a screen and a half away.
@@ -892,9 +893,29 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     job.el.classList.remove("pm-pending");
   }
 
+  /**
+   * The queued job whose element comes first in the document.
+   *
+   * Not simply the oldest. A page's inline mount scripts all sit together at
+   * the foot of the document, so the order they run in is the order the build
+   * pasted their tokens -- which is not necessarily the order the reader meets
+   * the widgets, and on /index the two already disagree. Deferred jobs join
+   * later still, whenever the reader approaches them. Taking the earliest
+   * element that is currently queued makes point 2 above a property of the
+   * page rather than of where somebody pasted a token.
+   */
+  function takeNext() {
+    let pick = 0;
+    for (let i = 1; i < queue.length; i++) {
+      // DOCUMENT_POSITION_PRECEDING (2): the candidate comes before the pick.
+      if (queue[pick].el.compareDocumentPosition(queue[i].el) & 2) pick = i;
+    }
+    return queue.splice(pick, 1)[0];
+  }
+
   function drain() {
     if (draining || !painted) return;
-    const job = queue.shift();
+    const job = takeNext();
     if (!job) return;
     draining = true;
     idle(function () {

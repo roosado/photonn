@@ -189,6 +189,15 @@ scans every committed bundle and fails on any status word.
 | `d2nn_compare.js` | optics | 5 masks vs 56 masks, one digit |
 | `analogy.js` | *(none)* | kept for `apps/analogy_demo.py`; the site no longer mounts it |
 
+None of them start until after the first paint, and then **one at a time, in the order the
+reader meets them**. That order is read off the DOM by `mount_queue.js`, not taken from the
+order the mount calls run in: every page's inline mount scripts sit together at the foot of
+the document, so their order is whatever `build_site.BODY` pasted. On `/index` the two
+already disagree — `interfere.js`'s token is above the classifier's while its container is
+below it — so the classifier still starts first, which is what a reader scrolling from the
+top wants. `tests/test_mount_queue.py` mounts three widgets in a scrambled order and asserts
+they drain in document order.
+
 `interfere.js` is the smallest of them and the only one whose physics has a **closed form**:
 `cos(kx) + cos(kx − d) = 2cos(d/2)cos(kx − d/2)`. It computes the left side pointwise and draws
 that; `envelope()` is the right side, and it is what the readout and the brightness swatch are

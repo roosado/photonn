@@ -26,6 +26,7 @@ so in words when it does. A version that bottomed out at "nearly dark" would be 
 different, weaker claim than the one the paragraph above it makes.
 """
 import json
+import math
 import os
 import re
 import shutil
@@ -37,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RUNNER = os.path.join(HERE, "interference_runner.js")
 WIDGET_JS = os.path.join(HERE, "..", "apps", "web", "interfere.js")
 
-PI = 3.141592653589793
+PI = math.pi
 
 node = shutil.which("node")
 

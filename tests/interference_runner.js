@@ -14,15 +14,17 @@
  *      the closed form ever part company, the front page is illustrating
  *      something that is not true.
  *
- * So the widget is mounted against a hand-built stand-in for the parts of the
- * DOM it touches (there is no jsdom here), at several widths and pixel ratios.
- * The pane cap is read out of the widget's own stylesheet rather than restated,
- * so the layout below is driven by the CSS that ships.
+ * So the widget is mounted against the stand-in in tests/dom_stub.js (there is
+ * no jsdom here), at several widths and pixel ratios. What this file supplies is
+ * the part that is actually about this widget: its layout model and the canvas
+ * methods it calls. The pane cap is read out of the widget's own stylesheet
+ * rather than restated, so the layout below is driven by the CSS that ships.
  *
  * Prints one JSON object. Driven by tests/test_interference_widget.py.
  */
 const fs = require("fs");
 const path = require("path");
+const { makeEnv: makeStubEnv, loadWidget } = require("./dom_stub.js");
 
 const SRC = path.join(__dirname, "..", "apps", "web", "interfere.js");
 const SOURCE = fs.readFileSync(SRC, "utf8");
@@ -38,68 +40,29 @@ function readPlotCap(src) {
 const PLOT_CAP = readPlotCap(SOURCE);
 
 function makeEnv(containerWidth, deviceRatio) {
-  const styles = {};
-
-  function layoutWidth(node) {
+  return makeStubEnv({
+    dpr: deviceRatio,
     // Only the plot pane constrains anything: one wide canvas, centred, capped.
-    const pane = node.tagName === "CANVAS" ? node.parentNode : node;
-    if (pane && pane.className === "if-plot") {
-      return Math.min(containerWidth, PLOT_CAP);
-    }
-    return containerWidth;
-  }
-
-  function ctxStub() {
-    return {
-      fillStyle: "", strokeStyle: "", font: "", textAlign: "", lineWidth: 1,
-      fillRect() {}, fillText() {}, setTransform() {}, beginPath() {},
-      moveTo() {}, lineTo() {}, stroke() {}, fill() {}, setLineDash() {},
-      measureText: (t) => ({ width: String(t).length * 6 }),
-    };
-  }
-
-  function makeEl(tag) {
-    const node = {
-      tagName: String(tag).toUpperCase(),
-      className: "",
-      id: "",
-      innerHTML: "",
-      textContent: "",
-      children: [],
-      parentNode: null,
-      style: {},
-      _listeners: {},
-      appendChild(c) { c.parentNode = node; node.children.push(c); return c; },
-      setAttribute() {},
-      addEventListener(t, fn) { (node._listeners[t] = node._listeners[t] || []).push(fn); },
-      getBoundingClientRect() { return { width: layoutWidth(node), height: 0 }; },
-    };
-    Object.defineProperty(node, "parentElement", { get: () => node.parentNode });
-    if (node.tagName === "CANVAS") {
-      node.width = 300; node.height = 150;
-      node.getContext = () => ctxStub();
-    }
-    return node;
-  }
-
-  const doc = {
-    getElementById: (id) => styles[id] || null,
-    createElement: (tag) => makeEl(tag),
-    head: { appendChild(s) { if (s.id) styles[s.id] = s; } },
-  };
-  const win = {
-    document: doc,
-    devicePixelRatio: deviceRatio,
-    addEventListener() {},
-    // No ResizeObserver on purpose: the fallback path must work too.
-  };
-  return { win, doc, makeEl };
+    layoutWidth(node) {
+      const pane = node.tagName === "CANVAS" ? node.parentNode : node;
+      if (pane && pane.className === "if-plot") {
+        return Math.min(containerWidth, PLOT_CAP);
+      }
+      return containerWidth;
+    },
+    ctxStub() {
+      return {
+        fillStyle: "", strokeStyle: "", font: "", textAlign: "", lineWidth: 1,
+        fillRect() {}, fillText() {}, setTransform() {}, beginPath() {},
+        moveTo() {}, lineTo() {}, stroke() {}, setLineDash() {},
+        measureText: (t) => ({ width: String(t).length * 6 }),
+      };
+    },
+  });
 }
 
 function load(env) {
-  const mod = { exports: {} };
-  const fn = new Function("window", "document", "module", SOURCE);
-  fn(env.win, env.doc, mod);
+  loadWidget(SOURCE, env);
   return env.win.PhotonnInterfere;
 }
 
@@ -122,7 +85,6 @@ function canvases(root) {
         bitmapH: n.height,
         shownW: n.getBoundingClientRect().width,
         styleH: n.style.height ? parseFloat(n.style.height) : null,
-        pane: n.parentNode ? n.parentNode.className : null,
       });
     }
     n.children.forEach(walk);
@@ -156,19 +118,18 @@ const PHASES = [0, Math.PI / 4, Math.PI / 2, Math.PI, (3 * Math.PI) / 2, 2 * Mat
 for (const d of PHASES) {
   const n = 257;
   const s = api.samples(d, n);
-  const env2 = api.envelope(d);
+  const amp = api.envelope(d);
   let maxErr = 0;
   for (let i = 0; i < n; i++) {
     const kx = s.t[i] * api.CYCLES * 2 * Math.PI;
-    const closed = env2 * Math.cos(kx - d / 2);
+    const closed = amp * Math.cos(kx - d / 2);
     maxErr = Math.max(maxErr, Math.abs(s.sum[i] - closed));
     // The two waves themselves, while we are here: equal amplitude, one delayed.
     maxErr = Math.max(maxErr, Math.abs(s.a[i] - Math.cos(kx)));
     maxErr = Math.max(maxErr, Math.abs(s.b[i] - Math.cos(kx - d)));
   }
   out.physics[d.toFixed(6)] = {
-    dphi: d,
-    envelope: env2,
+    envelope: amp,
     peak: Math.max.apply(null, Array.from(s.sum)),
     brightness: api.brightness(d),
     maxErr: maxErr,
@@ -177,10 +138,8 @@ for (const d of PHASES) {
 
 // What the reader is actually told, at the three phases the note branches on.
 for (const d of [0, Math.PI / 2, Math.PI]) {
-  const e = makeEnv(640, 1);
-  const a = load(e);
-  const host = e.makeEl("div");
-  a.mount(host, { dphi: d });
+  const host = env.makeEl("div");
+  api.mount(host, { dphi: d });
   const root = host.children[0];
   out.readout[d.toFixed(6)] = {
     value: find(root, "if-val").textContent,

@@ -1211,16 +1211,27 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
    * first is the whole fix. `heightFor` maps the measured width to a height, so
    * the shape stays sane across the range rather than being pinned to one.
    *
-   * `setTransform` is correct here, unlike in d2nn_stage.js: resizing a canvas
-   * resets its context, so this call is establishing the dpr scale, not
-   * replacing one that is already there.
+   * `setTransform` is correct here, unlike in d2nn_stage.js: a resize clears the
+   * context, so the dpr scale has to be re-established after one, and re-applying
+   * the same absolute transform when the guard skipped the resize is a no-op.
    */
   function fitCanvas(c, heightFor) {
     const r = dpr();
     const W = Math.max(240, Math.round(c.getBoundingClientRect().width || 420));
     const H = Math.round(heightFor(W));
-    c.width = Math.round(W * r);
-    c.height = Math.round(H * r);
+    const pxW = Math.round(W * r), pxH = Math.round(H * r);
+    // Guarded on the bitmap size actually changing. Assigning `canvas.width`
+    // throws the bitmap away and allocates a new one *even when the value is
+    // unchanged* -- it is the `canvas.width = canvas.width` clear idiom -- and
+    // this runs on every slider event, where the width never moves. Nothing
+    // depends on the implicit clear: every caller repaints the whole surface as
+    // its first act. The CSS height is written either way, because a canvas that
+    // has never been sized is already exactly 300x150 and would otherwise be left
+    // with no height at all at that one size.
+    if (c.width !== pxW || c.height !== pxH) {
+      c.width = pxW;
+      c.height = pxH;
+    }
     c.style.height = H + "px";
     const ctx = c.getContext("2d");
     ctx.setTransform(r, 0, 0, r, 0, 0);

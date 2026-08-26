@@ -969,15 +969,27 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
    * which flattens the plot on a desktop and stretches it on a phone, labels and
    * all. errors.js shipped exactly that bug in its two plot widgets.
    *
-   * setTransform is right here: resizing a canvas resets its context, so this
-   * establishes the dpr scale rather than replacing one already in place.
+   * setTransform, and unconditional: a resize clears the context, so the dpr
+   * scale has to be re-established after one, and re-applying the same absolute
+   * transform when the guard below skipped the resize is a no-op.
    */
   function fitCanvas(c, heightFor) {
     const r = dpr();
     const W = Math.max(240, Math.round(c.getBoundingClientRect().width || 420));
     const H = Math.round(heightFor(W));
-    c.width = Math.round(W * r);
-    c.height = Math.round(H * r);
+    const pxW = Math.round(W * r), pxH = Math.round(H * r);
+    // Guarded on the bitmap size actually changing. Assigning `canvas.width`
+    // throws the bitmap away and allocates a new one *even when the value is
+    // unchanged* -- it is the `canvas.width = canvas.width` clear idiom -- and
+    // this runs on every slider event, where the width never moves. Nothing
+    // depends on the implicit clear: every caller repaints the whole surface as
+    // its first act. The CSS height is written either way, because a canvas that
+    // has never been sized is already exactly 300x150 and would otherwise be left
+    // with no height at all at that one size.
+    if (c.width !== pxW || c.height !== pxH) {
+      c.width = pxW;
+      c.height = pxH;
+    }
     c.style.height = H + "px";
     const ctx = c.getContext("2d");
     ctx.setTransform(r, 0, 0, r, 0, 0);
@@ -1083,8 +1095,6 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   }
 
   // -------------------------------------------------------------------- mount
-  function fmt(x, n) { return x.toFixed(n); }
-
   /**
    * sRGB level for a brightness fraction.
    *
@@ -1122,14 +1132,14 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     ctl.appendChild(input);
     row.appendChild(ctl);
 
-    const val = el("span", "if-val", "");
+    const val = el("span", "if-val");
     const valWrap = el("div");
     valWrap.appendChild(val);
     row.appendChild(valWrap);
 
     const meter = el("div", "if-meter");
     const swatch = el("span", "if-swatch");
-    const read = el("span", "if-read", "");
+    const read = el("span", "if-read");
     meter.appendChild(swatch);
     meter.appendChild(read);
     row.appendChild(meter);
@@ -1152,10 +1162,10 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 
       draw(canvas, dphi);
 
-      val.textContent = fmt(dphi / (2 * Math.PI), 2) + " λ · "
-        + fmt(dphi, 2) + " rad";
+      val.textContent = (dphi / (2 * Math.PI)).toFixed(2) + " λ · "
+        + dphi.toFixed(2) + " rad";
       swatch.style.background = swatchColour(b);
-      read.innerHTML = "what a detector reads<b>" + fmt(b, 2) + "</b>";
+      read.innerHTML = "what a detector reads<b>" + b.toFixed(2) + "</b>";
 
       let head;
       if (b > 0.98) {
@@ -1166,8 +1176,8 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
           + "trough, the sum is flat, and <b>the light is gone</b>. Nothing absorbed it; "
           + "the two waves simply cancel.";
       } else {
-        head = "Partly out of step. The sum stands <b>" + fmt(amp, 2) + "×</b> one "
-          + "wave, so a detector here collects <b>" + fmt(b, 2) + "</b> of the light it "
+        head = "Partly out of step. The sum stands <b>" + amp.toFixed(2) + "×</b> one "
+          + "wave, so a detector here collects <b>" + b.toFixed(2) + "</b> of the light it "
           + "would collect with the two in step.";
       }
       note.innerHTML = head + " Neither wave changed brightness, only <em>when</em> the "

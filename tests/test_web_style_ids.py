@@ -41,10 +41,14 @@ def style_ids():
     return claims
 
 
+def style_id_owners():
+    """Every file in apps/web that declares one, discovered rather than listed."""
+    return sorted({f for files in style_ids().values() for f in files})
+
+
 def test_at_least_the_known_widgets_declare_one():
     """Guard the guard: a renamed constant would make this file assert nothing."""
-    claims = style_ids()
-    owners = {f for files in claims.values() for f in files}
+    owners = style_id_owners()
     for expected in ("d2nn_stage.js", "digit_source.js", "d2nn_compare.js", "interfere.js"):
         assert expected in owners, f"{expected} no longer declares a STYLE_ID"
 
@@ -57,13 +61,16 @@ def test_no_two_widgets_share_a_style_id():
     )
 
 
-@pytest.mark.parametrize("widget", ["d2nn_stage.js", "digit_source.js", "d2nn_compare.js",
-                                   "interfere.js"])
+@pytest.mark.parametrize("widget", style_id_owners())
 def test_the_injected_css_is_namespaced_to_the_id_owner(widget):
     """A widget's rules should live under its own root class.
 
     Distinct ids stop the *injection* from being skipped; distinct class prefixes
     stop the rules that do get injected from reaching into another widget.
+
+    Parametrized over whatever declares a STYLE_ID rather than over a list kept by
+    hand: this is a property every such widget has to hold, and a hand-kept list
+    silently exempts the next one somebody adds.
     """
     src = open(os.path.join(WEB, widget), encoding="utf-8").read()
     css = re.search(r"const CSS = `(.*?)`", src, re.S)

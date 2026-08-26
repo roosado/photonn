@@ -13,6 +13,7 @@ silently rather than with a 404 anyone would notice.
 what these tests really guard is that the generated set of files and the generated
 set of links stay the same set.
 """
+import functools
 import os
 import re
 
@@ -30,7 +31,11 @@ DELETED_PAGES = ("classifier.html",)
 HREF = re.compile(r'href="([^"]+)"')
 
 
+@functools.lru_cache(maxsize=None)
 def page_text(name):
+    # Cached: the cross-page fragment check below asks for the same target once
+    # per link that points into it, and these pages run to a megabyte. The skip
+    # still fires every call -- lru_cache does not memoise a raised exception.
     path = os.path.join(SITE, name)
     if not os.path.exists(path):
         pytest.skip(f"{name} not built; run python -m apps.build_site")

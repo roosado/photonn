@@ -14,16 +14,17 @@
  *      column of some other width: flattened on a desktop, stretched tall on a
  *      phone, with the text distorted to match.
  *
- * So errors.js is mounted here against a hand-built stand-in for the parts of
- * the DOM it touches, at several viewport widths. The stub is a small flexbox
- * for this one case, and it reads its rules out of the widget's own stylesheet
- * rather than restating them -- otherwise "three panels stay on one row" would
- * be a check on this file instead of on the CSS that ships.
+ * So errors.js is mounted here against the stand-in in tests/dom_stub.js, at
+ * several viewport widths. What this file supplies is the layout model: a small
+ * flexbox for this one case, which reads its rules out of the widget's own
+ * stylesheet rather than restating them -- otherwise "three panels stay on one
+ * row" would be a check on this file instead of on the CSS that ships.
  *
  * Prints one JSON object. Driven by tests/test_error_widgets.py.
  */
 const fs = require("fs");
 const path = require("path");
+const { makeEnv: makeStubEnv, loadWidget } = require("./dom_stub.js");
 
 const SRC = path.join(__dirname, "..", "apps", "web", "errors.js");
 
@@ -78,71 +79,34 @@ function perRow(containerWidth, count, css) {
 }
 
 function makeEnv(containerWidth, deviceRatio) {
-  const styles = {};
   const css = PANE_CSS;
-
-  function layoutWidth(node) {
+  return makeStubEnv({
+    dpr: deviceRatio,
     // A pane's share of its row, by the rules read off the stylesheet above.
-    const pane = node.tagName === "CANVAS" ? node.parentNode : node;
-    if (!pane || !pane.parentNode) return containerWidth;
-    const row = pane.parentNode;
-    const panes = row.children.filter((c) => c.className.indexOf("ex-pane") === 0);
-    if (!panes.length) return containerWidth;
-    if (pane.className.indexOf("ex-wide") >= 0) {
-      return Math.min(containerWidth, css.wideMax);
-    }
-    const gap = containerWidth <= NARROW_AT ? css.narrowGap : css.gap;
-    const n = perRow(containerWidth, panes.length, css);
-    // Flex items grow to fill whatever row they land on.
-    return Math.max(css.minWidth, (containerWidth - gap * (n - 1)) / n);
-  }
-
-  function makeEl(tag) {
-    const node = {
-      tagName: String(tag).toUpperCase(),
-      className: "",
-      id: "",
-      innerHTML: "",
-      textContent: "",
-      children: [],
-      parentNode: null,
-      style: {},
-      _listeners: {},
-      appendChild(c) { c.parentNode = node; node.children.push(c); return c; },
-      setAttribute() {},
-      addEventListener(t, fn) { (node._listeners[t] = node._listeners[t] || []).push(fn); },
-      getBoundingClientRect() { return { width: layoutWidth(node), height: 0 }; },
-    };
-    Object.defineProperty(node, "parentElement", { get: () => node.parentNode });
-    if (node.tagName === "CANVAS") {
-      node.width = 300; node.height = 150;
-      node.getContext = () => ctxStub();
-    }
-    return node;
-  }
-
-  function ctxStub() {
-    return {
-      fillStyle: "", font: "", textAlign: "",
-      fillRect() {}, fillText() {}, setTransform() {}, beginPath() {}, arc() {},
-      fill() {}, stroke() {}, moveTo() {}, lineTo() {}, setLineDash() {},
-      createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
-      putImageData() {},
-    };
-  }
-
-  const doc = {
-    getElementById: (id) => styles[id] || null,
-    createElement: (tag) => makeEl(tag),
-    head: { appendChild(s) { if (s.id) styles[s.id] = s; } },
-  };
-  const win = {
-    document: doc,
-    devicePixelRatio: deviceRatio,
-    addEventListener() {},
-    // No ResizeObserver on purpose: the fallback path must work too.
-  };
-  return { win, doc, makeEl };
+    layoutWidth(node) {
+      const pane = node.tagName === "CANVAS" ? node.parentNode : node;
+      if (!pane || !pane.parentNode) return containerWidth;
+      const row = pane.parentNode;
+      const panes = row.children.filter((c) => c.className.indexOf("ex-pane") === 0);
+      if (!panes.length) return containerWidth;
+      if (pane.className.indexOf("ex-wide") >= 0) {
+        return Math.min(containerWidth, css.wideMax);
+      }
+      const gap = containerWidth <= NARROW_AT ? css.narrowGap : css.gap;
+      const n = perRow(containerWidth, panes.length, css);
+      // Flex items grow to fill whatever row they land on.
+      return Math.max(css.minWidth, (containerWidth - gap * (n - 1)) / n);
+    },
+    ctxStub() {
+      return {
+        fillStyle: "", font: "", textAlign: "",
+        fillRect() {}, fillText() {}, setTransform() {}, beginPath() {}, arc() {},
+        fill() {}, stroke() {}, moveTo() {}, lineTo() {}, setLineDash() {},
+        createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+        putImageData() {},
+      };
+    },
+  });
 }
 
 // A real-shaped mask: 128x128 of 8-bit phase codes, contents irrelevant here.
@@ -154,9 +118,7 @@ const MASK = { n: N, mask_b64: codes.toString("base64") };
 function load(env) {
   const src = fs.readFileSync(SRC, "utf8");
   env.win.PHOTONN_ERR_MASK = MASK;
-  const mod = { exports: {} };
-  const fn = new Function("window", "document", "module", "atob", src);
-  fn(env.win, env.doc, mod, (b64) => Buffer.from(b64, "base64").toString("binary"));
+  loadWidget(src, env, { atob: (b64) => Buffer.from(b64, "base64").toString("binary") });
   return env.win.PhotonnErrors;
 }
 

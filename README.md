@@ -95,7 +95,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`329 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`336 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
 `test_interference_widget.py`, `test_mount_queue.py` — require Node on `PATH` and skip cleanly
@@ -122,7 +122,7 @@ in [`docs/handoff_schema.md`](docs/handoff_schema.md); see `photonn/export.py` (
 ```
 photonn/        # Python design side (see CLAUDE.md for per-module responsibilities)
 apps/           # diffraction_explorer.py (P1) · train_d2nn.py, visualize_d2nn.py (P2) · train_mesh.py, mesh_toolkit.py (P3) · build_site.py (site) · export_d2nn_web.py, d2nn_demo.py (browser classifier) · export_analogy_web.py, analogy_demo.py, analogy_figure.py (free-space↔chip correspondence) · export_mesh_web.py (trained chip → browser)
-apps/web/       # dependency-free browser side: asm.js (propagation) · explorer.js (P1 widget) · d2nn.js, d2nn_demo.js, d2nn_stage.js, d2nn_weights.js (trained classifier + 3D stack) · errors.js (P4 error mechanisms, both architectures) · mesh_weights.js (trained chip, for the coupler widget) · scaling.js, optics_sweep.js (depth vs accuracy) · d2nn_compare.js (two models, one digit) · analogy.js, analogy_geom.js (P3 correspondence, demo only)
+apps/web/       # dependency-free browser side: the propagator, the trained classifier and its 3D stack, the P4 error mechanisms, the interference and depth-vs-accuracy widgets. Every file, and which page mounts it, is tabulated in site/README.md
 site/           # generated, self-contained, GitHub Pages ready: index.html (the live D²NN) · physics.html · chip.html · tolerance.html (the study) · optics.html
 tests/          # pytest suite
 docs/           # the written record, indexed in docs/README.md

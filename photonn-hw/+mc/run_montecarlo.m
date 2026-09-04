@@ -31,6 +31,11 @@ function stats = run_montecarlo(handoff, errorConfig, nRealizations, baseSeed)
 %   one stream, so adding a source to a joint configuration cannot change the draw
 %   another source gets -- without that, a joint run is not the sum of the
 %   independent ones it is supposed to be compared against.
+    % Every source below is selected by field presence, so a misspelled field is
+    % a source that silently never runs. Checked once, here, before any
+    % realization is drawn -- see mc.error_sources for the recognised set.
+    mc.validate_config(errorConfig, "d2nn");
+
     lambda0 = handoff.operating_point.wavelength_m;
     baseMasks = handoff.parameters.phase_masks;
     baseSep = handoff.geometry.layer_separations_m(:);

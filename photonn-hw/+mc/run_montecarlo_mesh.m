@@ -34,6 +34,10 @@ function stats = run_montecarlo_mesh(handoff, errorConfig, nRealizations, baseSe
 %   through two different RandStreams, exactly as the D2NN's phase and detector
 %   draws do. They are never swept jointly, so the correlation does not bite; it is
 %   recorded here rather than left to be rediscovered.
+    % See mc.run_montecarlo: an unrecognised field selects nothing and the run
+    % looks clean at every magnitude. Checked before any realization is drawn.
+    mc.validate_config(errorConfig, "mesh");
+
     lambda0 = handoff.operating_point.wavelength_m;
     nMzi = double(handoff.parameters.n_mzi);
 

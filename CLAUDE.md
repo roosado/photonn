@@ -206,3 +206,22 @@ Kept here so a later session does not reopen a question the project already answ
    it publishes measured tolerance *edges* (properties of the network and its topology, which
    will not move) with every realistic as-built value marked `UNSOURCED` and no margin column.
    The gap is a table in `docs/parameter_sources.md`, not a silence.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `roosado/photonn`. Reads run directly; writes are handed to the
+user as a script rather than executed. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, each label string equal to its name. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root, both created
+lazily. See `docs/agents/domain.md`.

@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import os
 
+from apps import preview
+
 from apps.diffraction_explorer import mount_script, read_web_asset
 
 
@@ -33,52 +35,30 @@ def optics_mount(container_id: str = "optics", **opts) -> str:
     return mount_script(container_id, f"window.PhotonnOptics.mount(el, {cfg});")
 
 
-_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>photonn &mdash; what separation buys</title>
-<style>
-  :root{{color-scheme:light dark;}}
-  body{{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    background:#fff;color:#1b1f24;}}
-  @media (prefers-color-scheme:dark){{body{{background:#0d1117;color:#e6eaf0;}}}}
-  .wrap{{max-width:880px;margin:0 auto;padding:32px 22px 56px;}}
-  h1{{font-size:1.5rem;margin:0 0 6px;}}
-  .sub{{color:#5a6472;margin:0 0 22px;}}
-  @media (prefers-color-scheme:dark){{.sub{{color:#9aa6b5;}}}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>What separation buys</h1>
-  <p class="sub">The diffractive network is capacity-limited, not data-limited. Its remaining
-  levers are optical &mdash; and the first one is simply how far apart the phase masks sit.</p>
-  <div id="optics"></div>
-</div>
-{bundle}
-{mount}
-</body>
-</html>
-"""
+#: What this preview page says about the widget it is showing.
+PREVIEW = dict(
+    title="what separation buys",
+    heading="What separation buys",
+    standfirst="The diffractive network is capacity-limited, not data-limited. Its remaining\n"
+               "  levers are optical &mdash; and the first one is simply how far apart the phase masks sit.",
+    hosts=("optics",),
+)
 
 
 def build_html(**opts) -> str:
-    return _PAGE.format(bundle=optics_bundle(), mount=optics_mount(**opts))
+    return preview.preview_page(bundle=optics_bundle(), mount=optics_mount(**opts),
+                                **PREVIEW)
 
 
 def save_demo(path: str = None, **opts) -> str:
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), "optics_demo.html")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(build_html(**opts))
-    return path
+        path = preview.default_path(__file__, "optics_demo")
+    return preview.save_preview(path, build_html(**opts))
 
 
 def main():
     path = save_demo(zMm=3)
-    print(f"wrote {path} ({os.path.getsize(path) // 1024} KB)")
+    print(f"wrote {path}")
 
 
 if __name__ == "__main__":

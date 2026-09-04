@@ -1,0 +1,362 @@
+<div class="spectral-rule"></div>
+@@TOPBAR@@
+
+<main class="wrap">
+
+  <section class="hero col reveal">
+    <p class="eyebrow">Live work &middot; not a result</p>
+    <h1>How much better could the <em>optics</em> be?</h1>
+    <div class="underbar"></div>
+    <p class="standfirst">The 5-mask network scores 0.799 and cannot be pushed further by training.
+    After 40 passes through 60,000 images it still cannot pull ahead even on the images it trained
+    on. So the remaining levers are physical: <b>how far apart the masks sit</b>, and <b>how many
+    there are</b>. This page is the running record of measuring them. <b>The numbers here move as more
+    arrangements finish.</b></p>
+    <div class="stat-strip">
+      <div class="stat"><span class="v">0.771</span><span class="l">the 5-mask layout, re-run under the quick comparison protocol below</span></div>
+      <div class="stat"><span class="v">0.852</span><span class="l">14 masks, same quick protocol, so directly comparable to 0.771</span></div>
+      <div class="stat"><span class="v">0.904</span><span class="l">56 masks trained in full, so directly comparable to the 0.799 headline</span></div>
+    </div>
+  </section>
+
+  @@TOC@@
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What scaling actually looks like</p>
+      <h2 data-toc="What depth buys">Eleven times the masks, ten points of accuracy</h2></div></div>
+    <div class="prose col">
+      <p>The network on the front page uses five masks. The obvious question is what happens with more, and
+      the honest way to ask it is to hold everything else fixed: same total amount of light
+      spreading, same grid, same task, only the number of plates changing. That sweep has been run
+      from 2 masks up to 80.</p>
+      <p>It never turns over. More masks keep helping, all the way to the deepest configuration
+      tested. But look at the shape of the help.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="scaling"></div></div>
+      <p class="cap">Live. Every point is a training run, read from the sweep&rsquo;s own output
+      rather than typed into the figure. Note the two colours: the cheap ranking runs and the two
+      full-budget runs are not comparable to each other, and only the orange pair is comparable to
+      the numbers quoted on the rest of this site.</p>
+    </div>
+
+    <div class="prose col">
+      <p>Take the two full-budget runs, which are the only ones measured the same way as everything
+      else here. Going from <strong>5 masks to 56</strong>, an eleven-fold increase in the amount of
+      hardware, moves accuracy from <strong>0.7990 to 0.9040</strong>. Ten and a half points.</p>
+      <p>Put that next to what it costs. Eleven times the plates, and because the total spreading
+      budget is fixed they have to be packed eleven times closer, at 0.53&nbsp;mm apart instead of
+      3&nbsp;mm. The stack grows from 18&nbsp;mm to 30&nbsp;mm. And, from the previous page, the
+      fabrication tolerance tightens by <strong>2&times; on every delay</strong>, needs
+      <strong>one more bit</strong> of control per pixel, and allows <strong>4.7&times; less lost
+      light</strong> per surface, while the one error that already fails does not move at all.</p>
+      <p><strong>That is a bad exchange rate, and it gets worse.</strong> The ranking curve is
+      flattening hard: the last doubling of depth, 40 masks to 80, buys under half a point. There is
+      no plausible number of masks that turns this into a competitive classifier. Something other
+      than more of the same is required, and the rest of this page is about what.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">See both machines run</p>
+      <h2 data-toc="5 masks against 56">The 5-mask and 56-mask networks, same digit</h2></div></div>
+    <div class="prose col">
+      <p>Since more masks keep paying, the deepest arrangement worth the computer time was trained
+      properly rather than merely ranked: <strong>56 masks</strong> at 0.53&nbsp;mm gaps, the full
+      60,000 images, then scored once against the same held-back test images the 5-mask model is
+      quoted from. It reaches <strong>0.9040</strong> against <strong>0.7990</strong>. Both machines
+      run here, live, on whichever digit you pick or one you draw, using the same physics as the
+      Python original and checked against PyTorch to better than 10<sup>&minus;3</sup>.</p>
+      <p>The gallery is the one the front page uses, deliberately stocked with <strong>six digits the
+      5-mask network gets wrong</strong>. The 56-mask network gets three of those right and breaks none
+      of the ten the 5-mask one already had. The three it still misses, it misses <em>in the same
+      way</em>, calling them the same wrong digit as the 5-mask model does, which hints that those
+      images are hard for optics in general rather than for this particular set of masks.</p>
+      <p>Both machines are fed from <em>one</em> input, so the two columns differ in their optics and
+      nothing else. Watch the detector plane rather than the answer. The 5-mask network spreads
+      light across the whole plane and picks a weak winner out of it, while the deep stack drops the
+      light inside the boxes. That is the difference between about 60% and <strong>79%</strong> of
+      the incoming photons reaching a detector at all, and it is the same steering that the accuracy
+      gain comes from.</p>
+      <p>Two trained models come to <strong>0.7&nbsp;MB</strong> of delays on one page. The deep one
+      carries <strong>eleven times</strong> as many numbers, 918k against 82k, for under six times
+      the download, because its delays are stored more coarsely: <strong>4&nbsp;bits</strong> each,
+      16 possible settings, against 8 bits and 256. Neither model is flattered by that. The error
+      budget measures this design as holding its accuracy all the way down to <strong>3
+      bits</strong>, and on the same 2,000 digits the stored-down models score
+      <strong>0.9015</strong> and <strong>0.7995</strong> against the full-precision 0.9040 and
+      0.7990, five thousandths either way, well inside the run-to-run noise of a test set that size.
+      What runs in your browser is therefore the machine the study measured, not a lighter
+      stand-in.</p>
+      <p>One pass through the optics costs roughly <strong>11&nbsp;ms</strong> and
+      <strong>100&nbsp;ms</strong> respectively, since the deep machine is 56 diffraction steps of
+      arithmetic running in a browser tab, and both are far more than the 17&nbsp;ms an animation
+      frame allows. So the board <strong>waits for you to pause</strong> rather than classifying
+      mid-stroke, and it decides that by timing itself rather than by counting masks, so a board
+      carrying only cheap models still follows the pen. The obvious alternative, keeping the fast
+      column live and letting the deep one lag, was rejected on purpose: it would show two different
+      digits side by side and invite exactly the wrong comparison.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="compare"></div></div>
+      <p class="cap">Live. The 5-mask and 56-mask networks, one digit,
+      both computed here. Every caption in the board is generated from the model files&rsquo; own
+      records of how they were trained, so changing what a model claims means regenerating a file
+      rather than editing this page.</p>
+    </div>
+
+    <h3 class="sub-h">What 56 masks actually looks like</h3>
+    <div class="prose col">
+      <p>The detector plane says the deep network is better. It does not say what the thing
+      <em>is</em>. Here it is as a physical machine: the entrance, the phase plates and the
+      detectors strung along the path of the beam, each carrying the light actually computed on it.
+      Drag to orbit.</p>
+      <p>Two things about this figure are honest rather than convenient. It draws only
+      <strong>6 of the 56 masks</strong>, spread through the stack and each labelled with its real
+      position, because fifty-six plates at 0.53&nbsp;mm spacing are fifty-six near-identical
+      pictures. And it does not follow your pen: redrawing means a full pass through
+      <strong>57 gaps</strong>, so it waits for you to press <span class="q">Refresh</span> rather
+      than making the whole page stutter for a picture nobody studies mid-stroke.</p>
+      <p>The proportions are the point. The 5-mask design is 18&nbsp;mm of optics across an opening
+      of 1.02&nbsp;mm; this one is <strong>30&nbsp;mm across the same opening</strong>, a 29:1 needle
+      that has to be squashed almost tenfold just to fit on a screen. Past about forty plates at this
+      spacing, calling it a stack of separate masks is already a stretch. It is closer to a solid
+      block of glass, which is a different thing to manufacture and one the
+      <a class="link" href="@@HREF_tolerance@@">error budget &rarr;</a> does not model yet.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="stage3d"></div></div>
+      <p class="cap">Live. The 56-mask network, fed the same digit as the board above. A sample of
+      the planes, refreshed on demand; the haze between plates is the real light at those in-between
+      depths, computed rather than shaded in.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What the extra masks cost</p>
+      <h2 data-toc="The deep model&rsquo;s budget">The same budget, re-run against the 56-mask network</h2></div></div>
+    <div class="prose col">
+      <p>The <a class="link" href="@@HREF_tolerance@@">error budget &rarr;</a> was re-run in full
+      against the 56-mask network, scored against its own correspondingly stricter pass mark of
+      0.8588. Every number below is measured the same way as the 5-mask design&rsquo;s.</p>
+    </div>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>Error source</th><th>5 masks</th><th>56 masks</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Crosstalk between pixels</strong></td><td>holds 0.25&nbsp;px, fails 0.5</td><td>holds <strong>0.25&nbsp;px</strong>, fails 0.5</td><td><strong>unchanged, still binding</strong></td></tr>
+          <tr><td>Each pixel&rsquo;s delay set wrong</td><td>holds 0.3&nbsp;rad, fails 0.5</td><td>holds <strong>0.15&nbsp;rad</strong>, fails 0.2</td><td>2&times; tighter</td></tr>
+          <tr><td>How finely a delay can be set</td><td>holds 3 bits, fails 2</td><td>holds <strong>4 bits</strong>, fails 3</td><td>1 bit tighter</td></tr>
+          <tr><td>Light lost, where it bites</td><td>holds 1&nbsp;dB/mask (5&nbsp;dB total)</td><td>holds <strong>0.214&nbsp;dB/mask</strong> (12&nbsp;dB total)</td><td>4.7&times; tighter per mask</td></tr>
+          <tr><td>Detector noise, dimming the light</td><td>holds 1&nbsp;pW, fails 0.1</td><td>holds <strong>0.1&nbsp;pW</strong>, fails 0.01</td><td>10&times; looser</td></tr>
+          <tr><td>Wavelength drift</td><td>holds 10&nbsp;nm, fails 20</td><td>holds <strong>20&nbsp;nm</strong>, fails 30</td><td>2&times; looser</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p>Three readings. <strong>The constraint that binds does not move.</strong> Crosstalk fails
+      at the same 0.25&nbsp;px, and a real device&rsquo;s ~1&nbsp;px of bleed destroys either design.
+      Depth neither helps nor hurts the one thing that already made this unbuildable.</p>
+      <p><strong>The two that loosened both come from catching more light.</strong> The deep stack
+      lands <strong>79.1%</strong> of incoming photons inside the detector boxes against about 60%,
+      by the same steering the accuracy gain comes from. More light means more tolerance for dimming
+      and for drift. It got sturdier exactly where it already had nine orders of magnitude in hand.</p>
+      <p><strong>Lost light points in opposite directions depending on how you count.</strong> Totalled
+      over the machine the 56-mask network tolerates <em>more</em>, 12&nbsp;dB against 5. But that budget is
+      divided among eleven times as many surfaces, so the per-plate requirement tightens to
+      0.214&nbsp;dB, which sits at the optimistic end of a realistic 0.2&ndash;1&nbsp;dB range.
+      Datasheets quote per surface, so the per-surface number is the one that governs.</p>
+      <div class="finding">
+        <p class="tag">Finding &middot; depth adds a constraint without relieving one</p>
+        <p class="body">Ten and a half points of accuracy cost <strong>twice the precision on every
+        delay, one more bit per pixel, and 4.7&times; less tolerance for lost light</strong>, while
+        the one error that already fails against real hardware <strong>does not move at all</strong>.
+        Its number is real and measured exactly like the headline, but what it asks of the
+        manufacturing is something this project has no evidence anyone can deliver.</p>
+      </div>
+      <p>There is also something the budget cannot say. At 0.53&nbsp;mm spacing a
+      &plusmn;10&nbsp;&micro;m positioning error goes from 0.33% of the gap to 1.9% of it, and past
+      roughly forty plates the stack is better described as a <strong>solid block of glass</strong>
+      than as separate sheets with air between them. That is a different thing to manufacture, and
+      the budget covers component errors only.</p>
+    </div>
+    <div class="plate-grid reveal">
+      <figure class="plate"><img src="@@GRIDFIG_cand_crosstalk@@" alt="Deep model: accuracy against crosstalk" loading="lazy"><figcaption><span class="fign"></span>Deep model, crosstalk. The same limit as the 5-mask design.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_cand_phase@@" alt="Deep model: accuracy against per-pixel delay error" loading="lazy"><figcaption><span class="fign"></span>Deep model, delay error. Twice as demanding.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_cand_detector@@" alt="Deep model: accuracy against detector noise" loading="lazy"><figcaption><span class="fign"></span>Deep model, detector noise. Ten times more forgiving.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_cand_loss@@" alt="Deep model: accuracy against optical loss" loading="lazy"><figcaption><span class="fign"></span>Deep model, lost light, totalled across 56 plates.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_cand_wavelength@@" alt="Deep model: accuracy against wavelength drift" loading="lazy"><figcaption><span class="fign"></span>Deep model, wavelength drift. Twice as forgiving.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_cand_quant@@" alt="Deep model: accuracy against bits of control" loading="lazy"><figcaption><span class="fign"></span>Deep model, delay steps. One bit more demanding.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_cand_confusion_ideal@@" alt="Deep model: confusion matrix with no error applied, accuracy 0.904" loading="lazy"><figcaption><span class="fign" data-fig="deep_ideal"></span>Deep model at its best, nothing perturbed. Accuracy <strong>0.9040</strong>, against 0.7990 for the 5-mask design on the same 2,000 digits.</figcaption></figure>
+    </div>
+    <div class="prose col">
+      <p>Fig&nbsp;@@FIGREF_deep_ideal@@ is the odd one out in that grid: no error is applied to it. The six curves
+      beside it say what fabrication costs this design, and that question is answered. Fig&nbsp;7
+      asks the other one, which is what the extra fifty-one plates actually bought, and it is drawn
+      the same way as the
+      <a class="link" href="@@HREF_index@@">front page&rsquo;s matrix &rarr;</a> so the two can be
+      set side by side.</p>
+      <p><strong>What depth fixes is the digits that were collapsing onto 3.</strong> On the 5-mask
+      design a 5 is called a 3 forty-one times and an 8 is called a 3 thirty-seven times; those are
+      its two worst cells by a wide margin. Deep, they fall to <strong>6 and 11</strong>, and 5 goes
+      from right 109 times out of 186 to <strong>164</strong>. Nearly the whole ten-point gain is
+      that one repair.</p>
+      <p><strong>What it does not fix is 4 against 9.</strong> Mistaking a 4 for a 9 happens
+      <em>more</em> often on the deep stack, 18 times against 15, and 7 called 9 barely moves, 14
+      against 12. What vanishes is the reverse direction: 9 read as 4 drops from 29 to 2. So the
+      confusion stops being mutual without stopping. Fifty-six plates of steering separate the pairs
+      that a coarser routing merged, and leave the pair that shares an upper loop in the same place
+      roughly where it was. That is the shape of a better approximation of the same limited
+      operation, which is the subject of the next section.</p>
+      <p>None of that says anything about fragility, and the figure is not evidence either way.
+      For the record, at the 0.35&nbsp;rad of delay error the 5-mask design merely degrades under,
+      this model is at <strong>chance</strong>, predicting almost nothing but 5 and 6 for every
+      input. The table above is where that lives.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Why more of the same runs out</p>
+      <h2 data-toc="The linearity wall">Depth cannot fix what depth is not the problem with</h2></div></div>
+    <div class="prose col">
+      <p>The flattening curve is not bad luck, and it is not a training failure. It follows from
+      what this machine is. <a class="link" href="@@HREF_physics@@">The physics page shows &rarr;</a>
+      that crossing a gap is linear in the light and passing through a mask is linear in the light,
+      so a stack of them, however tall, collapses into a <strong>single</strong> linear operation:
+      one matrix, applied once. Adding masks adds adjustable numbers, and those numbers let the
+      matrix land closer to whatever matrix you wanted, under the constraint that it be buildable
+      out of delay-only plates separated by air. What they do not add is a second <em>kind</em> of
+      step.</p>
+      <p>That is the whole difference from an ordinary neural network. There, depth compounds:
+      each layer bends its input through a nonlinearity before the next layer sees it, and stacking
+      them builds up functions no single layer could express. Here nothing bends between the plates.
+      Fifty-six masks and five masks are both one linear map followed by one squaring at the
+      detector. <strong>Adding plates buys a better approximation of the same limited thing.</strong>
+      The curve flattens because it is converging on the best that thing can do.</p>
+      <p>So the answer is not more masks. It is a nonlinear step somewhere in the middle, which is
+      exactly what this design does not have and, per its scope, does not try to build.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">How the field is trying to get one</p>
+      <h2>Putting a nonlinearity into the light</h2></div></div>
+    <div class="prose col">
+      <p>This is an active research problem, and the approaches split by where the nonlinearity is
+      made to come from. Three families, and a note on what this project can and cannot vouch for.</p>
+      <p><strong>Convert to electronics and back.</strong> Detect the light part-way through, apply
+      the nonlinearity in a circuit, then re-modulate a fresh beam. It certainly works, since the
+      detector&rsquo;s squaring is already a nonlinearity and this simply uses it more than once. What
+      it costs is the thing optics was supposed to avoid: a conversion, and its energy and latency,
+      at every layer.</p>
+      <p><strong>Use a material that responds to intensity.</strong> Saturable absorbers, which
+      become more transparent as light gets brighter, and phase-change materials, which switch state.
+      The optics stays optical. The difficulty is that these effects are weak at the power levels an
+      efficient inference engine wants to run at, which is the tension the whole approach lives
+      inside.</p>
+      <p><strong>Change where the input enters.</strong> The most interesting of the three, because
+      it sidesteps the problem rather than paying for it. Wanjura and Marquardt show that if the
+      input is encoded not in the incoming wave but in <em>the physical parameters that control how
+      the wave scatters</em>, the map from input to output is genuinely nonlinear even though the
+      wave physics stays perfectly linear.<sup class="r">1</sup> The nonlinearity comes from the
+      encoding, not from any material. They propose an integrated-photonics implementation and show
+      the gradients needed for training can be measured directly in scattering experiments.</p>
+      <p><strong>What this project can vouch for stops at the wall itself.</strong> The measurement
+      here is that a stack of phase masks is one linear operator and that scaling it has sharply
+      diminishing returns. Which of the routes above is the right one is not something this study
+      tested, and nothing on this page should be read as evidence for any of them.</p>
+      <ol class="refs">
+        <li><b>1</b>C. C. Wanjura and F. Marquardt, &ldquo;Fully nonlinear neuromorphic computing
+        with linear wave scattering,&rdquo; <em>Nature Physics</em> (2024).
+        <a href="https://doi.org/10.1038/s41567-024-02534-9">doi:10.1038/s41567-024-02534-9</a>
+        &middot; preprint <a href="https://arxiv.org/abs/2308.16181">arXiv:2308.16181</a></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Reading the numbers on this page honestly</p>
+      <h2 data-toc="Protocols and confounds">Two protocols, and a confound worth ruling out</h2></div></div>
+    <div class="prose col">
+      <p>The sweep accuracies come from a deliberately <strong>short protocol</strong>, 20,000
+      images for 12 passes, because the question there is which arrangement wins rather than what
+      final accuracy it would reach. They are <strong>not comparable to the 0.799 headline</strong>,
+      which came from 60,000 images and 40 passes. The fair comparison for the 5-mask geometry
+      under the short protocol is <strong>0.771</strong>. The 56-mask model is the exception: it was
+      trained at the full budget and scored on the held-back test images, so its 0.9040 and the
+      headline 0.7990 are the same measurement.</p>
+      <p>There is a confound to rule out. Adding a mask adds 128&sup2; more delays, so more masks
+      also means more adjustable numbers, and the sweep alone cannot separate &ldquo;depth
+      helps&rdquo; from &ldquo;more numbers help&rdquo;. Two parameter-matched pairs settle it. 56
+      masks on a 128&sup2; grid and 14 on a 256&sup2; grid both carry 917,504 delays and score
+      <strong>0.889 against 0.856</strong>; the 80-versus-20 pair, both at 1,310,720, gives 0.891
+      against 0.870. At equal parameter count, <strong>depth wins</strong>. Each arrangement was run
+      once, so trust the trend across the whole range rather than the gap between neighbours.</p>
+      <p>The sweep never touched the held-back test images, since that set is handed to the as-built
+      model and every downstream number is quoted from it. A separate slice was carved out of the
+      training data instead and used once, at the end, to score the arrangement that had already
+      won.</p>
+    </div>
+  </section>
+
+  <section class="phase planned reveal">
+    <div class="phase-head col"><span class="ph-num next">next</span>
+      <div><span class="badge-next">Planned</span>
+      <p class="eyebrow">Not built yet</p>
+      <h2>What comes next</h2></div></div>
+    <div class="prose col">
+      <p><strong>Alignment and calibration tolerances.</strong> The error budget covers component
+      errors only. Plate spacing, sideways registration, delays reading systematically high or low,
+      and detector offsets are all unmodelled, and for a free-space build they are plausibly the
+      harder problem. Four new error sources, the same framework.</p>
+      <p><strong>What a foundry actually achieves.</strong> The chip has since had
+      <a class="link" href="@@HREF_chip@@">the same treatment &rarr;</a>, and the failure mode is
+      confirmed: errors there accumulate <em>in sequence</em>, so it needs its delays ten times more
+      accurate than the stack does. What is missing is the other half of the comparison. Every
+      &ldquo;realistic value&rdquo; on the chip side is unsourced, because it needs a chip
+      foundry&rsquo;s process data rather than the display-device measurements this page rests on,
+      and nothing here will invent one.</p>
+      <p><strong>Single photons through the same mesh.</strong> Send light through the trained chip
+      one photon at a time, with the photons indistinguishable, and the output statistics stop being
+      classical. The odds of each pattern are then governed by a quantity called the permanent of
+      the matrix, which is famously hard to compute, and that difficulty is the point of
+      <strong>boson sampling</strong>. The planned work computes those odds and shows the
+      Hong&ndash;Ou&ndash;Mandel dip, where two identical photons entering a 50:50 coupler always
+      leave together. Only the light going in changes; the mesh is identical.</p>
+    </div>
+  </section>
+
+  @@NEXT@@
+
+  <footer class="reveal">
+    <div class="foot-grid">
+      <div><h3>The measurement</h3><p>Two sweeps: plate separation at a fixed mask count, then the
+        same total reach spent different ways. Wrap-around error is measured against a reference run
+        on a padded grid where it cannot occur, and decides which arrangements are worth training at
+        all.</p></div>
+      <div><h3>Reproducing it</h3><p><span class="q">apps/sweep_optics.py</span> runs both sweeps and
+        saves a checkpoint per arrangement; <span class="q">apps/sweep_report.py</span> writes the
+        figure and the data this page plots. Fixed random seeds throughout.</p></div>
+      <div><h3>Status</h3><p>Live work, not a result. The numbers here move as more arrangements
+        finish. The 5-mask design and everything downstream of it stay exactly where they are.</p></div>
+    </div>
+    <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
+    Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
+  </footer>
+
+</main>
+
+@@PAGE_SCRIPT@@
+@@SCALING_BUNDLE@@
+@@SCALING_MOUNT@@
+@@COMPARE_BUNDLE@@
+@@COMPARE_MOUNT@@

@@ -25,6 +25,8 @@ from __future__ import annotations
 import json
 import os
 
+from apps import preview
+
 from apps.diffraction_explorer import mount_script, read_web_asset
 
 
@@ -67,67 +69,38 @@ def d2nn_mount(container_id: str = "d2nn", stage_id: str = None, **opts) -> str:
     return mount_script(container_id, "\n".join(body))
 
 
-_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>photonn &mdash; the optical classifier, live</title>
-<style>
-  :root{{color-scheme:light dark;}}
-  body{{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    background:#fff;color:#1b1f24;}}
-  @media (prefers-color-scheme:dark){{body{{background:#0d1117;color:#e6eaf0;}}}}
-  .wrap{{max-width:880px;margin:0 auto;padding:32px 22px 56px;}}
-  h1{{font-size:1.5rem;margin:0 0 6px;}}
-  .sub{{color:#5a6472;margin:0 0 22px;}}
-  @media (prefers-color-scheme:dark){{.sub{{color:#9aa6b5;}}}}
-  .note{{margin-top:26px;font-size:13px;color:#5a6472;border-top:1px solid #d7dde5;padding-top:14px;}}
-  @media (prefers-color-scheme:dark){{.note{{color:#9aa6b5;border-color:#30363d;}}}}
-  code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>The optical classifier, live</h1>
-  <p class="sub">A diffractive neural network trained in simulation, now running its forward
-  pass in your browser. Light enters as a digit, diffracts through five phase masks, and
-  lands on ten detectors. Nothing is precomputed and nothing is fetched.</p>
-  <div id="stage"></div>
-  <div id="d2nn"></div>
-  <p class="note">The network reaches <strong>0.799</strong> on the MNIST test set, so roughly
-  one digit in four is misread &mdash; the gallery includes examples it gets wrong. Hand-drawn
-  digits are further out of distribution than MNIST test digits, so expect more errors there;
-  that is a fair reading of the model, not a fault in the demo. The masks are the trained
-  parameters exported from <code>photonn.models.D2NN</code>; the physics is the same
-  angular-spectrum port used by the diffraction explorer, cross-checked against the PyTorch
-  model to identical predictions and &lt;10<sup>&minus;3</sup> on the class scores.</p>
-</div>
-{bundle}
-{mount}
-</body>
-</html>
-"""
+#: What this preview page says about the widget it is showing.
+PREVIEW = dict(
+    title="the optical classifier, live",
+    heading="The optical classifier, live",
+    standfirst="A diffractive neural network trained in simulation, now running its forward\n"
+               "  pass in your browser. Light enters as a digit, diffracts through five phase masks, and\n"
+               "  lands on ten detectors. Nothing is precomputed and nothing is fetched.",
+    hosts=("stage", "d2nn"),
+    note="The network reaches <strong>0.799</strong> on the MNIST test set, so roughly\n"
+         "  one digit in four is misread &mdash; the gallery includes examples it gets wrong. Hand-drawn\n"
+         "  digits are further out of distribution than MNIST test digits, so expect more errors there;\n"
+         "  that is a fair reading of the model, not a fault in the demo. The masks are the trained\n"
+         "  parameters exported from <code>photonn.models.D2NN</code>; the physics is the same\n"
+         "  angular-spectrum port used by the diffraction explorer, cross-checked against the PyTorch\n"
+         "  model to identical predictions and &lt;10<sup>&minus;3</sup> on the class scores.",
+)
 
 
 def build_html(**opts) -> str:
-    """Return the full standalone demo HTML string."""
-    opts.setdefault("stage_id", "stage")
-    return _PAGE.format(bundle=d2nn_bundle(), mount=d2nn_mount(**opts))
+    return preview.preview_page(bundle=d2nn_bundle(), mount=d2nn_mount(**opts),
+                                **PREVIEW)
 
 
 def save_demo(path: str = None, **opts) -> str:
-    """Write the standalone demo HTML and return its path."""
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), "d2nn_demo.html")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(build_html(**opts))
-    return path
+        path = preview.default_path(__file__, "d2nn_demo")
+    return preview.save_preview(path, build_html(**opts))
 
 
 def main():
     path = save_demo()
-    print(f"wrote {path} ({os.path.getsize(path) // 1024} KB)")
+    print(f"wrote {path}")
 
 
 if __name__ == "__main__":

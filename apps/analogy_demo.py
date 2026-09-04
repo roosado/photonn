@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import os
 
+from apps import preview
+
 from apps.diffraction_explorer import mount_script, read_web_asset
 
 
@@ -34,52 +36,30 @@ def analogy_mount(container_id: str = "analogy", **opts) -> str:
     return mount_script(container_id, f"window.PhotonnAnalogy.mount(el, {cfg});")
 
 
-_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>photonn &mdash; free space to chip</title>
-<style>
-  :root{{color-scheme:light dark;}}
-  body{{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    background:#fff;color:#1b1f24;}}
-  @media (prefers-color-scheme:dark){{body{{background:#0d1117;color:#e6eaf0;}}}}
-  .wrap{{max-width:880px;margin:0 auto;padding:32px 22px 56px;}}
-  h1{{font-size:1.5rem;margin:0 0 6px;}}
-  .sub{{color:#5a6472;margin:0 0 22px;}}
-  @media (prefers-color-scheme:dark){{.sub{{color:#9aa6b5;}}}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>Free space &rarr; chip</h1>
-  <p class="sub">A stack of phase masks in air and a mesh of interferometers on a chip are the
-  same alternating machine. They differ on one axis: how far a single layer reaches.</p>
-  <div id="analogy"></div>
-</div>
-{bundle}
-{mount}
-</body>
-</html>
-"""
+#: What this preview page says about the widget it is showing.
+PREVIEW = dict(
+    title="free space to chip",
+    heading="Free space &rarr; chip",
+    standfirst="A stack of phase masks in air and a mesh of interferometers on a chip are the\n"
+               "  same alternating machine. They differ on one axis: how far a single layer reaches.",
+    hosts=("analogy",),
+)
 
 
 def build_html(**opts) -> str:
-    return _PAGE.format(bundle=analogy_bundle(), mount=analogy_mount(**opts))
+    return preview.preview_page(bundle=analogy_bundle(), mount=analogy_mount(**opts),
+                                **PREVIEW)
 
 
 def save_demo(path: str = None, **opts) -> str:
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), "analogy_demo.html")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(build_html(**opts))
-    return path
+        path = preview.default_path(__file__, "analogy_demo")
+    return preview.save_preview(path, build_html(**opts))
 
 
 def main():
     path = save_demo()
-    print(f"wrote {path} ({os.path.getsize(path) // 1024} KB)")
+    print(f"wrote {path}")
 
 
 if __name__ == "__main__":

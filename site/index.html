@@ -272,7 +272,6 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 </style>
 </head>
 <body>
-
 <div class="spectral-rule"></div>
 <header class="topbar">
   <div class="topbar-in">
@@ -589,6 +588,333 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 
 <script>
 /*
+ * plot.js -- the canvas primitives every drawing widget on this site shares.
+ *
+ * Nine widgets each carried their own copy of the same five things: the
+ * device-pixel-ratio clamp, the guarded canvas resize, the width observer, the
+ * palette read, the colour-ramp lookup tables, and the scalar-field rasteriser.
+ * Each copy was shallow -- an interface as large as its implementation -- and
+ * they had drifted: `fitCanvas` existed in four files in two mutually
+ * incompatible shapes, `MAX_DPR` in eight with the same six-line comment pasted
+ * verbatim, the inferno LUT in three.
+ *
+ * The cost of that was not tidiness. Commit 4b1e842 fixed an unguarded bitmap
+ * reallocation in two copies of `fitCanvas` and noted "a third copy is the point
+ * to reconsider" -- and the third copy already existed, in d2nn_stage.js, under a
+ * different name, inside the rAF body that drives orbiting. The one widget on the
+ * site that actually animates went on discarding and reallocating a ~1440x860
+ * surface every frame. Separately, three widgets learned about theme changes from
+ * `matchMedia` alone, which never fires for this site's own toggle, so their
+ * charts held the previous theme's ink until something resized them.
+ *
+ * One module, one guard, one ramp.
+ *
+ * Load order: this must be evaluated before any widget that uses it, because
+ * widgets read it at module scope. apps/build_site.py emits it first; the Node
+ * runners require() it directly.
+ */
+(function () {
+  "use strict";
+
+  /* -------------------------------------------------------------- geometry */
+
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+
+  function scale() {
+    const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+    return Math.min(dpr, MAX_DPR);
+  }
+
+  /**
+   * Resize a canvas to `pxW` x `pxH` backing pixels, but only if that changed.
+   *
+   * Assigning `canvas.width` throws the bitmap away and allocates a new one
+   * *even when the value is unchanged* -- it is the `canvas.width = canvas.width`
+   * clear idiom. On a slider drag or an orbit frame the width never moves, so
+   * the unguarded form reallocates the whole surface per event.
+   *
+   * Nothing may depend on the implicit clear: every caller here repaints the
+   * whole surface as its first act, and the ones that need a blank ground call
+   * clearRect explicitly.
+   *
+   * @returns {boolean} whether the backing store was actually resized.
+   */
+  function resize(canvas, pxW, pxH) {
+    if (canvas.width === pxW && canvas.height === pxH) return false;
+    canvas.width = pxW;
+    canvas.height = pxH;
+    return true;
+  }
+
+  /**
+   * Size a canvas from its own laid-out width; return a ready 2D context.
+   *
+   * `heightFor(cssWidth)` gives the CSS height. Use this when the height is a
+   * function of the width, which is the common case on this site.
+   *
+   * `setTransform` rather than `scale`: a resize clears the context, so the dpr
+   * transform has to be re-established after one, and re-applying the same
+   * absolute transform when the guard skipped the resize is a no-op.
+   */
+  function fit(canvas, heightFor, opts) {
+    const o = opts || {};
+    const r = scale();
+    const min = o.minWidth === undefined ? 240 : o.minWidth;
+    const fallback = o.fallbackWidth === undefined ? 420 : o.fallbackWidth;
+    const measured = (canvas.getBoundingClientRect && canvas.getBoundingClientRect().width)
+      || canvas.clientWidth || fallback;
+    const W = Math.max(min, Math.round(measured));
+    const H = Math.round(heightFor(W));
+    resize(canvas, Math.round(W * r), Math.round(H * r));
+    // Written either way: a canvas that has never been sized is already exactly
+    // 300x150 and would otherwise be left with no height at all at that one size.
+    canvas.style.height = H + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+    return { ctx, W, H, dpr: r };
+  }
+
+  /**
+   * Size a canvas to a CSS box the caller already computed; return its context.
+   *
+   * The other legitimate shape: the caller knows both dimensions because the
+   * layout gave them, rather than deriving height from width.
+   */
+  function fitTo(canvas, cssW, cssH) {
+    const r = scale();
+    resize(canvas, Math.round(cssW * r), Math.round(cssH * r));
+    canvas.style.height = cssH + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+    return { ctx, W: cssW, H: cssH, dpr: r };
+  }
+
+  /* --------------------------------------------------------------- reacting */
+
+  /**
+   * Re-run `fn` when `target` changes width, and only then.
+   *
+   * Guarded on the measured width rather than firing on every observation
+   * because `fn` sets the canvas height, which is itself a resize: an unguarded
+   * observer would answer its own callback forever.
+   */
+  function onWidthChange(target, fn) {
+    let last = -1;
+    const check = function () {
+      const w = Math.round(target.getBoundingClientRect().width);
+      if (w === last) return;
+      last = w;
+      fn();
+    };
+    if (typeof window !== "undefined" && typeof window.ResizeObserver === "function") {
+      new window.ResizeObserver(check).observe(target);
+    } else if (typeof window !== "undefined") {
+      window.addEventListener("resize", check);
+    }
+  }
+
+  /**
+   * Re-run `fn` when the page theme changes, however it changed.
+   *
+   * Both sources, because there are two. The site's toggle sets `data-theme` on
+   * the root element and never touches the OS preference, so a widget listening
+   * only on `matchMedia` hears nothing when a reader flips it -- the card around
+   * a chart restyles instantly, being CSS, while the chart inside keeps the old
+   * ink until something else forces a redraw. A reader on "system" with no
+   * toggle interaction is the other case, and only matchMedia sees that one.
+   */
+  function onThemeChange(fn) {
+    if (typeof document !== "undefined" && typeof MutationObserver !== "undefined"
+        && document.documentElement) {
+      new MutationObserver(fn).observe(document.documentElement,
+        { attributes: true, attributeFilter: ["data-theme"] });
+    }
+    if (typeof window !== "undefined" && window.matchMedia) {
+      const mq = window.matchMedia("(prefers-color-scheme:dark)");
+      if (mq.addEventListener) mq.addEventListener("change", fn);
+      else if (mq.addListener) mq.addListener(fn);
+    }
+  }
+
+  /* ----------------------------------------------------------------- colour */
+
+  /**
+   * Read CSS custom properties off `root`, with a fallback for each.
+   *
+   * `spec` maps the name you want in the result to `[property, fallback]`. The
+   * fallback matters: a canvas is drawn before styles necessarily resolve, and a
+   * widget drawing in `""` renders invisibly rather than obviously wrong.
+   */
+  function readVars(root, spec) {
+    const cs = (typeof getComputedStyle === "function")
+      ? getComputedStyle(root)
+      : { getPropertyValue: () => "" };
+    const out = {};
+    for (const key of Object.keys(spec)) {
+      const [prop, fallback] = spec[key];
+      out[key] = String(cs.getPropertyValue(prop) || "").trim() || fallback;
+    }
+    return out;
+  }
+
+  /** The site's ink, read from the CSS custom properties in force at `root`. */
+  function palette(root) {
+    const cs = (typeof getComputedStyle === "function")
+      ? getComputedStyle(root)
+      : { getPropertyValue: () => "" };
+    const get = (k, f) => (String(cs.getPropertyValue(k) || "").trim() || f);
+    return {
+      fg: get("--pe-fg", "#1b1f24"),
+      muted: get("--pe-muted", "#5a6472"),
+      panel: get("--pe-panel", "#f4f6f9"),
+      border: get("--pe-border", "#d7dde5"),
+      accent: get("--pe-accent", "#3b6ea5"),
+      ok: get("--pe-ok", "#3f8f4e"),
+      warn: get("--pe-warn", "#c14a3d"),
+    };
+  }
+
+  // One visual language for optical intensity across the whole site: the 3D
+  // stage, the filmstrip and the diffraction explorer all speak inferno.
+  const INFERNO = [
+    [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
+    [188, 55, 84], [221, 81, 58], [243, 120, 25], [252, 255, 164],
+  ];
+  // Cyclic map for phase: it must join end-to-end, because -pi and +pi are the
+  // same setting of the same mask. A sequential map would draw a false seam.
+  const TWILIGHT = [
+    [226, 217, 226], [151, 180, 212], [76, 123, 189], [48, 63, 125], [24, 24, 45],
+    [56, 32, 58], [120, 52, 84], [186, 88, 89], [222, 148, 116], [226, 217, 226],
+  ];
+
+  /** Expand colour anchors into a 256-entry RGB lookup table. */
+  function makeLUT(anchors) {
+    const lut = new Uint8ClampedArray(256 * 3);
+    const seg = anchors.length - 1;
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255 * seg;
+      const k = Math.min(seg - 1, Math.floor(t));
+      const f = t - k;
+      const a = anchors[k], b = anchors[k + 1];
+      lut[i * 3] = a[0] + (b[0] - a[0]) * f;
+      lut[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
+      lut[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
+    }
+    return lut;
+  }
+
+  const LUT_INTENSITY = makeLUT(INFERNO);
+  const LUT_PHASE = makeLUT(TWILIGHT);
+
+  /**
+   * Rasterise an n-by-n scalar field into an offscreen canvas.
+   *
+   * @param {ArrayLike<number>} data  n*n samples, row-major.
+   * @param {number} n
+   * @param {object} [opts]
+   * @param {Uint8ClampedArray} [opts.lut]     ramp; defaults to intensity.
+   * @param {number} [opts.gamma]  stretch applied to the normalised value.
+   *   Detector intensity spans decades, so 0.5 (a sqrt stretch) is the usual
+   *   choice; 1 leaves it linear.
+   * @param {boolean} [opts.cyclic]  map over [-pi, pi] instead of [0, max].
+   *   Phase is cyclic and must not be auto-scaled, or two masks with different
+   *   ranges would be drawn as though they matched.
+   * @param {number} [opts.lo] [opts.hi]  explicit range, overriding both.
+   */
+  /**
+   * Rasterise into a canvas the caller already has, rather than a fresh one.
+   *
+   * The reuse matters for a widget that redraws on every slider move: allocating
+   * a new offscreen canvas per frame is the same waste as reallocating a backing
+   * store per frame, one level up.
+   */
+  function rasterInto(off, data, n, opts) {
+    const o = opts || {};
+    const lut = o.lut || LUT_INTENSITY;
+    const gamma = o.gamma === undefined ? 1 : o.gamma;
+
+    off.width = n; off.height = n;
+    const ctx = off.getContext("2d");
+    const img = ctx.createImageData(n, n);
+    const d = img.data;
+
+    let lo = 0, hi = 1;
+    if (o.lo !== undefined && o.hi !== undefined) { lo = o.lo; hi = o.hi; }
+    else if (o.cyclic) { lo = -Math.PI; hi = Math.PI; }
+    else {
+      hi = 0;
+      for (let i = 0; i < data.length; i++) if (data[i] > hi) hi = data[i];
+      if (hi <= 0) hi = 1;
+    }
+    const span = hi - lo || 1;
+
+    for (let i = 0; i < n * n; i++) {
+      let v = (data[i] - lo) / span;
+      if (v < 0) v = 0; else if (v > 1) v = 1;
+      if (gamma !== 1) v = Math.pow(v, gamma);
+      const li = (v * 255) | 0;
+      d[i * 4] = lut[li * 3];
+      d[i * 4 + 1] = lut[li * 3 + 1];
+      d[i * 4 + 2] = lut[li * 3 + 2];
+      d[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return off;
+  }
+
+  function raster(data, n, opts) {
+    return rasterInto(document.createElement("canvas"), data, n, opts);
+  }
+
+  /* -------------------------------------------------------------------- DOM */
+
+  /**
+   * Inject a widget's stylesheet once per page.
+   *
+   * Guarded on the id, which is right for a widget mounted more than once and
+   * quietly wrong when two different widgets pick the same id -- the second then
+   * finds the id taken and runs with none of its own CSS.
+   * tests/test_web_style_ids.py asserts both that ids are unique and that class
+   * prefixes are.
+   */
+  function injectStyle(id, css) {
+    if (document.getElementById(id)) return;
+    const s = document.createElement("style");
+    s.id = id;
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  /** `document.createElement` with a class and inner markup in one call. */
+  function el(tag, cls, html) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  const API = {
+    MAX_DPR, scale, resize, fit, fitTo,
+    onWidthChange, onThemeChange,
+    palette, readVars, INFERNO, TWILIGHT, makeLUT, LUT_INTENSITY, LUT_PHASE, raster, rasterInto,
+    injectStyle, el,
+  };
+
+  if (typeof module !== "undefined" && module.exports) module.exports = API;
+  if (typeof window !== "undefined") window.PhotonnPlot = API;
+})();
+
+</script>
+<script>
+/*
  * mount_queue.js -- when the widgets on a page are allowed to start.
  *
  * Every widget on this site mounts itself, and used to do so from one shared
@@ -865,9 +1191,16 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   const STYLE_ID = "if-style";
-  const MAX_DPR = 2;
-  function dpr() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const dpr = P.scale;
 
   const CSS = `
 .if-root{--if-fg:#1b1f24;--if-muted:#5a6472;--if-panel:#f4f6f9;--if-border:#d7dde5;
@@ -909,20 +1242,9 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 }
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   // ------------------------------------------------------------------ physics
   //: wavelengths drawn across the pane. Three is enough to read the shift as a
@@ -994,28 +1316,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
    * scale has to be re-established after one, and re-applying the same absolute
    * transform when the guard below skipped the resize is a no-op.
    */
-  function fitCanvas(c, heightFor) {
-    const r = dpr();
-    const W = Math.max(240, Math.round(c.getBoundingClientRect().width || 420));
-    const H = Math.round(heightFor(W));
-    const pxW = Math.round(W * r), pxH = Math.round(H * r);
-    // Guarded on the bitmap size actually changing. Assigning `canvas.width`
-    // throws the bitmap away and allocates a new one *even when the value is
-    // unchanged* -- it is the `canvas.width = canvas.width` clear idiom -- and
-    // this runs on every slider event, where the width never moves. Nothing
-    // depends on the implicit clear: every caller repaints the whole surface as
-    // its first act. The CSS height is written either way, because a canvas that
-    // has never been sized is already exactly 300x150 and would otherwise be left
-    // with no height at all at that one size.
-    if (c.width !== pxW || c.height !== pxH) {
-      c.width = pxW;
-      c.height = pxH;
-    }
-    c.style.height = H + "px";
-    const ctx = c.getContext("2d");
-    ctx.setTransform(r, 0, 0, r, 0, 0);
-    return { ctx, W, H };
-  }
+  const fitCanvas = (c, heightFor) => P.fit(c, heightFor);
 
   /**
    * Re-run `fn` when `target` changes width, and only then.
@@ -2037,6 +2338,14 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   // Backing-store scale, capped at 2x.
   //
   // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
@@ -2045,8 +2354,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   // imageSmoothingQuality "high" on every orbit frame, so this is the difference
   // between a smooth orbit and a slideshow on exactly the devices least able to
   // afford it.
-  const MAX_DPR = 2;
-  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const canvasScale = P.scale;
 
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
@@ -2054,24 +2362,8 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 
   // Same inferno LUT the diffraction explorer uses, so both widgets speak one
   // visual language for optical intensity.
-  const ANCHORS = [
-    [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
-    [188, 55, 84], [221, 81, 58], [243, 120, 25], [252, 255, 164],
-  ];
-  const LUT = (function () {
-    const lut = new Uint8ClampedArray(256 * 3);
-    const seg = ANCHORS.length - 1;
-    for (let i = 0; i < 256; i++) {
-      const t = i / 255 * seg;
-      const k = Math.min(seg - 1, Math.floor(t));
-      const f = t - k;
-      const a = ANCHORS[k], b = ANCHORS[k + 1];
-      lut[i * 3] = a[0] + (b[0] - a[0]) * f;
-      lut[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
-      lut[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
-    }
-    return lut;
-  })();
+  // One ramp for the whole site, from plot.js.
+  const LUT = P.LUT_INTENSITY;
 
   // Detector-plane intensity spans several decades; a sqrt display stretch makes
   // the ten regions legible. Stated in the caption -- the numbers are untouched.
@@ -2130,20 +2422,9 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 .pd-note{font-size:12px;color:var(--pe-muted);margin:0;}
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   /** Peak-normalised inferno render of an n x n map onto a canvas of `size` CSS px. */
   function renderMap(canvas, data, n, size, gamma) {
@@ -2544,6 +2825,14 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   // Backing-store scale, capped at 2x.
   //
   // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
@@ -2552,42 +2841,17 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   // imageSmoothingQuality "high" on every orbit frame, so this is the difference
   // between a smooth orbit and a slideshow on exactly the devices least able to
   // afford it.
-  const MAX_DPR = 2;
-  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const canvasScale = P.scale;
 
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
     : (typeof require !== "undefined" ? require("./d2nn.js") : null);
 
-  // Same inferno LUT as the filmstrip and the diffraction explorer, so every
-  // optical-intensity image on the site speaks one visual language.
-  const INFERNO = [
-    [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
-    [188, 55, 84], [221, 81, 58], [243, 120, 25], [252, 255, 164],
-  ];
-  // Cyclic map for phase: it must join end-to-end, because -pi and +pi are the
-  // same setting of the same mask. A sequential map would draw a false seam.
-  const TWILIGHT = [
-    [226, 217, 226], [151, 180, 212], [76, 123, 189], [48, 63, 125], [24, 24, 45],
-    [56, 32, 58], [120, 52, 84], [186, 88, 89], [222, 148, 116], [226, 217, 226],
-  ];
-
-  function makeLUT(anchors) {
-    const lut = new Uint8ClampedArray(256 * 3);
-    const seg = anchors.length - 1;
-    for (let i = 0; i < 256; i++) {
-      const t = i / 255 * seg;
-      const k = Math.min(seg - 1, Math.floor(t));
-      const f = t - k;
-      const a = anchors[k], b = anchors[k + 1];
-      lut[i * 3] = a[0] + (b[0] - a[0]) * f;
-      lut[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
-      lut[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
-    }
-    return lut;
-  }
-  const LUT_I = makeLUT(INFERNO);
-  const LUT_P = makeLUT(TWILIGHT);
+  // The site's two ramps, from plot.js: inferno for intensity, and a cyclic
+  // map for phase, which must join end to end because -pi and +pi are the
+  // same setting of the same mask.
+  const LUT_I = P.LUT_INTENSITY;
+  const LUT_P = P.LUT_PHASE;
 
   const GAMMA = 0.5;          // sqrt stretch; detector intensity spans decades
   const DEPTH_SPAN = 6.0;     // drawn stack length, in half-aperture units
@@ -2662,50 +2926,39 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   // visible until a page carried both: on the optics page the stage lost, and its
   // toolbar unwrapped and its canvas collapsed to the 300px default. Guarded by
   // tests/test_web_style_ids.py.
-  const STYLE_ID = "d2nn-stage-style";
+  const STYLE_ID = "st-style";
   const CSS = `
-.ds-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
+.st-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
   --pe-accent:#3b6ea5;--pe-ok:#3f8f4e;--pe-warn:#c14a3d;
   color:var(--pe-fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   display:flex;flex-direction:column;gap:12px;}
-@media (prefers-color-scheme:dark){.ds-root{--pe-fg:#e6eaf0;--pe-muted:#9aa6b5;
+@media (prefers-color-scheme:dark){.st-root{--pe-fg:#e6eaf0;--pe-muted:#9aa6b5;
   --pe-panel:#1c2128;--pe-border:#30363d;--pe-accent:#6ea8e0;--pe-ok:#5cc06e;--pe-warn:#e0705f;}}
-.ds-box{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
+.st-box{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
   padding:12px 14px;}
-.ds-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
-.ds-seg{display:flex;border:1px solid var(--pe-border);border-radius:7px;overflow:hidden;}
-.ds-seg button{border:0;background:transparent;color:var(--pe-muted);padding:6px 12px;
+.st-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.st-seg{display:flex;border:1px solid var(--pe-border);border-radius:7px;overflow:hidden;}
+.st-seg button{border:0;background:transparent;color:var(--pe-muted);padding:6px 12px;
   font:inherit;font-size:12px;font-weight:600;cursor:pointer;}
-.ds-seg button[aria-pressed=true]{background:var(--pe-accent);color:#fff;}
-.ds-btn{border:1px solid var(--pe-border);background:transparent;color:var(--pe-fg);
+.st-seg button[aria-pressed=true]{background:var(--pe-accent);color:#fff;}
+.st-btn{border:1px solid var(--pe-border);background:transparent;color:var(--pe-fg);
   border-radius:7px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;}
-.ds-btn:hover{border-color:var(--pe-accent);color:var(--pe-accent);}
-.ds-btn[aria-pressed=true]{border-color:var(--pe-accent);color:var(--pe-accent);
+.st-btn:hover{border-color:var(--pe-accent);color:var(--pe-accent);}
+.st-btn[aria-pressed=true]{border-color:var(--pe-accent);color:var(--pe-accent);
   background:color-mix(in srgb,var(--pe-accent) 12%,transparent);}
-.ds-btn:disabled{opacity:.5;cursor:default;}
-.ds-spacer{flex:1 1 auto;}
-.ds-canvas{display:block;width:100%;touch-action:none;cursor:grab;border-radius:8px;}
-.ds-canvas.drag{cursor:grabbing;}
-.ds-foot{display:flex;gap:14px;flex-wrap:wrap;justify-content:space-between;
+.st-btn:disabled{opacity:.5;cursor:default;}
+.st-spacer{flex:1 1 auto;}
+.st-canvas{display:block;width:100%;touch-action:none;cursor:grab;border-radius:8px;}
+.st-canvas.drag{cursor:grabbing;}
+.st-foot{display:flex;gap:14px;flex-wrap:wrap;justify-content:space-between;
   font-size:11.5px;color:var(--pe-muted);margin-top:8px;}
-.ds-foot b{color:var(--pe-fg);font-variant-numeric:tabular-nums;font-weight:600;}
-.ds-note{font-size:12px;color:var(--pe-muted);margin:0;}
+.st-foot b{color:var(--pe-fg);font-variant-numeric:tabular-nums;font-weight:600;}
+.st-note{font-size:12px;color:var(--pe-muted);margin:0;}
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   /**
    * Orthographic basis for azimuth `theta` and elevation `phi` (radians).
@@ -2735,48 +2988,10 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
    * additive blending already makes darkness contribute nothing. Alpha-keying on
    * top of that would attenuate every mid-tone twice and dim the whole beam.
    */
-  function renderBitmap(data, n, lut, gamma, cyclic) {
-    const off = document.createElement("canvas");
-    off.width = n; off.height = n;
-    const ctx = off.getContext("2d");
-    const img = ctx.createImageData(n, n);
-    const d = img.data;
+  const renderBitmap = (data, n, lut, gamma, cyclic) =>
+    P.raster(data, n, { lut, gamma, cyclic });
 
-    let lo = 0, hi = 1;
-    if (cyclic) { lo = -Math.PI; hi = Math.PI; }
-    else {
-      hi = 0;
-      for (let i = 0; i < data.length; i++) if (data[i] > hi) hi = data[i];
-      if (hi <= 0) hi = 1;
-    }
-    const span = hi - lo;
-
-    for (let i = 0; i < n * n; i++) {
-      let v = (data[i] - lo) / span;
-      if (v < 0) v = 0; else if (v > 1) v = 1;
-      if (gamma !== 1) v = Math.pow(v, gamma);
-      const li = (v * 255) | 0;
-      d[i * 4] = lut[li * 3];
-      d[i * 4 + 1] = lut[li * 3 + 1];
-      d[i * 4 + 2] = lut[li * 3 + 2];
-      d[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return off;
-  }
-
-  function palette(root) {
-    const cs = getComputedStyle(root);
-    const get = (k, f) => (cs.getPropertyValue(k).trim() || f);
-    return {
-      fg: get("--pe-fg", "#1b1f24"),
-      muted: get("--pe-muted", "#5a6472"),
-      panel: get("--pe-panel", "#f4f6f9"),
-      border: get("--pe-border", "#d7dde5"),
-      accent: get("--pe-accent", "#3b6ea5"),
-      warn: get("--pe-warn", "#c14a3d"),
-    };
-  }
+  const palette = P.palette;
 
   function mount(container, opts) {
     opts = opts || {};
@@ -2817,44 +3032,44 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       drag: null,
     };
 
-    const root = el("div", "pe-root ds-root");
+    const root = el("div", "pe-root st-root");
     container.innerHTML = "";
     container.appendChild(root);
 
-    const box = el("div", "ds-box");
-    const bar = el("div", "ds-bar");
+    const box = el("div", "st-box");
+    const bar = el("div", "st-bar");
 
-    const seg = el("div", "ds-seg");
+    const seg = el("div", "st-seg");
     const btnLight = el("button", null, "Light arriving");
     const btnPhase = el("button", null, "Mask phase");
     seg.appendChild(btnLight); seg.appendChild(btnPhase);
     bar.appendChild(seg);
 
-    const btnBeam = el("button", "ds-btn", "Beam between masks");
-    const btnSweep = el("button", "ds-btn", "▶ Sweep");
+    const btnBeam = el("button", "st-btn", "Beam between masks");
+    const btnSweep = el("button", "st-btn", "▶ Sweep");
     bar.appendChild(btnBeam); bar.appendChild(btnSweep);
 
     // Manual mode only: the stage stops chasing the pen and re-renders here.
-    const btnRefresh = el("button", "ds-btn ds-refresh", "⟳ Refresh");
+    const btnRefresh = el("button", "st-btn st-refresh", "⟳ Refresh");
     if (MODE === "manual") bar.appendChild(btnRefresh);
 
-    bar.appendChild(el("div", "ds-spacer"));
-    const btnReset = el("button", "ds-btn", "Reset view");
+    bar.appendChild(el("div", "st-spacer"));
+    const btnReset = el("button", "st-btn", "Reset view");
     bar.appendChild(btnReset);
     box.appendChild(bar);
 
-    const canvas = el("canvas", "ds-canvas");
+    const canvas = el("canvas", "st-canvas");
     canvas.setAttribute("role", "img");
     box.appendChild(canvas);
 
-    const foot = el("div", "ds-foot");
+    const foot = el("div", "st-foot");
     const footL = el("div", null, "");
     const footR = el("div", null, "");
     foot.appendChild(footL); foot.appendChild(footR);
     box.appendChild(foot);
     root.appendChild(box);
 
-    root.appendChild(el("p", "ds-note",
+    root.appendChild(el("p", "st-note",
       "Drag to orbit. Every panel carries the light actually computed on it, and the haze "
       + "between them is the light at those in-between depths, computed the same way "
       + "rather than shaded in. No rays are drawn on purpose: light here behaves as a "
@@ -3132,9 +3347,19 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       const w = canvas.clientWidth || 720;
       const h = Math.max(300, Math.min(430, Math.round(w * 0.52)));
       const dpr = canvasScale();
+      const pxW = Math.round(w * dpr), pxH = Math.round(h * dpr);
       canvas.style.height = h + "px";
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+      // Guarded on the bitmap size actually changing, for the same reason as
+      // errors.js:fitCanvas -- assigning `canvas.width` throws the bitmap away
+      // and allocates a new one even when the value is unchanged. This matters
+      // more here than anywhere else: `draw` is the rAF body for both orbiting
+      // and the 3.2 s sweep, so unguarded it reallocated a ~1440x860 surface
+      // every frame, on the one widget on the site that actually animates.
+      // Nothing depends on the implicit clear; the clearRect below is explicit.
+      if (canvas.width !== pxW || canvas.height !== pxH) {
+        canvas.width = pxW;
+        canvas.height = pxH;
+      }
       const ctx = canvas.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
@@ -3409,10 +3634,8 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
 
-    if (typeof MutationObserver !== "undefined") {
-      new MutationObserver(requestDraw).observe(document.documentElement,
-        { attributes: true, attributeFilter: ["data-theme"] });
-    }
+    // The page theme rewrites the CSS variables; canvases must repaint.
+    P.onThemeChange(requestDraw);
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(requestDraw).observe(root);
     else window.addEventListener("resize", requestDraw);
 

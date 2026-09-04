@@ -23,6 +23,9 @@ import os
 
 import pytest
 
+from apps.build_site import PAGES
+from built_site import page_html
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.join(HERE, "..", "site")
 
@@ -30,7 +33,7 @@ KB = 1024
 
 #: page -> ceiling in KB. Measured after the 2026-08-10 redesign, with roughly 15%
 #: headroom over what each page actually weighs.
-BUDGET = {
+CEILING_KB = {
     "index.html": 430,        # the live classifier (8-bit) + the 3D stage + two plates
     # Raised from 70 when the in-page contents card landed. The card's CSS lives in
     # the one shared stylesheet, so every page pays for it whether or not it has
@@ -56,21 +59,49 @@ BUDGET = {
 
 #: The whole site, as a reader walking the sequential path would meet it. Five
 #: pages now rather than three, and the extra weight is real content -- the eight
-#: candidate-L56 figures that make "depth costs tolerance" showable. It still
-#: lands under the ceiling the three-page site was held to.
-TOTAL_BUDGET_KB = 1900
+#: candidate-L56 figures that make "depth costs tolerance" showable.
+#:
+#: Raised from 1900 when the widgets' shared canvas code moved into
+#: ``apps/web/plot.js``. That is a deliberate trade and it goes the wrong way on
+#: this metric: the module is 12 KB and lands on the four pages that draw
+#: anything, while the per-widget copies it replaced came to about 7 KB in total.
+#: Net +42 KB, 2.2% of the site.
+#:
+#: Taken anyway, because the duplication was not free either. Nine widgets each
+#: held their own dpr clamp, canvas resize, palette read and colour ramp, and the
+#: copies had drifted: one of them reallocated a ~1440x860 bitmap on every
+#: animation frame, and three learned about theme changes from a source this
+#: site's own toggle never fires. Those are the failures a shared module makes
+#: impossible, and 42 KB is what they cost to prevent.
+#:
+#: Every per-page ceiling above is unchanged and still passes. /chip gets no copy
+#: at all -- it carries no canvas, and ``Page.widgets`` is what makes that
+#: answerable.
+TOTAL_BUDGET_KB = 1960
 
 
-def page(name):
-    path = os.path.join(SITE, name)
-    if not os.path.exists(path):
-        pytest.skip(f"{name} not built; run python -m apps.build_site")
-    return path
+#: Every page a reader can reach, taken from PAGES rather than restated. The
+#: ceilings above are per-page judgements and stay hand-written; the *set* of
+#: pages is not a judgement, and keeping a second copy of it here meant a page
+#: added to PAGES was link-checked and index-checked but silently escaped the
+#: weight, self-containment and figure-encoding guards below.
+PAGE_FILES = tuple(p.file for p in PAGES)
 
 
-@pytest.mark.parametrize("name,ceiling", sorted(BUDGET.items()))
+def test_every_page_has_a_ceiling():
+    assert set(CEILING_KB) == set(PAGE_FILES), (
+        "CEILING_KB and PAGES disagree about which pages exist. A page without a "
+        "ceiling is a page with no weight guard at all."
+    )
+
+
+def size_kb(name):
+    return len(page_html(name).encode("utf-8")) / KB
+
+
+@pytest.mark.parametrize("name,ceiling", sorted(CEILING_KB.items()))
 def test_page_is_within_budget(name, ceiling):
-    size = os.path.getsize(page(name)) / KB
+    size = size_kb(name)
     assert size <= ceiling, (
         f"{name} is {size:.0f} KB against a {ceiling} KB ceiling. "
         "Re-encode the figures or export a bundle at fewer bits before raising this."
@@ -78,32 +109,32 @@ def test_page_is_within_budget(name, ceiling):
 
 
 def test_the_whole_site_is_within_budget():
-    total = sum(os.path.getsize(page(n)) for n in BUDGET) / KB
+    total = sum(size_kb(n) for n in PAGE_FILES)
     assert total <= TOTAL_BUDGET_KB, (
-        f"the three pages total {total:.0f} KB against a {TOTAL_BUDGET_KB} KB ceiling"
+        f"the five pages total {total:.0f} KB against a {TOTAL_BUDGET_KB} KB ceiling"
     )
 
 
-def test_pages_fetch_nothing():
+@pytest.mark.parametrize("name", PAGE_FILES)
+def test_pages_fetch_nothing(name):
     """The property that makes the size a budget rather than a first-load cost.
 
     If a page ever starts fetching, these ceilings stop describing what a visitor
     waits for, and the ``file://`` guarantee is gone with them.
     """
-    for name in BUDGET:
-        html = open(page(name), encoding="utf-8").read()
-        for forbidden in ("fetch(", "XMLHttpRequest", "new Worker", "importScripts"):
-            assert forbidden not in html, f"{name} contains {forbidden!r}; it is no longer self-contained"
+    html = page_html(name)
+    for forbidden in ("fetch(", "XMLHttpRequest", "new Worker", "importScripts"):
+        assert forbidden not in html, f"{name} contains {forbidden!r}; it is no longer self-contained"
 
 
-@pytest.mark.parametrize("name", sorted(BUDGET))
+@pytest.mark.parametrize("name", PAGE_FILES)
 def test_no_figure_ships_as_an_unoptimised_png(name):
     """PNG lost to AVIF on every figure in this project, often by 4x.
 
     A PNG data URI reappearing means encode_figure stopped being consulted -- a
     figure inlined by hand somewhere, most likely.
     """
-    html = open(page(name), encoding="utf-8").read()
+    html = page_html(name)
     assert "data:image/png;base64" not in html, (
         f"{name} inlines a PNG; encode_figure keeps the smallest of AVIF/WebP/PNG "
         "and PNG has never won here"

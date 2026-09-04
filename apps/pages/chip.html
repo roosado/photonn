@@ -1,0 +1,205 @@
+<div class="spectral-rule"></div>
+@@TOPBAR@@
+
+<main class="wrap">
+
+  <section class="hero col reveal">
+    <p class="eyebrow">Free space and silicon, side by side</p>
+    <h1>The same machine, built <em>two ways</em></h1>
+    <div class="underbar"></div>
+    <p class="standfirst">A stack of etched glass and a silicon chip threaded with light-carrying
+    channels look like unrelated devices. Strip both to their skeletons and the <b>same sequence
+    appears</b>: a layer of delays you train, then a layer of fixed hardware that blends the
+    channels together, repeated, and closed by a detector that measures brightness. They differ on
+    exactly one number, and that number sets everything else.</p>
+  </section>
+
+  @@TOC@@
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The other optical computer</p>
+      <h2 data-toc="What an interferometer is">An interferometer is two splitters around an adjustable delay</h2></div></div>
+    <div class="prose col">
+      <p>On a chip, light does not spread through open air. It runs along <strong>waveguides</strong>,
+      narrow channels of silicon that trap light the way a pipe carries water. Each channel carries
+      one stream, called a <strong>mode</strong>, and streams in separate channels cannot mix unless
+      the hardware deliberately brings them together. The component that does that is a
+      <strong>directional coupler</strong>: run two channels close enough and light leaks between
+      them, and at the right length exactly half crosses over.</p>
+      <p>A <strong>Mach&ndash;Zehnder interferometer</strong> is not exotic hardware. It is two of
+      those 50:50 couplers with an adjustable delay @@MATH_theta@@ in between and
+      another delay @@MATH_phi@@ in front, which written out is
+      @@MATH_mzi@@. Split the light, hold one
+      arm back, recombine: how much the two halves reinforce or cancel decides how much leaves by
+      each output. That combination is <strong>unitary</strong> for any setting of the two delays,
+      meaning it only ever redistributes light between the outputs and never creates or destroys
+      any, which is exactly what passive hardware can do. Tile these across neighbouring pairs of
+      channels and you get a <strong>Clements rectangle</strong> of
+      @@MATH_nmzi@@ of them.</p>
+      <p>Such a mesh can produce <em>any</em> unitary operation at all, and the proof is a recipe
+      rather than an existence argument. You take the target operation and use one interferometer at
+      a time to <strong>zero out its entries</strong> one by one, until nothing is left but the
+      identity; run the recipe backwards and you have the settings. Attacking it from one side only
+      gives the triangular <strong>Reck</strong> mesh; attacking from both sides gives the balanced
+      <strong>Clements</strong> rectangle, which is half as deep and loses less light. Put a row of
+      simple brightness adjustments between two such meshes and you can build <em>any</em> real
+      matrix, not just a unitary one, using the <strong>singular-value decomposition</strong>
+      @@MATH_svd@@, the standard factorisation that
+      splits any matrix into a rotation, a stretch along each axis, and another rotation. Both recipes rebuild randomly drawn target
+      operations to <strong>~10<sup>&minus;15</sup></strong>, which is this side&rsquo;s
+      correctness anchor.</p>
+      <p>Trained on the same digits it scores <strong>0.736</strong>, just shy of the glass
+      stack&rsquo;s 0.799, but with <strong>2,628 adjustable numbers against 81,920, about
+      31&times; fewer</strong>, and able to implement any linear map at all rather than only the
+      ones a stack of masks can reach. The gap is not a modelling failure. The chip&rsquo;s area
+      grows as the <em>square</em> of the number of channels, so feeding it a large image is
+      prohibitive, and MNIST has to be shrunk to 6&times;6 = 36 channels first. <strong>It starves
+      on how much input it can take in, not on what it can compute.</strong> That trade between
+      chip area and input size is the central structural difference between the two processors.</p>
+      <p>One finding falls out of the physics rather than the training. A mesh with no power source
+      <strong>cannot amplify</strong>, since at best it passes all the light through and in practice
+      loses some, so a buildable @@MATH_sigma@@ needs every one of its stretch
+      factors to be 1 or less. Several of the trained ones come out above 1. A real device would
+      need an amplifier, or would have to scale everything down and pay for it in lost light.</p>
+    </div>
+
+    <div class="stats col">
+      <div class="s"><div class="v">0.736</div><div class="l">accuracy, against 0.799 for the glass stack</div></div>
+      <div class="s"><div class="v">2,628</div><div class="l">adjustable numbers &middot; ~31&times; fewer</div></div>
+      <div class="s"><div class="v">36 channels</div><div class="l">72 interferometers deep, one after another</div></div>
+      <div class="s"><div class="v">1e&minus;15</div><div class="l">error when rebuilding a target operation</div></div>
+    </div>
+    <figure class="plate reveal">
+      <img src="@@FIG_mesh_topology@@" alt="MZI mesh topology and the learned singular-value spectrum" loading="lazy">
+      <figcaption><span class="fign"></span><b>Why there are two meshes.</b> Building an
+      arbitrary matrix takes the three-part factorisation @@MATH_svd@@ above, and
+      <em>U</em> and <em>V</em> are each a full mesh of their own. The two large panels are those two
+      meshes, drawn as they are physically tiled: each small rectangle is one interferometer, sitting
+      at its position across the 36 channels (vertical) and along the 36 columns of depth
+      (horizontal). <b>Colour is the phase that interferometer was trained to hold</b>, from 0 to
+      &pi; on the scale between the panels, so the panels are a picture of the trained settings
+      themselves rather than a schematic.
+      <b>The right panel is the stretch factors</b>, one per channel, sorted largest first. Two
+      things to read there. The <b>red dashed line at 1.0 is the passivity limit</b>: a chip with no
+      power source can only redistribute light, never add any, so every bar must sit at or below it
+      to be buildable. <b>Several do not</b>, reaching almost 4, which is the finding above made
+      visible. And most of the bars are near zero, with only about 15&ndash;20 of the 36 carrying
+      real weight. That is what <em>low-rank</em> means here: the trained operation is quietly using
+      far fewer channels than the chip provides, which is why so few adjustable numbers
+      suffice.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The correspondence</p>
+      <h2>Why they are the same machine</h2></div></div>
+    <div class="prose col">
+      <p>A chip of waveguides looks nothing like a stack of etched glass, and everything above reads
+      as two unrelated devices. They are not. Strip both to their skeletons and the same sequence
+      appears: <strong>a layer of delays you train, then a layer of fixed hardware that blends the
+      channels, repeated, and closed by a detector that measures brightness.</strong> A phase mask
+      <em>is</em> a column of delays. A 3&nbsp;mm air gap <em>is</em> a column of couplers. In both
+      machines the only thing training ever adjusts is a delay, and in both, the blending step is
+      fixed by the hardware and cannot be programmed.</p>
+    </div>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th></th><th>Glass stack &middot; free space</th><th>Interferometer mesh &middot; chip</th></tr></thead>
+        <tbody>
+          <tr><td>a &ldquo;channel&rdquo; is</td><td>one pixel of the beam, 16,384 of them</td><td>one waveguide, 36 of them</td></tr>
+          <tr><td>the <strong>trainable</strong> part</td><td>a phase mask, one delay per pixel</td><td>a phase shifter, one delay per arm</td></tr>
+          <tr><td>set in hardware by</td><td>how deep the glass is etched at that point</td><td>a tiny heater warming the silicon (thermo-optic)</td></tr>
+          <tr><td>the <strong>fixed</strong> part</td><td>3&nbsp;mm of air, where the light spreads</td><td>a coupler that splits light evenly in two</td></tr>
+          <tr><td>readout</td><td>brightness added up over 10 detector boxes</td><td>brightness on the first 10 outputs</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p>This is <strong>a shared abstraction, not shared hardware.</strong> 16,384 pixels and 36
+      modes are nowhere near the same scale, and no rearrangement turns one into the other. What
+      transfers is the skeleton, not the device.</p>
+      <p>They part on exactly one thing, <strong>how far a single blending layer carries information
+      sideways</strong>, and that one number sets the depth, the size and the way each machine fails.
+      Diffraction hands you a wide reach for nothing, but you cannot <em>choose</em> it: the
+      12.5&nbsp;px per gap is fixed by the distance, the wavelength and the pixel size, and it is the
+      same everywhere on the plate. A coupler reaches exactly one neighbour, so you need as many
+      columns as you have channels, and in exchange every one of those couplings can be set
+      individually, which is what lets the mesh reach any operation at all. <strong>Going from free
+      space to a chip trades one wide, fixed, unsteerable blending step for many narrow ones you can
+      steer.</strong> The rest is packaging.</p>
+    </div>
+
+    <div class="finding col reveal">
+      <p class="tag">Finding &middot; connectivity is a bound the geometry has to clear</p>
+      <p class="body">Six gaps of 3&nbsp;mm let each pixel&rsquo;s light spread
+      <strong>74.8&nbsp;px</strong> sideways in total. The hardest case the design has to cover is a
+      pixel at one edge of the entrance influencing the detector pixel farthest from it, and that
+      distance is <strong>74&nbsp;px</strong>. Every input pixel can therefore reach every detector,
+      which is the precondition for the network being able to compute anything at all. Push the
+      plates closer than <strong>2.967&nbsp;mm</strong> apart and it stops being true: parts of the
+      input become physically invisible to parts of the readout, whatever the masks are set to.
+      <strong>The 3&nbsp;mm separation was chosen to sit above that bound</strong>, which is why it
+      does. Training never sees this constraint and could not have satisfied it; it is settled by the
+      geometry before any mask is fitted. The mesh arrives at the same guarantee from the other
+      direction, since 36 columns for 36 channels is exactly the bound Clements proves you need, so
+      there full connectivity follows from the layout rather than from a spacing choice.</p>
+    </div>
+
+    <div class="prose col">
+      <p>A limit on what <em>can</em> reach what is not a claim about how much light actually does.
+      The very edge of that cone is the steepest ray the grid can represent, and it carries little
+      energy in practice. What the bound tells you is where the design sits relative to a hard wall,
+      and the answer is &ldquo;just inside it, by accident&rdquo;.</p>
+      <p>The two machines also <strong>share their ceiling</strong>. Everything the
+      <a class="link" href="@@HREF_physics@@">physics page argues about linearity &rarr;</a> applies
+      to the mesh unchanged: one linear optical step, then a detector that squares. Swapping free
+      space for silicon buys steerability, a smaller footprint and something you can actually
+      manufacture. It buys no extra computational power at all.</p>
+      <p>How they <strong>fail</strong> is where they differ, and that is the part this project is
+      built to measure. On the chip, small errors pile up as the light passes through 72
+      interferometers one after another, and couplers that split slightly unevenly or lose a little
+      light make the whole operation leak. In the glass stack the errors act <em>side by side</em>
+      instead, one per pixel, and what dominates is whether each pixel&rsquo;s delay stays sharply
+      confined to that pixel. Both have been measured, and the gap is not subtle: <strong>the chip
+      needs its delays ten times more accurately set</strong> than the stack does, for that reason
+      and no other. <a class="link" href="@@HREF_tolerance@@">Two optical computers, two different
+      ways to lose the computation to fabrication &rarr;</a></p>
+      <ol class="refs">
+        <li><b>1</b>M. Reck, A. Zeilinger, H. J. Bernstein &amp; P. Bertani, &ldquo;Experimental
+        realization of any discrete unitary operator,&rdquo; <em>Phys. Rev. Lett.</em> <b>73</b>, 58
+        (1994). The triangular mesh.</li>
+        <li><b>2</b>W. R. Clements <em>et al.</em>, &ldquo;Optimal design for universal multiport
+        interferometers,&rdquo; <em>Optica</em> <b>3</b>, 1460 (2016). The rectangular mesh and the
+        recipe for zeroing entries one at a time.
+        <a href="https://opg.optica.org/optica/abstract.cfm?uri=optica-3-12-1460">doi:10.1364/OPTICA.3.001460</a></li>
+      </ol>
+    </div>
+  </section>
+
+  @@NEXT@@
+
+  <footer class="reveal">
+    <div class="foot-grid">
+      <div><h3>Derived, never typed</h3><p>Every number in the table above is exported from the
+        trained models rather than chosen. A test re-derives each one from the physics and the model
+        code, so how far light spreads, the detector layout and the mesh tiling all fail loudly if
+        the design drifts away from them.</p></div>
+      <div><h3>Verified</h3><p>That an interferometer conserves light at every setting; that both
+        recipes rebuild a target operation to ~10<sup>&minus;15</sup>; that the arbitrary-real-matrix
+        layer works; and that the PyTorch mesh matches the plain NumPy one.</p></div>
+      <div><h3>Still open</h3><p>What a fabricated part actually achieves. The mesh&rsquo;s
+        fabrication limits are measured and finished; the column beside them that says how close a
+        real process gets is empty, and stays empty until it can be filled from a chip
+        foundry&rsquo;s published data rather than the display-device literature the glass
+        stack&rsquo;s budget rests on. A second mesh size would also turn the depth argument into a
+        trend rather than a single point.</p></div>
+    </div>
+    <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
+    Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
+  </footer>
+
+</main>
+
+@@PAGE_SCRIPT@@

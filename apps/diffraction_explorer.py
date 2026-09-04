@@ -21,6 +21,8 @@ from __future__ import annotations
 import json
 import os
 
+from apps import preview
+
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
 
@@ -95,57 +97,32 @@ def explorer_mount(container_id: str = "explorer", **opts) -> str:
     return mount_script(container_id, f"window.PhotonnExplorer.mount(el, {cfg});")
 
 
-_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>photonn — live diffraction explorer</title>
-<style>
-  :root{{color-scheme:light dark;}}
-  body{{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    background:#fff;color:#1b1f24;}}
-  @media (prefers-color-scheme:dark){{body{{background:#0d1117;color:#e6eaf0;}}}}
-  .wrap{{max-width:880px;margin:0 auto;padding:32px 22px 56px;}}
-  h1{{font-size:1.5rem;margin:0 0 6px;}}
-  .sub{{color:#5a6472;margin:0 0 22px;}}
-  @media (prefers-color-scheme:dark){{.sub{{color:#9aa6b5;}}}}
-  .note{{margin-top:26px;font-size:13px;color:#5a6472;border-top:1px solid #d7dde5;padding-top:14px;}}
-  @media (prefers-color-scheme:dark){{.note{{color:#9aa6b5;border-color:#30363d;}}}}
-  code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em;}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>Live diffraction explorer</h1>
-  <p class="sub">Scalar diffraction by the band-limited angular-spectrum method, recomputed
-  in your browser as you move the controls. Nothing is precomputed and nothing is fetched.</p>
-  <div id="explorer"></div>
-  <p class="note">The sampling flag compares the propagation distance <code>z</code> to the
-  transfer-function critical distance <code>z_crit = N·dx²/λ</code>. Beyond it the angular
-  spectrum under-samples; the band limit (Matsushima &amp; Shimobaba, 2009) keeps the result
-  alias-free but drops high-angle content. Physics ported from
-  <code>photonn.propagate.angular_spectrum</code> and verified against it to &lt; 1e-6.</p>
-</div>
-{bundle}
-{mount}
-</body>
-</html>
-"""
+#: What this preview page says about the widget it is showing.
+PREVIEW = dict(
+    title="live diffraction explorer",
+    heading="Live diffraction explorer",
+    standfirst="Scalar diffraction by the band-limited angular-spectrum method, recomputed\n"
+               "  in your browser as you move the controls. Nothing is precomputed and nothing is fetched.",
+    hosts=("explorer",),
+    note="The sampling flag compares the propagation distance <code>z</code> to the\n"
+         "  transfer-function critical distance <code>z_crit = N\u00b7dx\u00b2/\u03bb</code>. Beyond it the angular\n"
+         "  spectrum under-samples; the band limit (Matsushima &amp; Shimobaba, 2009) keeps the result\n"
+         "  alias-free but drops high-angle content. Physics ported from\n"
+         "  <code>photonn.propagate.angular_spectrum</code> and verified against it to &lt; 1e-6.",
+)
 
 
 def build_html(**opts) -> str:
     """Return the full standalone explorer HTML string."""
-    return _PAGE.format(bundle=explorer_bundle(), mount=explorer_mount(**opts))
+    return preview.preview_page(bundle=explorer_bundle(), mount=explorer_mount(**opts),
+                                **PREVIEW)
 
 
 def save_explorer(path: str = None, **opts) -> str:
     """Write the standalone explorer HTML and return its path."""
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), "diffraction_explorer.html")
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(build_html(**opts))
-    return path
+        path = preview.default_path(__file__, "diffraction_explorer")
+    return preview.save_preview(path, build_html(**opts))
 
 
 def main():

@@ -1,0 +1,495 @@
+<div class="spectral-rule"></div>
+@@TOPBAR@@
+
+<main class="wrap">
+
+  <section class="hero col reveal">
+    <p class="eyebrow">The question the project exists to answer</p>
+    <h1>How precisely must a photonic chip be built before it stops computing what it was <em>trained</em> to compute?</h1>
+    <div class="underbar"></div>
+    <p class="standfirst">Everything so far was ideal. The masks were exact, the plates sat exactly
+    3&nbsp;mm apart, and every pixel delayed the light by exactly what it was trained to. Now those
+    same trained numbers are handed to a separate model of the machine <b>as it would really be
+    built</b>, and broken on purpose, one imperfection at a time, until the number that decides
+    whether this is buildable falls out.</p>
+    <div class="stat-strip">
+      <div class="stat"><span class="v">0.25<small> px</small></span><span class="l">is how far one pixel&rsquo;s delay may bleed into its neighbours before accuracy goes</span></div>
+      <div class="stat"><span class="v">&asymp;1<small> px</small></span><span class="l">is how far it bleeds on a real display chip. That is four times too much</span></div>
+    </div>
+  </section>
+
+  @@TOC@@
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Method</p>
+      <h2>Now break it on purpose</h2></div></div>
+    <div class="prose col">
+      <p>The trained numbers cross a <strong>one-way handover</strong>: a single file carrying the
+      phase masks, the layout, the operating conditions and the test images, passed to a completely
+      separate MATLAB model of the machine <em>as it would really be built</em>, the
+      <strong>as-built</strong> model, which never writes anything back. That one-way boundary is deliberate. It keeps the ideal network and the
+      imperfect one from quietly contaminating each other. Nothing is retrained on the far side, and
+      no error model exists on the near side.</p>
+      <p>That second model then re-scores the very same network under each manufacturing imperfection
+      in turn: delays set slightly wrong, delays available only in coarse steps, light lost along the
+      way, the laser drifting off its colour, heat from one pixel leaking into the next, and noise in
+      the detectors. Each one is run many times over with different random draws, which is what a
+      <em>Monte Carlo</em> sweep means, with the random seeds recorded so any run can be reproduced
+      exactly, and <strong>every error size for this machine traced to a published
+      measurement</strong> cited in the code at the point it is used. The chip, at the foot of this
+      page, has been through the identical procedure, and is explicit about the one thing it
+      cannot yet source.</p>
+      <p>One control turns this from a demonstration into a measurement. <strong>With no error
+      injected at all, the second model reproduces 0.7990 exactly</strong>, the same number the
+      PyTorch model gets on the same 2,000 images. Two independently written implementations agreeing
+      to the last digit means any drop below it is caused by the injected error and nothing else.
+      That anchor has held through every change in the project.</p>
+      <p>The pass mark throughout is <strong>95% of the ideal accuracy</strong>, which works out to
+      @@MATH_bar@@. Limits are quoted as the bracket the sweep actually
+      resolves, <em>holds at X, fails at Y</em>, rather than interpolating a crossing point between
+      two tested values, so they stay comparable from one model to the next.</p>
+    </div>
+    <div class="finding col reveal">
+      <p class="tag">Binding constraint</p>
+      <p class="body"><strong>Crosstalk between neighbouring pixels sets the tolerance, and it is
+      the one that fails.</strong> Setting one pixel&rsquo;s delay disturbs the pixels around it,
+      because heat spreads and electric fields spill sideways, so a pattern meant to be sharp comes
+      out blurred. Accuracy holds while that blur stays at <strong>0.25&nbsp;px</strong> and fails by
+      <strong>0.5&nbsp;px</strong>; three quarters of a pixel of blur collapses the network to little
+      better than guessing. On a standard LCoS device, the liquid-crystal display chip these masks
+      would be written to, the blur is about <strong>1&nbsp;px</strong>, so this design as specified
+      <strong>would not work on one</strong>. The ranking is unambiguous: crosstalk is far worse than
+      delay error, which beats detector power and lost light, which in turn are far worse than
+      wavelength drift and coarse delay steps. To stay above
+      @@MATH_bar@@, the design needs delays accurate to
+      <strong>0.3&nbsp;rad</strong>, a twenty-first of a wavelength (&lambda;/21), at least
+      <strong>3 bits</strong> of control per pixel, laser drift under <strong>10&nbsp;nm</strong>,
+      and at least <strong>1&nbsp;pW</strong> of light over 1&nbsp;ms. What decides whether this is
+      buildable is not the precision of each delay or how finely it can be set. It is how sharply
+      each pixel&rsquo;s delay can be kept away from its neighbours.</p>
+    </div>
+  </section>
+
+  <div class="band col reveal">
+    <p class="band-k">Part 1 of 2</p>
+    <h2 class="band-h">Fabrication</h2>
+    <p class="band-b">How precisely each part has to be made. Six sources, every one of them
+    measured, and one of them decides the answer.</p>
+  </div>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 1 of 6 &middot; the one that fails</p>
+      <h3>Crosstalk: pixels will not stay out of each other</h3></div></div>
+    <div class="prose col">
+      <p>A phase mask is only a mask because neighbouring pixels can hold different delays. Set one
+      pixel and its neighbours shift too, because heat spreads through the substrate and the
+      electric field that addresses one cell spills into the next. The pattern the design wants
+      sharp comes out smeared, and the mask stops being able to express what training asked of it.</p>
+      <p>Drag the bleed and watch the close-up. <strong>Accuracy holds at 0.25&nbsp;px and fails by
+      0.5&nbsp;px</strong>; three quarters of a pixel leaves the network little better than
+      guessing. A standard LCoS device, the liquid-crystal display chip these masks would be
+      written to, bleeds about <strong>1&nbsp;px</strong>. That is four times more than the design
+      survives, and it is why this one source decides the whole question.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-crosstalk"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_crosstalk@@" alt="Accuracy against crosstalk between neighbouring pixels" loading="lazy">
+      <figcaption><span class="fign"></span>Measured. Accuracy against how far one pixel&rsquo;s
+      delay bleeds into its neighbours. The cliff between 0.25 and 0.5&nbsp;px is the tightest
+      requirement in the whole budget.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 2 of 6</p>
+      <h3>Delay error: every pixel a little bit wrong</h3></div></div>
+    <div class="prose col">
+      <p>Nothing sets a phase exactly. Etch depth varies across a plate, and a modulator addressed
+      by a voltage lands near the value it was asked for rather than on it. The error is
+      independent from pixel to pixel, which makes it scattered rather than structured, and that
+      turns out to matter: the large-scale pattern the masks rely on survives a surprising amount
+      of speckle.</p>
+      <p>Accuracy holds to <strong>0.3&nbsp;rad</strong>, a twenty-first of a wavelength
+      (&lambda;/21), and fails by 0.5. A well-calibrated device sits near
+      &lambda;/100, about 0.05&nbsp;rad, which is <strong>an order of magnitude inside the
+      requirement</strong>. This source is comfortable.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-phase"></div></div>
+    <div class="plate-grid reveal">
+      <figure class="plate"><img src="@@GRIDFIG_tol_phase@@" alt="Accuracy against per-pixel delay error" loading="lazy"><figcaption><span class="fign"></span>Measured. Accuracy against the spread of per-pixel delay error.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_confusion@@" alt="As-built confusion matrix at phase sigma 0.35 rad" loading="lazy"><figcaption><span class="fign"></span>The damage, digit by digit, at &sigma;=0.35&nbsp;rad. Accuracy 0.769, and the errors stay spread across classes rather than collapsing onto one.</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 3 of 6</p>
+      <h3>Detector noise: light arrives in countable lumps</h3></div></div>
+    <div class="prose col">
+      <p>The readout is ten sums of brightness, and brightness is a number of photons. Dim the beam
+      far enough and those counts get noisy in a way no amount of care in the optics can fix, since
+      it comes from the light itself. On top of that the sensor adds its own read noise, and the
+      converter rounds whatever survives to a fixed number of steps.</p>
+      <p>Accuracy holds down to <strong>1&nbsp;pW over a 1&nbsp;ms exposure</strong> and fails at
+      0.1&nbsp;pW. The design&rsquo;s nominal operating point is 1&nbsp;mW, which is
+      <strong>nine orders of magnitude</strong> brighter than the edge. There is an enormous amount
+      of room here.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-detector"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_detector@@" alt="Accuracy against input power, with detector and shot noise" loading="lazy">
+      <figcaption><span class="fign"></span>Measured. Accuracy as the input power falls. Flat
+      across nine decades, then a cliff once photons become too few to count reliably.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 4 of 6 &middot; the subtle one</p>
+      <h3>Lost light: no effect at all, until suddenly it is fatal</h3></div></div>
+    <div class="prose col">
+      <p>Every surface reflects a little and every millimetre of glass absorbs a little. The
+      intuition is that this must degrade the answer, and the intuition is <em>wrong</em>. The
+      readout compares the ten detector boxes against each other, so dimming all of them by the
+      same factor leaves the ranking untouched. Uniform loss cancels exactly.</p>
+      <p>It bites only through the source above it. Lost light means fewer photons, and few enough
+      photons means the noise in the previous section. That coupling is why loss cannot be swept on
+      its own: measured at the nominal 1&nbsp;mW it would read as no effect at any magnitude, which
+      is true and useless. It is swept instead at the edge of the photon budget, where every
+      3&nbsp;dB lost halves what arrives, and there it holds to <strong>1&nbsp;dB per
+      mask</strong>.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-loss"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_loss@@" alt="Accuracy against optical loss per mask, swept at the photon-budget edge" loading="lazy">
+      <figcaption><span class="fign"></span>Measured, at the photon-budget edge rather than at
+      the nominal operating point. Swept anywhere brighter, this curve is flat everywhere and
+      measures nothing.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 5 of 6</p>
+      <h3>Wavelength drift: the colour the design assumed</h3></div></div>
+    <div class="prose col">
+      <p>The whole machine is built around one colour of light, 532&nbsp;nm green. Let the laser
+      drift and two things go wrong at once. The plates are a fixed depth of glass, so the delay
+      they impose is no longer the delay that was trained. And diffraction is itself
+      colour-dependent, so the light spreads a different distance in each gap and lands somewhere
+      slightly different.</p>
+      <p>Accuracy holds to <strong>10&nbsp;nm</strong> of drift and fails by 20. Any laser with its
+      temperature controlled holds far tighter than that, so this source is a non-issue in
+      practice.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-wavelength"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_wavelength@@" alt="Accuracy against laser wavelength drift" loading="lazy">
+      <figcaption><span class="fign"></span>Measured. Accuracy as the source drifts off
+      532&nbsp;nm.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 6 of 6</p>
+      <h3>Coarse control: only so many settings per pixel</h3></div></div>
+    <div class="prose col">
+      <p>The design asks each pixel for a phase anywhere in a continuous range. Real hardware offers
+      a fixed number of steps, set by the resolution of whatever drives it. The continuum collapses
+      onto a comb, and every pixel moves to the nearest tooth.</p>
+      <p>This is the most forgiving source in the budget. Accuracy holds at <strong>3 bits</strong>,
+      which is eight settings per pixel, and fails only at 2. Real devices offer 8 bits, or 256
+      settings. The design has <strong>five bits of margin</strong> it does not need.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-quant"></div></div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_quant@@" alt="Accuracy against the number of bits of control per pixel" loading="lazy">
+      <figcaption><span class="fign"></span>Measured. Accuracy against bits of control per
+      pixel, coarsest to the right.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What the six add up to</p>
+      <h3 data-toc="What the six add up to">One source decides it, and it is not a close call</h3></div></div>
+    <div class="prose col">
+      <p>Five of the six are comfortable, several by orders of magnitude. Delay accuracy has a
+      factor of ten in hand, bit depth has five bits, detection has nine decades, wavelength is a
+      non-issue for any controlled source, and lost light does not act on its own at all. If
+      crosstalk did not exist, this design would be buildable today with ordinary components.</p>
+      <p><strong>Crosstalk does exist, and it fails by a factor of four.</strong> Everything else in
+      this budget is a detail beside that. It is worth being precise about what that does and does
+      not mean: it is a statement about <em>this</em> design on <em>today&rsquo;s</em> modulators,
+      not a proof that free-space optical inference cannot be built. Bigger pixels, a different
+      addressing scheme or a fabricated plate rather than a programmable one would all move it.
+      What the number does settle is that the binding constraint is a <em>hardware</em> problem
+      rather than a training one, and no amount of retraining touches it.</p>
+    </div>
+  </section>
+
+  <div class="band col reveal">
+    <p class="band-k">Part 2 of 2</p>
+    <h2 class="band-h">Setup</h2>
+    <p class="band-b">Where the parts have to sit once they are made. Four more sources, and
+    the tightest number on this page is one of them.</p>
+  </div>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 1 of 4 &middot; the tightest on the page</p>
+      <h3>Registration: each plate has to land where the design put it</h3></div></div>
+    <div class="prose col">
+      <p>The six sources above ask what is wrong <em>inside</em> a part. This half asks where the
+      parts are. Nobody assembles a five-plane stack with the gaps exactly 3.000&nbsp;mm and every
+      plate lined up with the one behind it, and no amount of care removes that; it only
+      makes it smaller.</p>
+      <p>Slide one plate sideways, keeping everything else perfect. Each plate is mounted on its
+      own, so each slides on its own. <strong>Accuracy holds while that slip stays at
+      0.10&nbsp;px and fails by 0.15&nbsp;px</strong>. At this design's pixel size, eight
+      thousandths of a millimetre, that is <strong>0.8&nbsp;&micro;m per plate</strong>.</p>
+      <p><strong>That is the tightest requirement anywhere in this study</strong>, tighter than the
+      bleed that decides the first half. The two are not the same measurement (one is how far
+      a delay smears, the other how far a whole plate moves), so the ratio between them is not
+      meaningful on its own. What makes them worth putting side by side is that they fail the same
+      way: this design's pattern changes sharply from pixel to pixel, and both errors put that
+      pattern somewhere it was not trained to be.</p>
+    </div>
+    <figure class="plate reveal">
+      <img src="@@FIG_tol_registration@@" alt="Accuracy against lateral misregistration of each phase plate" loading="lazy">
+      <figcaption><span class="fign"></span>Measured. Accuracy against how far each plate
+      slips sideways from where it should be. The band is the spread over ten builds: past a tenth
+      of a pixel, two machines assembled to the same specification stop agreeing with each
+      other.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 2 of 4</p>
+      <h3 data-toc="Spacing between planes">Spacing: the gaps are set one at a time, and err one at a time</h3></div></div>
+    <div class="prose col">
+      <p>Six gaps hold the five plates and the detector apart. Each is set separately, so each is
+      wrong separately. <strong>Accuracy holds at 100&nbsp;&micro;m of error per gap and fails by
+      150&nbsp;&micro;m</strong>, which is a slack three per cent of a 3&nbsp;mm gap and by far the
+      most comfortable of the four.</p>
+      <p>There is a twist here worth reporting, because it corrects something this project has been
+      saying for months. The <a class="link" href="@@HREF_chip@@">correspondence page &rarr;</a>
+      derives a hard floor on the spacing: below <strong>2.967&nbsp;mm</strong>, part of the input
+      physically cannot reach part of the readout, whatever the plates are trained to. That is
+      33&nbsp;&micro;m of headroom on a 3&nbsp;mm design, and it reads exactly like a tolerance.</p>
+      <p><strong>It is not one.</strong> Moving every gap together by that amount, which is the
+      clean way to test it, changes accuracy by nothing measurable:</p>
+    </div>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>every gap moved by</th><th>accuracy</th></tr></thead>
+        <tbody>
+          <tr><td>&minus;100&nbsp;&micro;m</td><td>0.759</td></tr>
+          <tr><td>&minus;50&nbsp;&micro;m</td><td>0.771</td></tr>
+          <tr><td><strong>&minus;33&nbsp;&micro;m</strong>, the floor</td><td><strong>0.773</strong></td></tr>
+          <tr><td>0, as designed</td><td>0.771</td></tr>
+          <tr><td>+50&nbsp;&micro;m</td><td>0.769</td></tr>
+          <tr><td>+100&nbsp;&micro;m</td><td>0.751</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p>At the floor, and well past it, nothing happens. The reason was written down in the same
+      paragraph that derived the bound: the light that stops reaching is the very edge of the
+      spreading cone, and it carries almost no energy. So the floor is real geometry and a real
+      statement about what <em>can</em> connect, but it is not a number a builder has to hold. What
+      the gaps actually cannot afford is being <em>unequal</em>, which is a different thing and is
+      what the 100&nbsp;&micro;m figure measures.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 3 of 4</p>
+      <h3 data-toc="Detector placement">Where the detector sits</h3></div></div>
+    <div class="prose col">
+      <p>The same question for the camera at the end. There is only one of it, so it is one
+      displacement rather than five independent ones, and the boxes it reads are fourteen pixels
+      across rather than one. <strong>Accuracy holds at 2&nbsp;px of offset and fails by
+      3&nbsp;px</strong>, about 16&nbsp;&micro;m, twenty times looser than a plate, for
+      exactly the reason you would guess: a detector box is a coarse thing and a plate is a fine
+      one.</p>
+      <p>Sliding the detector <em>along</em> the beam is not a separate source here. That is just
+      the last of the six gaps, and it is already inside the spacing sweep above. Counting it twice
+      would have made the budget look tighter than it is.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Source 4 of 4 &middot; the one you can take back</p>
+      <h3 data-toc="Calibration">Calibration: ask for a delay, get a slightly different one</h3></div></div>
+    <div class="prose col">
+      <p>A modulator is calibrated: ask for a given delay and it delivers what it was told that
+      setting means. If the calibration is off by a few per cent, <em>every</em> delay is off by
+      the same few per cent. <strong>Accuracy holds at &plusmn;10&nbsp;% and fails by
+      &plusmn;20&nbsp;%</strong>, which is astonishingly loose next to the first half's requirement
+      that each individual delay be right to a twenty-first of a wavelength.</p>
+      <p>Those two numbers describe the same physical quantity and are not comparable, which is
+      precisely why they are separate sources. A per-pixel error is random: each pixel is wrong on
+      its own, the pattern acquires noise, and light scatters out of it. A calibration error is the
+      same stretch applied everywhere at once, so the pattern is distorted rather than roughened,
+      and a distorted pattern still does most of its job. The delays here run as large as 23
+      radians, so a ten per cent stretch is a two-radian error on the biggest of them, seven
+      times the per-pixel limit, and it barely registers.</p>
+      <p>It is also the only error on this page you can <strong>take back</strong>. A calibration
+      is one number: measure it against a test pattern, divide it out, write the plates to the
+      corrected values. So what the sweep really measures is not how good the modulator has to be,
+      but how well you have to <em>know</em> it.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What the four add up to</p>
+      <h3 data-toc="Three at once">Three of them at once, and it stops working</h3></div></div>
+    <div class="prose col">
+      <p>Every curve on this page moves one thing and holds the rest perfect. A real bench does not
+      work that way. So: set the spacing, the plate registration and the detector placement each to
+      the largest error that survived on its own (100&nbsp;&micro;m, 0.10&nbsp;px,
+      2&nbsp;px), and run all three together.</p>
+    </div>
+    <div class="finding col reveal">
+      <p class="tag">The edges do not add up</p>
+      <p class="body"><strong>0.712, against a pass mark of 0.759.</strong> Three errors that each
+      passed alone fail together. That is not a surprise once stated, but it had never been checked,
+      not here and not for the six device sources, which have also only ever been measured
+      one at a time. It means the numbers on this page are answers to &ldquo;how much of this
+      one?&rdquo; and <strong>not a specification anyone can build to</strong>. A real budget has
+      to divide the allowance between the sources rather than hand all of it to each.</p>
+    </div>
+    <div class="prose col">
+      <p>One thing is deliberately missing from this half: <strong>what a real optical bench
+      actually achieves</strong>. The first half of the page can say crosstalk fails because there
+      is a measured number for a real display chip to fail against. Here there is no such number:
+      how precisely plates can be registered in practice is a question for a literature this
+      study has not read. So these four are published as edges, with no verdict attached, and the
+      missing half is <a class="link" href="https://github.com/roosado/photonn/blob/main/docs/parameter_sources.md">written down as a gap &rarr;</a>
+      rather than filled in with something plausible.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The same treatment, on the interferometer chip</p>
+      <h2 data-toc="The interferometer chip">The interferometer chip fails a different way</h2></div></div>
+    <div class="prose col">
+      <p>Everything above is the stack of glass. The
+      <a class="link" href="@@HREF_chip@@">interferometer mesh &rarr;</a> has now been through the
+      same procedure: its own trained settings, handed to its own as-built model, broken one
+      imperfection at a time against its own 95% bar. Running it twice is what turns
+      &ldquo;these two machines fail differently&rdquo; from a plausible sentence into a
+      measurement, and the two answers are not the same answer.</p>
+    </div>
+    <!-- `col` because this strip sits in a full-width `phase` section rather than a
+         `hero col` one, and two cards spread across the whole 1120 px wrap read as a
+         banner instead of as a pair of numbers. -->
+    <div class="stat-strip col">
+      <div class="stat"><span class="v">0.03<small> rad</small></span><span class="l">is how accurately a delay on the chip must be set, against the <b>0.3&nbsp;rad</b> the glass stack tolerates</span></div>
+      <div class="stat"><span class="v">&plusmn;0.01</span><span class="l">is how evenly a coupler must split. A phase mask has no such part, so this constraint is new</span></div>
+    </div>
+    <div class="prose col">
+      <p>Ten times more accurate, and three more bits of control per setting. The reason is
+      <strong>depth, in series</strong>. In the glass stack the errors act side by side: five masks,
+      one delay per pixel, each pixel wrong on its own and the mistakes averaging out across the
+      plate. On the chip the light passes through <strong>72 columns of interferometers one after
+      another</strong>, and every column hands the previous column&rsquo;s error forward along with
+      the signal. Nothing averages. A splitter that sends 51% one way instead of 50% is a trivial
+      error in one component and a visible one by the far end.</p>
+      <p>That is what the panel below shows. Each square is one entry of the operation the chip
+      performs, how much of one input channel arrives at one output channel, drawn for
+      the <em>trained</em> chip, then again with every coupler mis-made by a random amount, then as
+      the difference between them. The damage does not stay near the couplers that were made wrong.
+      It fills in everywhere.</p>
+    </div>
+    <div class="pe-host reveal"><div id="err-mesh"></div></div>
+
+    <div class="prose col">
+      <p>Not everything moves. <strong>Detector noise lands on exactly the same limit</strong>, 1 pW
+      at 1 ms, on a different architecture, a different test set and a different wavelength,
+      as it should, since that is a statement about counting photons at the readout rather than about
+      the optics in front of it. Getting the same number twice is a check on both budgets. Lost light
+      is the one that changes character rather than magnitude: in the stack it is nearly uniform and
+      <em>cancels</em> in the power-normalised readout, so it only bites through the photon budget,
+      while on the chip the path length depends on which channel you are, so it stops cancelling and
+      becomes a first-order source.</p>
+    </div>
+
+    <div class="finding col reveal">
+      <p class="tag">Finding &middot; a quarter of the chip does not have to be built well</p>
+      <p class="body">Detuning each of the 1,260 interferometers in turn, one at a time, and
+      measuring how far the output moves gives a map of which parts of the device matter.
+      <strong>156 of the 630 interferometers in the second mesh move the output by exactly
+      nothing</strong>: not a little, not below the noise, but zero. They sit outside the
+      readout&rsquo;s reach: only the first ten channels are ever measured, a coupler in column
+      <i>c</i> can influence a channel at most <span class="q">36&minus;c+1</span> steps away, and
+      those 156 are further than that from anything the detector sees. Whatever they are set to, and
+      however badly they are made, the answer is the same. <strong>A quarter of that mesh needs no
+      fabrication tolerance at all</strong>, which is a property of the wiring rather than of the
+      training, and it is the blank triangle filling the lower right of the panel below. Tolerance is
+      normally quoted per device and applied everywhere; here the boundary is known in closed form
+      before anything is fabricated.</p>
+    </div>
+
+    <figure class="plate reveal">
+      <img src="@@FIG_mesh_sensitivity@@" alt="Per-MZI sensitivity across both meshes of the chip, drawn on the Clements rectangle" loading="lazy">
+      <figcaption><span class="fign"></span>Measured. Every interferometer in the chip, drawn
+      where it physically sits, column across the page and channel pair down it, shaded by
+      how far it moves the output when that one device alone is detuned. Darker is more sensitive;
+      the chequerboard of gaps is the brick pattern, where a column has no device on that pair. The
+      blank triangle across the lower right of the second mesh is the 156 that no measurement can
+      reach.</figcaption>
+    </figure>
+
+    <div class="prose col">
+      <p>One thing this section does <strong>not</strong> tell you, and the difference matters. Every
+      magnitude in the glass stack&rsquo;s budget above traces to a published measurement, which is
+      what lets it end in a verdict: crosstalk fails by a factor of four. The chip has no such column
+      yet. Its limits are measured properties of the network and its wiring and will not move, but
+      what a fabricated part actually achieves has to come from a chip foundry&rsquo;s published
+      process data, not the display-device literature everything above rests on. That sourcing
+      has not been done, so <strong>every &ldquo;realistic value&rdquo; in the chip&rsquo;s tolerance
+      document reads <span class="q">UNSOURCED</span></strong>, and there is deliberately no pass/fail
+      verdict anywhere in it. Publishing the limits first and the comparison against reality second is
+      an order of work, not an oversight: the limits are finished, and inventing the other column to
+      complete the table would be the only dishonest thing available here.</p>
+    </div>
+  </section>
+
+  @@NEXT@@
+
+  <footer class="reveal">
+    <div class="foot-grid">
+      <div><h3>The boundary</h3><p>Python designs the ideal network. A single file crosses to MATLAB,
+        which models the device as it would really be built and never writes back. The separation
+        between design and reality is enforced by that one-way handover rather than by
+        discipline.</p></div>
+      <div><h3>Every magnitude sourced, or flagged</h3><p>For the glass stack, delay error, bit
+        depth, drift, detector noise, lost light and pixel crosstalk each trace to a published
+        measurement or a datasheet, cited where the number is defined. For the chip <em>none of them
+        does yet</em>, and rather than invent one the study publishes the limits and marks the
+        realistic column unsourced. Modelling choices are labelled as such on both sides.</p></div>
+      <div><h3>Reproducible</h3><p>The same seeds give the same answers, and the two studies draw
+        from ranges that cannot collide. Each error-free baseline must come out at its model&rsquo;s
+        exact ideal (0.7990 for the stack, 0.7355 for the chip), or that pair of models
+        has drifted apart. A new model can be scored without disturbing either.</p></div>
+    </div>
+    <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
+    Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
+  </footer>
+
+</main>
+
+@@PAGE_SCRIPT@@
+@@ERRORS_BUNDLE@@
+@@ERRORS_MOUNT@@

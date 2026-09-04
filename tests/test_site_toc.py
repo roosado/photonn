@@ -20,14 +20,19 @@ things have to hold for that to be true and to stay true:
 * **/tolerance stays grouped.** Issue #6 adds four geometry sources to the Setup
   band; this pins the structure they land in.
 
-Reads the built pages, so it skips cleanly when ``site/`` has not been generated.
+Runs against ``render()`` rather than ``site/*.html``, so these assertions
+describe the current source; ``test_site_build.py`` is what ties that render to
+the committed bytes.
 """
+import functools
 import os
 import re
 
 import pytest
 
-from apps.build_site import PAGES, section_index, slugify, toc, toc_label
+from apps.build_site import (PAGES, TOLERANCE_BODY, section_index, slugify, toc,
+                             toc_label)
+from built_site import page_html
 
 SITE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "site")
 
@@ -39,11 +44,9 @@ FRAGMENTS = re.compile(r'href="#([^"]+)"')
 
 
 def page_text(name):
-    path = os.path.join(SITE, name)
-    if not os.path.exists(path):
-        pytest.skip(f"{name} not built")
-    with open(path, encoding="utf-8") as fh:
-        return fh.read()
+    # The render rather than the file on disk; test_site_build.py ties the
+    # two together, so a stale build fails there and not vaguely here.
+    return page_html(name)
 
 
 def toc_of(text):
@@ -117,9 +120,21 @@ def test_card_order_matches_document_order(name):
 
 # ------------------------------------------------------------- /tolerance groups
 
+#: /tolerance's index as `section_index` returns it: `{level, id, label, num}` in
+#: document order. The claims below are about grouping and numbering, so they are
+#: asserted against that, not reconstructed out of the rendered card by regex.
+#: Reconstructing meant a whitespace change inside `toc()` failed a test named
+#: `..._groups_its_sources_into_two_families`, which teaches a maintainer to
+#: loosen the pattern rather than read the failure. One markup-shaped test is
+#: kept, below, and it is the one whose subject is markup.
+@functools.lru_cache(maxsize=None)
+def tolerance_entries():
+    _, entries = section_index(TOLERANCE_BODY)
+    return tuple(entries)
+
+
 def test_tolerance_groups_its_sources_into_two_families():
-    entries = toc_of(page_text("tolerance.html"))
-    bands = [ident for cls, ident, _ in entries if "toc-g" in cls]
+    bands = [e["id"] for e in tolerance_entries() if e["level"] == "band"]
     assert bands == ["fabrication", "setup"]
 
 
@@ -131,10 +146,9 @@ def test_each_family_holds_its_own_numbered_sources():
     families readable, and it is only correct as long as every numbered source
     actually sits under the band whose count it is quoting.
     """
-    entries = toc_of(page_text("tolerance.html"))
-    idx = {ident: i for i, (_, ident, _) in enumerate(entries)}
-    numbers = {ident: int(re.search(r'toc-n">(\d+)<', label).group(1))
-               for _, ident, label in entries if "toc-n" in label}
+    entries = tolerance_entries()
+    idx = {e["id"]: i for i, e in enumerate(entries)}
+    numbers = {e["id"]: int(e["num"]) for e in entries if e["num"]}
 
     fabrication = [i for i in numbers if idx["fabrication"] < idx[i] < idx["setup"]]
     setup = [i for i in numbers if idx[i] > idx["setup"]]
@@ -150,10 +164,19 @@ def test_the_chip_comparison_belongs_to_neither_family():
     It follows both bands, so a card that nested by sibling order would indent it
     under Setup. It is an <h2>, so a card that nests by outline does not.
     """
-    entries = toc_of(page_text("tolerance.html"))
-    cls, ident, _ = entries[-1]
-    assert ident == "the-interferometer-chip"
-    assert "toc-s" not in cls and "toc-g" not in cls
+    last = tolerance_entries()[-1]
+    assert last["id"] == "the-interferometer-chip"
+    assert last["level"] == "h2"
+
+
+def test_the_card_on_the_page_is_the_render_of_its_entries():
+    """The one test here whose subject is markup.
+
+    Everything else about the card is asserted against `entries`; this is what
+    ties that data to the bytes a reader gets, so a change to `toc()`'s output
+    fails exactly one test, and it is this one.
+    """
+    assert toc(list(tolerance_entries())) in page_text("tolerance.html")
 
 
 def test_the_chip_section_is_named_not_alluded_to():

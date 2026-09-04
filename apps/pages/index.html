@@ -1,0 +1,308 @@
+<div class="spectral-rule"></div>
+@@TOPBAR@@
+
+<main class="wrap">
+
+  <section class="hero col reveal">
+    <p class="eyebrow">An optical neural network, running live</p>
+    <h1>This neural network is made of <em>light</em></h1>
+    <div class="underbar"></div>
+    <p class="standfirst">A handwritten digit is written into a beam of light. The beam crosses
+    five plates of glass, each with a pattern etched into its surface, and the answer is simply
+    <b>where the light lands</b>. Nothing in that sentence is electronic: the etched patterns hold
+    everything an ordinary neural network would keep as numbers in memory. It runs below, in your
+    browser. The rest of this site asks what a machine like this can and cannot do, and
+    <b>which of the flaws in a real one takes the answer away first</b>.</p>
+    <div class="stat-strip">
+      <div class="stat"><span class="v">0.799</span><span class="l">of handwritten digits read correctly by the optics alone. Guessing scores 0.10</span></div>
+      <div class="stat"><span class="v">5<small> plates</small></span><span class="l">of patterned glass are the entire trained network</span></div>
+      <div class="stat"><span class="v">60<small> ps</small></span><span class="l">for light to cross the whole machine, which is 18&nbsp;mm of air and glass</span></div>
+    </div>
+  </section>
+
+  @@TOC@@
+
+  <div class="explorer-band reveal">
+    <div class="pe-host"><div id="d2nn"></div></div>
+    <p class="cap">Live. Pick a digit from the set of test images the model has never been trained
+    on, or draw your own. The whole optical calculation runs here, now, in this tab: <b>no
+    libraries and no network requests</b>. The patterns are the trained model&rsquo;s own, exported
+    unchanged.</p>
+  </div>
+
+  <div class="explorer-band reveal">
+    <div class="pe-host"><div id="stage"></div></div>
+    <p class="cap">The same run, drawn as the machine it is: the entrance, the five plates and the
+    detectors, laid out along the path the light travels. Drag to orbit; hit <b>Sweep</b> to walk a
+    single sheet of light across the stack.</p>
+  </div>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What you just watched</p>
+      <h2 data-toc="Real light, not a picture">Every panel is real light, not an illustration</h2></div></div>
+    <div class="prose col">
+      <p>Light is a wave, and a wave gives you two things to adjust. How tall it is, its
+      <strong>amplitude</strong>, is what makes light bright or dim. Where it sits in its
+      up-and-down cycle, its <strong>phase</strong>, is what decides whether two waves meeting
+      each other reinforce or cancel. Your eye sees the first and is completely blind to the
+      second. This machine runs on both: <strong>hold one wave back by half a wavelength and
+      two beams of light add up to darkness</strong>.</p>
+    </div>
+    <div class="pe-host reveal"><div id="interfere"></div></div>
+    <div class="prose col">
+      <p>So the <strong>entrance field</strong> is your digit written into the brightness
+      <em>and</em> the phase of the beam. The five small frames are the brightness arriving at each
+      plate. Each plate is a <strong>phase mask</strong>, a surface that holds the light back by a
+      different amount at every point across it, and that is the name this site uses from here on.
+      Watch the digit dissolve into a fine scramble that means nothing to the eye and everything to
+      the detectors. The <strong>detector plane</strong> is the brightness at the far end with the
+      ten class regions drawn on it, and the answer is <strong>whichever box collects the most
+      light</strong>: no electronic layer, no learned classifier on top, just ten sums.</p>
+      <p>The 3D view is the same run drawn as a physical object: seven parallel planes along the
+      path of the beam, each carrying the light actually computed on it, with the light
+      <em>between</em> them drawn as haze. The haze is not shading. It is the real light at those
+      in-between depths, worked out the same way as everything else, and
+      <a class="link" href="@@HREF_physics@@">the physics page shows why that is exact rather than
+      an interpolation &rarr;</a> Toggle <em>Mask phase</em> to swap the arriving light for the
+      etched surface that acts on it.</p>
+      <p>There is no electronic network anywhere in this. Every step the light takes is
+      <strong>linear</strong>: double the input and the output doubles, add two inputs together and
+      you get the sum of what each would have produced alone. Exactly one step in the machine breaks
+      that rule, and it is the detector, which measures brightness. Brightness is the square of the
+      wave&rsquo;s height (@@MATH_intensity@@), and squaring is not linear. That is
+      the whole computation, and it is also the ceiling on what the computation can do.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The motivation, stated honestly</p>
+      <h2>Why build a computer out of light?</h2></div></div>
+    <div class="prose col">
+      <p>Because the expensive part of the arithmetic above is free. A neural network is mostly one
+      operation repeated billions of times: multiply two numbers, add the result to a running total.
+      In a processor that operation is already cheap. At 45&nbsp;nm a 32-bit floating-point add
+      costs about <strong>0.9&nbsp;pJ</strong>, and a simpler fixed-point one roughly a ninth of
+      that. What costs is <em>fetching the two numbers to feed it</em>. Those same 32 bits read out
+      of memory on the chip cost <strong>5&nbsp;pJ</strong>, and out of the main memory alongside it
+      <strong>640&nbsp;pJ</strong>, roughly a thousand times the operation they
+      feed.<sup class="r">1</sup></p>
+      <p>The stack above never fetches anything. Every point of the beam influences every detector
+      because <em>that is what a wave does</em> over 3&nbsp;mm of air. Connecting everything to
+      everything is the expensive part of a neural network layer, and here it is performed by the
+      light spreading out on its own, with nothing charged, nothing switched, and no stored number
+      read from anywhere. <strong>The trained values are never fetched because the trained values
+      are the glass.</strong> And the computation finishes in the time light needs to cross
+      18&nbsp;mm, which is <strong>60&nbsp;picoseconds</strong>, set by the speed of light and
+      nothing else.</p>
+      <p>How little light does it need? The error budget measures exactly that. Accuracy holds flat
+      from 1&nbsp;mW all the way down to <strong>1&nbsp;pW over a 1&nbsp;ms exposure</strong>, which
+      is about <strong>one femtojoule of light per classification</strong>, and only below that does
+      it fall off a cliff.
+      <a class="link" href="@@HREF_tolerance@@#detector-noise">Starve it further and watch the
+      answer come apart, photon by photon &rarr;</a></p>
+      <p>That femtojoule is the energy <em>in the light</em>, not the energy to run the machine. The
+      laser, the modulator that writes the digit into the beam, the ten detectors and their
+      converters all cost more, and <strong>this project models none of them.</strong> At the
+      design&rsquo;s nominal operating point, 1&nbsp;mW for 1&nbsp;ms, a classification costs a
+      microjoule, which a GPU beats comfortably. The claim the evidence supports is the narrow one:
+      <strong>the part the optics does is nearly free, and everything around it is the engineering
+      problem.</strong> That is roughly where the field itself sits.<sup class="r">4</sup></p>
+      <p>So the useful question is not whether light replaces a processor, but where free
+      connections and an answer in 60&nbsp;ps are worth the hardware around them. The candidates
+      share a shape: <strong>the signal is already light</strong>, so nobody pays extra to put it
+      there. Classify at a camera&rsquo;s focal plane, before a pixel is digitised, and the optics
+      does the first layer for nothing.<sup class="r">5</sup> Sort cells in a microscope faster than
+      the readout can report them. Sit in front of a radar or radio receiver, where the digitiser
+      rather than the arithmetic is the bottleneck.<sup class="r">6</sup> Go to orbit, where a plate
+      of glass holds no charge for a cosmic ray to upset, which is part of why silicon photonics is
+      being qualified for space at all.<sup class="r">7</sup> Every one of those still needs the
+      hardware built to a precision nobody has quoted, which is what the rest of this site
+      measures.</p>
+      <p>The stack above is the version you can watch: the whole trained operator is drawn on the
+      glass, and the answer is a place on a screen.<sup class="r">2</sup> Most hardware actually
+      being built is not free-space at all. It guides light along channels etched into silicon and
+      mixes it in small steps,<sup class="r">3</sup> and there are further schemes again. What they
+      share is the part that matters here, a linear transformation performed by light itself, so
+      what the plates demonstrate carries over. This project builds the chip too, and
+      <a class="link" href="@@HREF_chip@@">they turn out to be the same machine
+      &rarr;</a></p>
+      <ol class="refs">
+        <li><b>1</b>M. Horowitz, &ldquo;Computing&rsquo;s energy problem (and what we can do about
+        it),&rdquo; <em>ISSCC</em> 2014, 10&ndash;14.
+        <a href="https://www.semanticscholar.org/paper/947620a1854655ed91a86b90d12695e05be85983">semanticscholar.org</a></li>
+        <li><b>2</b>X. Lin <em>et al.</em>, &ldquo;All-optical machine learning using diffractive deep
+        neural networks,&rdquo; <em>Science</em> <b>361</b>, 1004 (2018).
+        <a href="https://www.science.org/doi/10.1126/science.aat8084">doi:10.1126/science.aat8084</a></li>
+        <li><b>3</b>Y. Shen <em>et al.</em>, &ldquo;Deep learning with coherent nanophotonic
+        circuits,&rdquo; <em>Nature Photonics</em> <b>11</b>, 441 (2017).
+        <a href="https://www.nature.com/articles/nphoton.2017.93">doi:10.1038/nphoton.2017.93</a></li>
+        <li><b>4</b>G. Wetzstein <em>et al.</em>, &ldquo;Inference in artificial intelligence with deep
+        optics and photonics,&rdquo; <em>Nature</em> <b>588</b>, 39 (2020).
+        <a href="https://www.nature.com/articles/s41586-020-2973-6">doi:10.1038/s41586-020-2973-6</a></li>
+        <li><b>5</b>J. Chang <em>et al.</em>, &ldquo;Hybrid optical-electronic convolutional neural
+        networks with optimized diffractive optics for image classification,&rdquo;
+        <em>Scientific Reports</em> <b>8</b>, 12324 (2018).
+        <a href="https://www.nature.com/articles/s41598-018-30619-y">doi:10.1038/s41598-018-30619-y</a></li>
+        <li><b>6</b>D. Marpaung, J. Yao and J. Capmany, &ldquo;Integrated microwave photonics,&rdquo;
+        <em>Nature Photonics</em> <b>13</b>, 80 (2019).
+        <a href="https://www.nature.com/articles/s41566-018-0310-5">doi:10.1038/s41566-018-0310-5</a></li>
+        <li><b>7</b>D. Mao <em>et al.</em>, &ldquo;Space-qualifying silicon photonic modulators and
+        circuits,&rdquo; <em>Science Advances</em> <b>10</b>, eadi9171 (2024).
+        <a href="https://www.science.org/doi/10.1126/sciadv.adi9171">doi:10.1126/sciadv.adi9171</a></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What the trained surfaces are doing</p>
+      <h2>How a phase mask computes</h2></div></div>
+    <div class="prose col">
+      <p>Two operations alternate, and both are linear. <strong>Crossing the 3&nbsp;mm gap</strong>
+      spreads every point of the beam outward into a small disc that overlaps its neighbours, by the
+      same amount everywhere on the plate. That blending is what carries information sideways across
+      the beam, and it is the step mathematicians call a <em>convolution</em>. <strong>Passing
+      through a plate</strong> does the opposite. It touches each point on its own, holding it back
+      by the depth etched at that spot and leaving its neighbours alone, which amounts to
+      multiplying each point by @@MATH_maskphase@@, one delay per
+      pixel. Those delays are the only thing training ever adjusts. Alternating the two, spread then
+      delay, spread then delay, is exactly what a hologram does. This stack is five holograms that
+      training wrote.</p>
+      <p>What the plates learn to do with that is <strong>steer light and bring it to a focus</strong>.
+      Two waves that arrive in step add up and get brighter; two that arrive out of step cancel and
+      go dark. The plates set the delays so that after all the spreading, an input of class
+      <em>c</em> arrives in step over detector region <em>c</em> and out of step everywhere else.
+      Early plates behave more like feature detectors, shuffling light around the whole beam; later
+      ones behave more like lenses, gathering the light that identifies a class onto the right
+      patch. About 60% of the light that enters ends up inside a detector box.</p>
+      <p>The other 40% is <strong>not waste waiting to be collected</strong>. Widening the boxes
+      to catch it was measured against 48 different detector layouts, and none of them beat the
+      one this network uses. Boxes wide enough to gather most of the light are wide enough to
+      overlap, and then each one starts counting light that belongs to its neighbour. The light
+      outside the boxes is not information going spare, it is the light the plates could not
+      find a use for.</p>
+      <p>That steering picture is <strong>a story, not a proof</strong>, and it is worth saying so
+      plainly. What is rigorously true is that the whole stack adds up to a single linear operation,
+      and the plates are one way of building that operation out of parts you could actually
+      manufacture.
+      <a class="link" href="@@HREF_physics@@">That is also where its ceiling comes from &rarr;</a></p>
+    </div>
+    <figure class="plate reveal">
+      <img src="@@FIG_phase2_masks@@" alt="Five trained phase masks and one input-to-output intensity example for the diffractive network" loading="lazy">
+      <figcaption><span class="fign"></span>The five learned plates (top) and one worked
+      example: an input digit spreading out on its way to the detectors (bottom). Each plate is a
+      real surface with a relief pattern cut into it, and training only ever adjusted those depths.
+      The structure is fine-grained, changing sharply from one pixel to the next, and that is
+      exactly what makes the design hard to manufacture.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Choosing the task</p>
+      <h2 data-toc="Why digits, and only digits">Why a digit classifier, and only a digit classifier</h2></div></div>
+    <div class="prose col">
+      <p>The task is <strong>MNIST</strong>, a collection of 70,000 handwritten digits that
+      machine-learning work has used as a first test for decades. It is the smallest honest version
+      of the job: a real problem with a real error rate, it fits across the beam without contrivance,
+      and it is <strong>easy enough that the optics stays the interesting part</strong>. The moment a
+      task needs serious electronics bolted on the end to work at all, the optical network stops
+      being the thing under study.</p>
+      <p>So the same ten digits are reused at every stage: the stack of plates, the silicon chip, and
+      every one of the error sweeps that follow. One task, scored the same way on the same fixed set
+      of 2,000 images the models never train on, is what makes those results <strong>comparable to
+      each other</strong>, which is worth more here than a higher score on a harder task. The
+      machine-learning content is deliberately minimal and stays that way.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Read the failures, not just the wins</p>
+      <h2 data-toc="Where it gets things wrong">It is wrong about one digit in four</h2></div></div>
+    <div class="prose col">
+      <p>The network reads <strong>0.799</strong> of the test digits correctly, so the gallery
+      deliberately includes ones it <strong>gets wrong</strong>. Hiding them would misrepresent the
+      model. Watch how the light is divided when it fails: a confident answer puts about
+      25&ndash;30% of the light in the winning box, a wrong one usually far less.</p>
+      <p>Drawings are harder still. Whatever we do, your handwriting will not look quite like the
+      handwriting the model was trained on, so expect more errors there. To keep the comparison fair
+      rather than flattering, a drawing is cleaned up the same way the MNIST images themselves were
+      built: cropped to the ink, scaled so its longer side is 20&nbsp;px, and centred by its balance
+      point. That way a digit drawn too large or off to one side cannot be mistaken for a failure of
+      the optics.</p>
+      <p>What your browser computes is not a simplified stand-in for the trained model. On the test
+      digits it reproduces the predictions of the original PyTorch model <strong>exactly</strong>,
+      with the ten scores agreeing to better than 10<sup>&minus;3</sup>. Its delays are stored at 8
+      bits of precision, 256 possible settings per pixel, which is what a real device offers anyway,
+      and that costs <strong>nothing</strong> measurable: 0.7995 against 0.7990 across 2,000
+      digits.</p>
+      <p>The mistakes are not spread evenly, and the pattern below is worth a look before you go
+      hunting for one in the gallery. <strong>1 is almost never missed</strong>, at 240 of 242. The
+      hard class is <strong>5</strong>, which is right only 109 times and is called a <strong>3</strong>
+      on 41 of the rest. <strong>8</strong> goes the same way, landing on 3 thirty-seven times, and
+      <strong>9 and 4</strong> trade places in both directions. Those are shape confusions rather
+      than random ones: light routed by a surface cannot easily separate digits that share a closed
+      loop in the same place.</p>
+    </div>
+    <figure class="plate reveal">
+      <img src="@@FIG_confusion_ideal@@" alt="Confusion matrix of the trained network on the held-back test set, accuracy 0.799" loading="lazy">
+      <figcaption><span class="fign"></span>Every one of the 2,000 held-back test digits, sorted
+      by what it actually is (rows) against what the optics called it (columns). A perfect machine
+      would put every digit on the diagonal. The bright off-diagonal cells are where this one loses
+      its 20%.</figcaption>
+    </figure>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Where this goes</p>
+      <h2 data-toc="What it would take to build">What it would take to actually build one</h2></div></div>
+    <div class="prose col">
+      <p>Everything above ran in simulation, and simulation is where optical neural networks look
+      easy. The masks are exact. The plates sit at exactly 3&nbsp;mm. Every pixel takes exactly the
+      phase it was trained to take, and its neighbour&rsquo;s phase does not leak into it.</p>
+      <p>A real one has none of that, and it goes wrong in two distinct ways. Things wrong
+      <strong>inside a part</strong>: etch depths vary, the device that writes the delays can only
+      set them so finely, its field spills sideways so each pixel smears into the next, the laser
+      drifts off its colour, and light is lost at every surface. And things wrong about
+      <strong>where the parts sit</strong>: a plate mounted a micron off centre, a gap set to
+      3.1&nbsp;mm rather than 3.0. The first kind is fixed the moment the part is made; the second
+      is decided at assembly and can sometimes be calibrated back out.
+      <strong>Neither kind is a bug to be fixed. They are the specification.</strong></p>
+      <p>How much of each the network survives is a number, not an opinion, and getting it is what
+      the rest of this project is. The trained delays are handed to a second, independent model of
+      the machine <em>as it would really be built</em>, which breaks the network on purpose: ten
+      imperfections, one at a time, then several together. <strong>One of them already fails against
+      hardware you can buy today</strong>, and
+      <a class="link" href="@@HREF_tolerance@@">it is not the one you would guess &rarr;</a></p>
+    </div>
+  </section>
+
+  @@NEXT@@
+
+  <footer class="reveal">
+    <div class="foot-grid">
+      <div><h3>The physics</h3><p>The same diffraction calculation as the Python original, rewritten
+        for the browser with no libraries and checked against it to better than
+        10<sup>&minus;6</sup>. Six gaps of air and five plates per answer, in 532&nbsp;nm green
+        light on a 128&times;128 grid.</p></div>
+      <div><h3>The parameters</h3><p>Exported straight from the trained PyTorch model: 81,920
+        delays, stored at the 8&nbsp;bits of precision a real device offers. Nothing is retrained or
+        tuned to make the browser version look better.</p></div>
+      <div><h3>Privacy</h3><p>Everything happens on your machine. Nothing you draw is uploaded,
+        stored, or sent anywhere. The page makes no network requests at all.</p></div>
+    </div>
+    <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
+    Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
+  </footer>
+
+</main>
+
+@@PAGE_SCRIPT@@
+@@INTERFERE_BUNDLE@@
+@@INTERFERE_MOUNT@@
+@@D2NN_BUNDLE@@
+@@D2NN_MOUNT@@

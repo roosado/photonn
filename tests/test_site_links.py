@@ -20,6 +20,7 @@ import re
 import pytest
 
 from apps.build_site import PAGES, href
+from built_site import page_html
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.join(HERE, "..", "site")
@@ -31,15 +32,12 @@ DELETED_PAGES = ("classifier.html",)
 HREF = re.compile(r'href="([^"]+)"')
 
 
-@functools.lru_cache(maxsize=None)
 def page_text(name):
-    # Cached: the cross-page fragment check below asks for the same target once
-    # per link that points into it, and these pages run to a megabyte. The skip
-    # still fires every call -- lru_cache does not memoise a raised exception.
-    path = os.path.join(SITE, name)
-    if not os.path.exists(path):
-        pytest.skip(f"{name} not built; run python -m apps.build_site")
-    return open(path, encoding="utf-8").read()
+    # The render, not the file: these assertions are about the source that
+    # produces the site. `test_site_build.py` is what ties the two together.
+    # Already cached at the render, so the cross-page fragment check below can
+    # ask for the same megabyte-sized target once per link into it.
+    return page_html(name)
 
 
 @pytest.mark.parametrize("page", PAGES, ids=lambda p: p.key)
@@ -136,3 +134,24 @@ def test_the_artifact_body_uses_absolute_links():
             f"the artifact body does not link to {page.file} absolutely"
         )
     assert 'href="./"' not in html and "<!doctype" not in html.lower()
+
+
+def test_pages_is_the_reading_order():
+    """The hand-off chain follows PAGES, and wraps at the end.
+
+    PAGES's own comment calls itself the reading order, but it drove only the
+    topbar: the sequential hand-off was five literal pairs inside `render()`, so
+    reordering PAGES reordered the nav and silently left the chain alone.
+    """
+    for i, page in enumerate(PAGES):
+        html = page_text(page.file)
+        nxt = PAGES[(i + 1) % len(PAGES)]
+        card = re.search(r'<a class="pagenext[^"]*" href="([^"]+)">(.*?)</a>', html, re.S)
+        assert card, f"{page.file} has no hand-off card"
+        assert card.group(1) == href(nxt.key), (
+            f"{page.file} hands off to {card.group(1)}, not to {nxt.file}, "
+            "which is what PAGES says comes next"
+        )
+    # Only the last page wraps, and it says so rather than saying "Next".
+    assert "Back to the start" in page_text(PAGES[-1].file)
+    assert "Back to the start" not in page_text(PAGES[0].file)

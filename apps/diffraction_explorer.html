@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>photonn — live diffraction explorer</title>
+<title>photonn &mdash; live diffraction explorer</title>
 <style>
   :root{color-scheme:light dark;}
   body{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
@@ -126,11 +126,10 @@
   }
 
   // fftshift / ifftshift for even n are identical: a circular roll by n/2 on each
-  // axis (since 2*(n/2) = n). Returns fresh arrays.
-  function shift2(re, im, n) {
+  // axis (since 2*(n/2) = n). Writes into caller-supplied destinations, which must
+  // not alias the sources.
+  function shift2Into(re, im, n, dre, dim) {
     const h = n >> 1;
-    const dre = new Float64Array(n * n);
-    const dim = new Float64Array(n * n);
     for (let iy = 0; iy < n; iy++) {
       const sy = (iy + h) % n;
       for (let ix = 0; ix < n; ix++) {
@@ -139,7 +138,32 @@
         dim[iy * n + ix] = im[sy * n + sx];
       }
     }
+  }
+
+  // Same, returning fresh arrays.
+  function shift2(re, im, n) {
+    const dre = new Float64Array(n * n);
+    const dim = new Float64Array(n * n);
+    shift2Into(re, im, n, dre, dim);
     return [dre, dim];
+  }
+
+  // Transform-stage scratch, kept across calls and keyed by grid size.
+  //
+  // propagateField is the hot path -- the optics page runs 63 of them just to
+  // reach first paint -- and each one used to allocate four n*n Float64Arrays it
+  // immediately discarded: 512 KB per propagation at n=128, tens of MB per page
+  // load. That is garbage-collector pressure, which a phone feels long before it
+  // feels the arithmetic. The scratch is never handed out, so nothing outside
+  // this function can hold a reference to it.
+  const _scratch = new Map();
+  function scratch(n) {
+    let s = _scratch.get(n);
+    if (s === undefined) {
+      s = [new Float64Array(n * n), new Float64Array(n * n)];
+      _scratch.set(n, s);
+    }
+    return s;
   }
 
   // -------------------------------------------------------------- frequencies
@@ -221,21 +245,45 @@
   }
 
   // --------------------------------------------------------------- propagator
-  // Full ASM pipeline: ifftshift -> fft2 -> xH -> ifft2 -> fftshift, then |E|^2.
-  // Returns a Float64Array(n*n) of intensity in centre-origin layout, matching
+  // One propagation step on a complex field: ifftshift -> fft2 -> xH -> ifft2 ->
+  // fftshift. Returns fresh [re, im] in centre-origin layout; the inputs are not
+  // modified. Mirrors photonn.layers.AngularSpectrumLayer.forward.
+  //
+  // H is passed in already built rather than derived from (dx, lambda, z) because
+  // the caller usually propagates the same distance repeatedly -- the D2NN makes
+  // six identical-z hops through its mask stack, so it builds H once and reuses it
+  // (see d2nn.js). Use buildTransfer(n, dx, lambda, z) to make one.
+  // The out-parameter form: writes the propagated field into (outRe, outIm) and
+  // allocates nothing. Passing the inputs back in as the outputs is explicitly
+  // allowed and is how the mask stack propagates in place -- the sources are read
+  // once into scratch before anything is written, so aliasing is safe.
+  function propagateFieldInto(re, im, n, hre, him, outRe, outIm) {
+    const s = scratch(n);
+    const a = s[0], b = s[1];
+    shift2Into(re, im, n, a, b);           // ifftshift
+    fft2(a, b, n, false);
+    for (let i = 0; i < n * n; i++) {
+      const x = a[i], y = b[i], c = hre[i], d = him[i];
+      a[i] = x * c - y * d;
+      b[i] = x * d + y * c;
+    }
+    fft2(a, b, n, true);
+    shift2Into(a, b, n, outRe, outIm);     // fftshift
+    return [outRe, outIm];
+  }
+
+  function propagateField(re, im, n, hre, him) {
+    return propagateFieldInto(re, im, n, hre, him,
+                              new Float64Array(n * n), new Float64Array(n * n));
+  }
+
+  // Full ASM pipeline for a hard-aperture input, then |E|^2. Returns a
+  // Float64Array(n*n) of intensity in centre-origin layout, matching
   // photonn.propagate.angular_spectrum(field, z).intensity().
   function propagateIntensity(n, dx, lambda, z, shape, size) {
-    let [re, im] = aperture(n, dx, shape, size);
-    [re, im] = shift2(re, im, n);          // ifftshift
-    fft2(re, im, n, false);
+    const [re0, im0] = aperture(n, dx, shape, size);
     const [hre, him] = buildTransfer(n, dx, lambda, z);
-    for (let i = 0; i < n * n; i++) {
-      const a = re[i], b = im[i], cc = hre[i], d = him[i];
-      re[i] = a * cc - b * d;
-      im[i] = a * d + b * cc;
-    }
-    fft2(re, im, n, true);
-    [re, im] = shift2(re, im, n);          // fftshift
+    const [re, im] = propagateField(re0, im0, n, hre, him);
     const I = new Float64Array(n * n);
     for (let i = 0; i < n * n; i++) I[i] = re[i] * re[i] + im[i] * im[i];
     return I;
@@ -250,8 +298,8 @@
   }
 
   const ASM = {
-    fft1d, fft2, shift2, fftfreq, buildTransfer, aperture,
-    propagateIntensity, zCrit, zFraunhofer,
+    fft1d, fft2, shift2, shift2Into, fftfreq, buildTransfer, aperture,
+    propagateField, propagateFieldInto, propagateIntensity, zCrit, zFraunhofer,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = ASM;
@@ -276,6 +324,17 @@
  */
 (function () {
   "use strict";
+
+  // Backing-store scale, capped at 2x.
+  //
+  // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
+  // difference nobody can see at arm's length, and the cost is quadratic in the
+  // canvas area -- the 3D stage re-rasterises ~64 drawImage calls at
+  // imageSmoothingQuality "high" on every orbit frame, so this is the difference
+  // between a smooth orbit and a slideshow on exactly the devices least able to
+  // afford it.
+  const MAX_DPR = 2;
+  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
 
   // Inferno-style colormap anchors (matplotlib inferno, 9 stops) -> 256 LUT.
   const ANCHORS = [
@@ -325,8 +384,9 @@
 .pe-plots{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
 .pe-panelbox{background:var(--pe-panel);border:1px solid var(--pe-border);
   border-radius:10px;padding:10px;}
-.pe-panelbox h4{margin:0 0 6px;font-size:12px;color:var(--pe-muted);font-weight:600;
+.pe-panelbox h4{margin:0 0 2px;font-size:12px;color:var(--pe-muted);font-weight:600;
   text-transform:uppercase;letter-spacing:.04em;}
+.pe-hint{margin:0 0 8px;font-size:11.5px;line-height:1.4;color:var(--pe-muted);max-width:46ch;}
 .pe-field-wrap{display:flex;gap:8px;align-items:stretch;}
 .pe-field{width:320px;height:320px;max-width:100%;image-rendering:auto;
   border-radius:6px;display:block;background:#000;}
@@ -441,7 +501,12 @@
     const plots = el("div", "pe-plots");
 
     const fieldBox = el("div", "pe-panelbox");
-    fieldBox.appendChild(el("h4", null, "Intensity |E|² (peak-normalized)"));
+    fieldBox.appendChild(el("h4", null, "Brightness |E|² (scaled to its own peak)"));
+    fieldBox.appendChild(el("p", "pe-hint",
+      "The beam seen face-on after travelling distance <b>z</b>, as a camera there would "
+      + "see it. Bright means more light arriving. Every frame is rescaled to its own "
+      + "brightest point, so this shows the <em>shape</em> of the pattern, not how much "
+      + "light is left."));
     const fieldWrap = el("div", "pe-field-wrap");
     const fieldCanvas = el("canvas", "pe-field");
     const colorbar = el("div", "pe-colorbar");
@@ -452,6 +517,10 @@
 
     const crossBox = el("div", "pe-panelbox");
     crossBox.appendChild(el("h4", null, "Horizontal cross-section (mid-row)"));
+    crossBox.appendChild(el("p", "pe-hint",
+      "One straight line of pixels taken across the middle of the panel on the left, "
+      + "plotted as a graph. The panel shows you the pattern; this shows you its "
+      + "numbers, so the faint outer rings are actually readable."));
     const crossCanvas = el("canvas", "pe-cross");
     crossBox.appendChild(crossCanvas);
     crossBox.appendChild(el("div", "pe-axis", "x in mm"));
@@ -486,7 +555,7 @@
       }
       offCtx.putImageData(img, 0, 0);
 
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasScale();
       const W = 320;
       fieldCanvas.width = W * dpr; fieldCanvas.height = W * dpr;
       const ctx = fieldCanvas.getContext("2d");
@@ -498,7 +567,7 @@
     }
 
     function renderCross(intensity, n, dx) {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasScale();
       const W = 320, H = 150;
       crossCanvas.width = W * dpr; crossCanvas.height = H * dpr;
       const ctx = crossCanvas.getContext("2d");
@@ -558,7 +627,7 @@
       banner.className = "pe-banner " + (ok ? "ok" : "warn");
       banner.innerHTML = ok
         ? `✓ Sampling OK <small>|z| = ${(z * 1e3).toFixed(0)} mm ≤ z_crit = ${(zc * 1e3).toFixed(0)} mm · far field beyond ${(zf * 1e2).toFixed(1)} cm</small>`
-        : `⚠ Aliasing risk <small>|z| = ${(z * 1e3).toFixed(0)} mm &gt; z_crit = ${(zc * 1e3).toFixed(0)} mm — band-limited ASM active (high-angle content dropped)</small>`;
+        : `⚠ Aliasing risk <small>|z| = ${(z * 1e3).toFixed(0)} mm &gt; z_crit = ${(zc * 1e3).toFixed(0)} mm. The steepest light is being discarded to keep the result honest</small>`;
 
       meta.innerHTML =
         `<div>λ <b>${(lam * 1e9).toFixed(0)} nm</b></div>` +
@@ -605,6 +674,22 @@
     btnSq.addEventListener("click", () => setShape("square"));
     gbtns.forEach((b) => b.addEventListener("click", () => setGrid(+b.dataset.g)));
 
+    // The cross-section is drawn from the page's CSS variables (--pe-accent,
+    // --pe-border, --pe-muted), so a theme change has to repaint it. Without
+    // this the plot held the previous theme's ink until the reader happened to
+    // move a slider. See scaling.js for the same fix; the toggle sets
+    // `data-theme` on the root and never touches the OS preference.
+    const onTheme = () => compute();
+    if (typeof MutationObserver !== "undefined") {
+      new MutationObserver(onTheme).observe(document.documentElement,
+        { attributes: true, attributeFilter: ["data-theme"] });
+    }
+    if (window.matchMedia) {
+      const mq = window.matchMedia("(prefers-color-scheme:dark)");
+      if (mq.addEventListener) mq.addEventListener("change", onTheme);
+      else if (mq.addListener) mq.addListener(onTheme);
+    }
+
     // init
     setShape(state.shape);
     setGrid(state.grid);
@@ -619,9 +704,17 @@
 
 </script>
 <script>
-  window.addEventListener('DOMContentLoaded', function () {
-    window.PhotonnExplorer.mount(document.getElementById('explorer'), {});
-  });
+  (function () {
+    function boot(el) {
+      window.PhotonnExplorer.mount(el, {});
+    }
+    if (window.PhotonnMount) window.PhotonnMount("explorer", boot);
+    else if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', function () { boot(document.getElementById("explorer")); });
+    } else {
+      boot(document.getElementById("explorer"));
+    }
+  })();
 </script>
 </body>
 </html>

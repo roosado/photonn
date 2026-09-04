@@ -10,7 +10,7 @@ import numpy as np
 import h5py
 import pytest
 
-from photonn.export import write_handoff, validate_handoff, SCHEMA_VERSION
+from photonn.export import OPERATING_POINT, write_handoff, validate_handoff, SCHEMA_VERSION
 from photonn.export import MESH_ORDER, MESH_TOPOLOGY, _as_str
 
 
@@ -108,3 +108,52 @@ def test_validate_detects_schema_mismatch(tmp_path, d2nn_payload):
         f.attrs["schema_version"] = "9.9.9"
     with pytest.raises(ValueError, match="[Ss]chema version"):
         validate_handoff(path)
+
+
+# ---------------------------------------------------- the operating-point manifest
+
+def test_an_unrecognised_operating_point_key_is_rejected(tmp_path, d2nn_payload):
+    """A scalar no reader knows to look for is a scalar that does nothing.
+
+    The failure this prevents is a rename: write ``dx_m`` instead of
+    ``pixel_pitch_m`` and, before the manifest, every check passed and MATLAB
+    read NaN.
+    """
+    payload = dict(d2nn_payload,
+                   operating_point=dict(d2nn_payload["operating_point"], dx_m=8e-6))
+    with pytest.raises(ValueError, match="unrecognised key"):
+        write_handoff(tmp_path / "bad.h5", **payload)
+
+
+@pytest.mark.parametrize("dropped", sorted(
+    k for k, spec in OPERATING_POINT.items() if "d2nn" in spec.required_for))
+def test_every_required_d2nn_constant_is_enforced(tmp_path, d2nn_payload, dropped):
+    op = {k: v for k, v in d2nn_payload["operating_point"].items() if k != dropped}
+    with pytest.raises(ValueError, match=dropped):
+        write_handoff(tmp_path / "bad.h5", **dict(d2nn_payload, operating_point=op))
+
+
+@pytest.mark.parametrize("dropped", sorted(
+    k for k, spec in OPERATING_POINT.items() if "mesh" in spec.required_for))
+def test_every_required_mesh_constant_is_enforced(tmp_path, mesh_payload, dropped):
+    op = {k: v for k, v in mesh_payload["operating_point"].items() if k != dropped}
+    with pytest.raises(ValueError, match=dropped):
+        write_handoff(tmp_path / "bad.h5", **dict(mesh_payload, operating_point=op))
+
+
+def test_validate_catches_a_constant_deleted_after_the_write(tmp_path, d2nn_payload):
+    """The writer cannot guard a file it did not write."""
+    path = tmp_path / "d2nn.h5"
+    write_handoff(path, **d2nn_payload)
+    with h5py.File(path, "a") as f:
+        del f["operating_point"].attrs["readout_gain"]
+    with pytest.raises(ValueError, match="readout_gain"):
+        validate_handoff(path)
+
+
+def test_the_fixtures_are_as_complete_as_the_manifest(d2nn_payload, mesh_payload):
+    """Guard the guard: a fixture that drifts behind the manifest tests nothing."""
+    for payload in (d2nn_payload, mesh_payload):
+        kind = payload["model_type"]
+        required = {k for k, s in OPERATING_POINT.items() if kind in s.required_for}
+        assert required <= set(payload["operating_point"])

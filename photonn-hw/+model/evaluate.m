@@ -83,7 +83,16 @@ function out = evaluate(handoff, opts)
         field = model.subpixel_shift(field, -detShift(1), -detShift(2));
     end
 
-    regions = model.detector_regions(N, 10);   % MNIST: 10 detector classes
+    % Prefer the layout the handoff carries (schema 0.3.0 on). Deriving it here
+    % meant Python and MATLAB agreed only because someone kept two copies of the
+    % same arithmetic in step, across two languages, with 0.75 and 0.11 typed
+    % into both -- while apps/score_readout.py exists to change exactly those.
+    if isfield(handoff, 'geometry') && isfield(handoff.geometry, 'detector_regions') ...
+            && ~isempty(handoff.geometry.detector_regions)
+        regions = model.regions_from_handoff(handoff.geometry.detector_regions);
+    else
+        regions = model.detector_regions(N, 10);   % MNIST: 10 detector classes
+    end
     [logits, regionIntensity, inputRef] = model.readout(field, regions, gain, inputField);
 
     if isfield(opts, 'detector') && ~isempty(opts.detector)

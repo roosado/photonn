@@ -1,4 +1,4 @@
-# Handoff schema (`schema_version = 0.2.0`)
+# Handoff schema (`schema_version = 0.3.0`)
 
 The single HDF5 file Python writes and MATLAB reads. **One-directional by
 design:** Python (`photonn/export.py`) writes; MATLAB (`photonn-hw/+io/read_handoff.m`)
@@ -10,26 +10,44 @@ Any change to this layout must bump `SCHEMA_VERSION` there **and** the
 `SUPPORTED_SCHEMAS` list in the MATLAB reader.
 
 Writers always emit the current version; readers accept every version in
-`SUPPORTED_SCHEMAS`. That is what lets 0.2.0 land without re-exporting the 131 MB
-`exports/d2nn_phase2.h5`.
+`SUPPORTED_SCHEMAS`. That is what lets 0.2.0 and 0.3.0 land without re-exporting
+the 131 MB `exports/d2nn_phase2.h5`.
 
 ## Layout
 
 ```
 /                                 (root)
-  @schema_version   str           e.g. "0.1.0" (checked by the reader)
+  @schema_version   str           e.g. "0.3.0" (checked by the reader)
   @created          str           ISO-8601 UTC timestamp
   @description      str           free text
+  @test_acc         f64           test accuracy of the exported model (0.3.0+)
+                                  Older files state it only inside @description;
+                                  photonn.handoff parses that as a fallback.
 
 /geometry
   @grid_size        int           N (field is N x N)
   @physical_extent_m float         side length of the field plane, metres
   @n_layers         int           number of parameterized planes
   layer_separations_m  f64[·]      axial gaps, metres (length convention set in Phase 2)
+  detector_regions  i4[n_classes, 4]  (y0, y1, x0, x1) per class, 0-based half-open
+                                  required for d2nn since 0.3.0; absent for mesh
 
 /operating_point
-  @wavelength_m     f64           operating wavelength, metres  (required)
-  @<other>          f64           additional scalar constants may be added
+  # A closed set, not an open one. Every key below is listed in
+  # photonn.export.OPERATING_POINT with the model kinds that require it; the
+  # writer rejects an unrecognised key and a missing required one, and both
+  # readers refuse a file that lacks one rather than defaulting it.
+  @wavelength_m      f64          operating wavelength, metres      (d2nn, mesh)
+  @readout_gain      f64          region intensity -> logit scale   (d2nn, mesh)
+  @input_power_w     f64          entrance power, photon budget     (d2nn, mesh)
+  @integration_time_s f64         detector integration window       (d2nn, mesh)
+  @pixel_pitch_m     f64          grid pitch, metres                (d2nn)
+  @phase_scale_rad   f64          full-scale mask phase             (d2nn)
+  @input_frac        f64          entrance window as a fraction of N (d2nn)
+  @encoding_code     f64          0 amplitude, 1 phase, 2 both      (d2nn)
+  @n_modes           f64          mesh width                        (mesh)
+  @n_classes         f64          readout classes                   (mesh)
+  @sigma_gain        f64          external gain undoing passivization (mesh)
 
 /parameters
   @model_type       str           "d2nn" | "mesh"
@@ -73,6 +91,21 @@ Writers always emit the current version; readers accept every version in
   crosses the boundary is therefore a device that could exist.
 
 ## Version history
+
+### 0.3.0
+
+* `/geometry/detector_regions` -- where the detectors sit, written as data.
+  It was the one design parameter the handoff never carried: MATLAB re-derived
+  it from `field_frac = 0.75` and `patch_frac = 0.11` typed into
+  `+model/detector_regions.m`, and the two sides agreed only because someone
+  kept two copies of the same arithmetic in step across two languages. Required
+  for `d2nn`; readers fall back to deriving it for older files.
+* `@test_acc` at the root, instead of a token inside the free-text description
+  that two exporters parsed back out with byte-identical hand-rolled parsers.
+* `/operating_point` became a closed manifest. No layout change, but the writer
+  now rejects unknown and missing keys, and the MATLAB reader no longer
+  substitutes a default for an absent one.
+
 
 - **0.2.0** — the mesh parameter set completed: `sigma` and `out_phase` added, plus
   the four `/parameters` attributes describing width, topology and mesh order.

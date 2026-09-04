@@ -14,19 +14,25 @@ test before any physics exists.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import NamedTuple
 
 import numpy as np
 import h5py
 
 #: Handoff schema version. Bump on any breaking change to the layout below.
 #: The MATLAB reader checks against its own copy of this string.
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.3.0"
 
 #: Versions a reader accepts. 0.2.0 added the mesh parameters that 0.1.0 left out
 #: (Sigma and the output phases); the ``d2nn`` layout did not move, so files written
 #: at 0.1.0 -- including the 131 MB ``exports/d2nn_phase2.h5`` -- stay readable
-#: without a re-export. See the version history in ``docs/handoff_schema.md``.
-SUPPORTED_SCHEMAS = ("0.1.0", "0.2.0")
+#: without a re-export. 0.3.0 adds ``/geometry/detector_regions``: where the
+#: detectors sit was the one design parameter the handoff never carried, so MATLAB
+#: re-derived it from re-typed fractions and agreed with Python only because
+#: someone kept the two arithmetics in step. Older files carry no regions and
+#: readers fall back to deriving them, which is what they were doing anyway.
+#: See the version history in ``docs/handoff_schema.md``.
+SUPPORTED_SCHEMAS = ("0.1.0", "0.2.0", "0.3.0")
 
 #: Supported model kinds. ``d2nn`` stores phase masks; ``mesh`` stores MZI angles.
 MODEL_TYPES = ("d2nn", "mesh")
@@ -40,6 +46,89 @@ MESH_TOPOLOGY = "clements_rectangular"
 MESH_ORDER = "V,U"
 
 
+class OperatingPointField(NamedTuple):
+    """One scalar constant the handoff may carry."""
+
+    required_for: tuple
+    doc: str
+
+
+#: Every scalar ``/operating_point`` is allowed to hold, which model kinds require
+#: it, and what it means -- the field manifest for the project's most important
+#: seam.
+#:
+#: This exists because the seam used to be enforced at one end and depended on at
+#: six. ``write_handoff`` wrote whatever dict it was handed, ``validate_handoff``
+#: checked exactly one key (``wavelength_m``), and the schema doc formalised the
+#: hole with "additional scalar constants may be added". Meanwhile eleven keys
+#: were load-bearing downstream and every reader re-stated the subset it needed by
+#: literal string, including a MATLAB reader that turned absence into a *default*.
+#:
+#: The failure that shape produces is the worst kind available here: rename
+#: ``pixel_pitch_m`` and the writer accepted it, the validator passed, the tests
+#: passed, and MATLAB propagated ``NaN``. Rename ``readout_gain`` and MATLAB
+#: silently substituted 1.0 for 10.0 -- logits rescaled tenfold, no error
+#: anywhere, into a published tolerance number.
+#:
+#: With the manifest, an unknown key fails at write time and a missing one fails
+#: before the file exists, so what a reader receives is correct by construction.
+#: Adding a constant means adding a row here; that is the whole cost.
+OPERATING_POINT = {
+    "wavelength_m": OperatingPointField(
+        ("d2nn", "mesh"), "Operating wavelength."),
+    "readout_gain": OperatingPointField(
+        ("d2nn", "mesh"),
+        "Scale from normalised region intensities to logits. Wrong value "
+        "rescales every logit and still classifies, so nothing downstream "
+        "notices."),
+    "input_power_w": OperatingPointField(
+        ("d2nn", "mesh"), "Optical power at the entrance; half the photon budget."),
+    "integration_time_s": OperatingPointField(
+        ("d2nn", "mesh"),
+        "Detector integration window; with input_power_w gives photons per "
+        "inference, which is what the shot-noise sweep is denominated in."),
+    "pixel_pitch_m": OperatingPointField(
+        ("d2nn",),
+        "Grid pitch. The transfer function goes as 1/dx^2, so an error here is "
+        "squared into every propagation."),
+    "phase_scale_rad": OperatingPointField(
+        ("d2nn",), "Full-scale phase one mask pixel can apply."),
+    "input_frac": OperatingPointField(
+        ("d2nn",), "Fraction of the grid the encoded digit is embedded into."),
+    "encoding_code": OperatingPointField(
+        ("d2nn",),
+        "0 amplitude, 1 phase, 2 both. Reconstructing the input under the wrong "
+        "scheme produces a plausible field that is not the trained one."),
+    "n_modes": OperatingPointField(("mesh",), "Mesh width."),
+    "n_classes": OperatingPointField(("mesh",), "Readout classes."),
+    "sigma_gain": OperatingPointField(
+        ("mesh",),
+        "External gain undoing the passivization of sigma; logit-preserving only "
+        "if applied."),
+}
+
+
+def _check_operating_point(operating_point, model_type):
+    """Reject an operating point the manifest does not recognise or does not cover."""
+    unknown = sorted(set(operating_point) - set(OPERATING_POINT))
+    if unknown:
+        raise ValueError(
+            f"operating_point has unrecognised key(s) {unknown}. Add them to "
+            "photonn.export.OPERATING_POINT (and to the MATLAB reader) rather "
+            "than writing a scalar no reader knows to look for."
+        )
+    missing = sorted(
+        key for key, spec in OPERATING_POINT.items()
+        if model_type in spec.required_for and key not in operating_point
+    )
+    if missing:
+        raise ValueError(
+            f"operating_point is missing {missing} for model_type={model_type!r}. "
+            "Every one of these is read downstream; absent, MATLAB substitutes a "
+            "default and produces a plausible wrong answer."
+        )
+
+
 def _as_str(value):
     """Decode an HDF5 attribute that may come back as bytes into ``str``."""
     if isinstance(value, bytes):
@@ -49,6 +138,27 @@ def _as_str(value):
 
 #: Mesh parameter datasets, in the order they are written and checked.
 _MESH_DATASETS = ("phase_theta", "phase_phi", "sigma", "out_phase")
+
+
+def _region_array(regions) -> np.ndarray:
+    """Detector patches as ``i4[n_classes, 4]``: ``(y0, y1, x0, x1)`` per class.
+
+    Accepts either :class:`photonn.detect.DetectorRegion` objects or plain
+    4-sequences, so a caller can pass ``default_regions(...)`` straight through.
+    Half-open in y1/x1, matching the Python slices; the MATLAB reader converts to
+    its own 1-based inclusive form once, on the way in.
+    """
+    rows = []
+    for reg in regions:
+        if hasattr(reg, "y0"):
+            rows.append((reg.y0, reg.y1, reg.x0, reg.x1))
+        else:
+            y0, y1, x0, x1 = reg
+            rows.append((y0, y1, x0, x1))
+    out = np.asarray(rows, dtype="i4")
+    if out.ndim != 2 or out.shape[1] != 4:
+        raise ValueError(f"detector_regions must be [n_classes, 4]; got {out.shape}.")
+    return out
 
 
 def _mesh_arrays(parameters):
@@ -97,6 +207,7 @@ def write_handoff(
     test_images,
     test_labels,
     description="",
+    test_acc=None,
 ):
     """Write a handoff HDF5 file. See ``docs/handoff_schema.md`` for the contract.
 
@@ -130,16 +241,28 @@ def write_handoff(
         raise ValueError(
             f"model_type must be one of {MODEL_TYPES}; got {model_type!r}."
         )
-    if "wavelength_m" not in operating_point:
-        raise ValueError("operating_point must include 'wavelength_m'.")
+    _check_operating_point(operating_point, model_type)
     for key in ("grid_size", "physical_extent_m", "n_layers", "layer_separations_m"):
         if key not in geometry:
             raise ValueError(f"geometry is missing required key {key!r}.")
+    if model_type == "d2nn" and "detector_regions" not in geometry:
+        raise ValueError(
+            "geometry is missing 'detector_regions' for a d2nn handoff. Pass "
+            "photonn.detect.default_regions(n, n_classes); the as-built model "
+            "must read the layout rather than re-deriving it from constants "
+            "typed on the other side of the seam."
+        )
 
     with h5py.File(path, "w") as f:
         f.attrs["schema_version"] = SCHEMA_VERSION
         f.attrs["created"] = datetime.now(timezone.utc).isoformat()
         f.attrs["description"] = description
+        # A real attribute, not a token inside free text. The accuracy is read
+        # back by two exporters, and both used to dig it out of the description
+        # with byte-identical hand-rolled parsers. photonn.handoff still falls
+        # back to that parse, for the files written before this line existed.
+        if test_acc is not None:
+            f.attrs["test_acc"] = float(test_acc)
 
         geo = f.create_group("geometry")
         geo.attrs["grid_size"] = int(geometry["grid_size"])
@@ -149,6 +272,10 @@ def write_handoff(
             "layer_separations_m",
             data=np.asarray(geometry["layer_separations_m"], dtype="f8"),
         )
+        if "detector_regions" in geometry:
+            geo.create_dataset(
+                "detector_regions", data=_region_array(geometry["detector_regions"])
+            )
 
         op = f.create_group("operating_point")
         for key, val in operating_point.items():
@@ -209,7 +336,8 @@ def validate_handoff(path):
         if "layer_separations_m" not in geo:
             raise ValueError("Missing dataset '/geometry/layer_separations_m'.")
 
-        if "wavelength_m" not in f["operating_point"].attrs:
+        op_attrs = f["operating_point"].attrs
+        if "wavelength_m" not in op_attrs:
             raise ValueError("Missing attribute '/operating_point.wavelength_m'.")
 
         params = f["parameters"]
@@ -222,6 +350,15 @@ def validate_handoff(path):
             )
         if model_type == "d2nn":
             required = ("phase_masks",)
+            # Files written before 0.3.0 carry no layout and readers derive it,
+            # which is what they did unconditionally before. From 0.3.0 the file
+            # is the authority and its absence is a real gap.
+            if version >= "0.3.0" and "detector_regions" not in geo:
+                raise ValueError(
+                    "Missing dataset '/geometry/detector_regions'. From schema "
+                    "0.3.0 the detector layout crosses the seam as data; see "
+                    "photonn.detect.default_regions."
+                )
         elif version == "0.1.0":
             # 0.1.0 mesh files carry the MZI angles only. They load, but they cannot
             # rebuild the operator -- see the version history in docs/handoff_schema.md.
@@ -239,6 +376,19 @@ def validate_handoff(path):
             for attr in ("n_modes", "n_mzi_per_mesh", "mesh_order", "topology"):
                 if attr not in params.attrs:
                     raise ValueError(f"Missing attribute '/parameters.{attr}'.")
+
+        # The same manifest the writer enforces, checked against the bytes. A file
+        # can reach here without having gone through write_handoff (hand-edited,
+        # or produced by an older exporter), and the readers do not care which.
+        missing = sorted(
+            key for key, spec in OPERATING_POINT.items()
+            if model_type in spec.required_for and key not in op_attrs
+        )
+        if missing:
+            raise ValueError(
+                f"Missing '/operating_point' attribute(s) {missing} for "
+                f"model_type={model_type!r}. See photonn.export.OPERATING_POINT."
+            )
 
         test_set = f["test_set"]
         for dset in ("images", "labels"):

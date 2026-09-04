@@ -151,6 +151,10 @@ def main():
             "physical_extent_m": args.grid * args.dx,
             "n_layers": args.layers,
             "layer_separations_m": np.full(n_gaps, args.separation, dtype="f8"),
+            # Where the detectors sit, written rather than left for the reader
+            # to re-derive. detect.default_regions is the sole author; MATLAB
+            # and the browser export both read this.
+            "detector_regions": model.regions,
         },
         operating_point={
             "wavelength_m": args.wavelength,

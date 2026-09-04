@@ -19,6 +19,8 @@ sec. 4.4.2.
 """
 from __future__ import annotations
 
+import contextlib
+
 import numpy as np
 from scipy.special import j1
 
@@ -84,6 +86,38 @@ def airy_pattern(n: int, dx: float, wavelength: float, aperture_radius: float, z
 
 
 # -- runtime invariant assertions ---------------------------------------
+#: Whether the propagators enforce the sampling criterion as they run.
+#:
+#: CLAUDE.md asks for "sampling and unitarity checks as runtime assertions, not
+#: just tests", and this module's own docstring repeated the claim -- while the
+#: three ``assert_*`` functions below had no caller anywhere outside two test
+#: lines. They were a stated rule that nothing held: ``angular_spectrum`` never
+#: checked its sampling, so a mis-sampled propagation returned a quietly aliased
+#: field that some later figure inherited without complaint.
+#:
+#: On by default, because that is what the rule means. Turn it off around a call
+#: that is *deliberately* outside the criterion -- showing a reader what aliasing
+#: looks like, or measuring how far past z_crit a design can be pushed -- with
+#: :func:`relaxed`, which says so at the call site instead of silently.
+STRICT = True
+
+
+@contextlib.contextmanager
+def relaxed():
+    """Suspend :data:`STRICT` enforcement for a block, and say so out loud.
+
+    >>> with validate.relaxed():            # doctest: +SKIP
+    ...     aliased = angular_spectrum(field, 4 * z_crit)
+    """
+    global STRICT
+    previous = STRICT
+    STRICT = False
+    try:
+        yield
+    finally:
+        STRICT = previous
+
+
 def assert_sampling(field: Field, z: float, method: str = "angular_spectrum") -> None:
     """Raise ``ValueError`` if ``field`` is inadequately sampled to propagate ``z``."""
     report = check_sampling(field, z, method)

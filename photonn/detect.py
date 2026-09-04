@@ -98,6 +98,38 @@ def integrate_intensity(field: Field, regions) -> np.ndarray:
     return np.array([inten[reg.slices].sum() * dA for reg in regions], dtype=float)
 
 
+#: Floor on the total-power denominator, shared by every implementation of the
+#: readout. A field of exactly zero power has no defined class scores; clamping
+#: rather than dividing by zero keeps a dark frame from producing NaN logits that
+#: then propagate silently through an accuracy figure.
+POWER_FLOOR = 1e-12
+
+
+def region_logits(field: Field, regions, gain: float) -> np.ndarray:
+    """Class scores from a detected field: the project's readout contract.
+
+    ::
+
+        logit_c = gain * (sum |E|^2 over region c) / (sum |E|^2 over the plane)
+
+    Four runtimes implement this -- here, ``models.D2NN.forward`` in torch,
+    ``+model/readout.m`` in MATLAB, and ``d2nn.js`` in the browser -- and they
+    have to agree, because ``readout_gain`` travels across the handoff as a
+    number whose meaning is *this formula*. Stated here so the other three have
+    something to be ports of; it was previously inferable only by reading all
+    four and noticing they matched.
+
+    Normalising by total power is what makes the number comparable between an
+    ideal run and an as-built one that has lost light: without it, inserting loss
+    would scale every logit down together and look like a change in confidence
+    rather than the no-op it is for argmax.
+    """
+    inten = field.intensity()
+    total = max(float(inten.sum()), POWER_FLOOR)
+    region = np.array([inten[reg.slices].sum() for reg in regions], dtype=float)
+    return region / total * gain
+
+
 @dataclass
 class PhotonBudget:
     """Optical power budget for one inference.

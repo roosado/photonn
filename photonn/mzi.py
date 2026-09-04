@@ -106,7 +106,13 @@ def clements_decompose(unitary):
                 theta, phi = _left_null(u, row, col)
                 u = _embed(mzi_matrix(theta, phi), row - 1, n) @ u
                 ops.append(("L", row - 1, theta, phi))
-    return {"n": n, "ops": ops, "diag": np.diag(u).copy()}
+    settings = {"n": n, "ops": ops, "diag": np.diag(u).copy()}
+    # Once, on the finished decomposition -- the runtime unitarity check
+    # CLAUDE.md asks for. Not per MZI: this loop does n(n-1)/2 embeds, and a
+    # per-op check would make it quadratically slower to assert something only
+    # the whole product can be wrong about.
+    assert_decomposition_unitary(settings)
+    return settings
 
 
 def reck_decompose(unitary):
@@ -152,6 +158,22 @@ def mesh_forward(settings, x):
     Equivalent to ``reconstruct(settings) @ x``.
     """
     return reconstruct(settings) @ np.asarray(x, dtype=complex)
+
+
+def assert_decomposition_unitary(settings, atol: float = 1e-8) -> None:
+    """Check that a decomposition rebuilds a unitary operator.
+
+    Called once by :func:`clements_decompose` on its own result, not per MZI:
+    the decomposition performs ``n(n-1)/2`` embeds and checking each would make
+    it quadratically slower to assert something only the whole product can be
+    wrong about.
+
+    Honours :data:`photonn.validate.STRICT`, like the propagators.
+    """
+    from photonn import validate
+
+    if validate.STRICT:
+        validate.assert_unitary(reconstruct(settings), atol=atol)
 
 
 def check_unitary(matrix, atol: float = 1e-10) -> bool:

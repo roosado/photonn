@@ -43,7 +43,8 @@ import torch
 from photonn.detect import default_regions
 from photonn.fields import Field
 from photonn.models import D2NN
-from photonn.propagate import angular_spectrum, check_sampling, diffraction_reach_px, wraparound_error
+from photonn.propagate import (angular_spectrum, check_sampling, diffraction_reach_px,
+                              required_reach_px, stack_wraparound_error, wraparound_error)
 from photonn.train import encode_input, evaluate, load_dataset, split_dataset, train
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -133,48 +134,9 @@ def parse_args():
 
 
 # -- geometry: what the grid can and cannot represent ---------------------------
-def stack_wraparound(z: float, n_hops: int, fields: np.ndarray, *, grid: int, pad: int = 3):
-    """Wrap error accumulated over ``n_hops`` hops, at the plane and at the detectors.
-
-    Single-hop :func:`~photonn.propagate.wraparound_error` understates the D2NN
-    badly: the model takes ``n_layers + 1`` hops and the wrapped energy compounds.
-    What the classifier actually consumes is not the field but ten
-    region-integrated intensities, and those are far more forgiving -- the patches
-    sit in the central 75 % of the grid, while wrapped energy arrives at the edges.
-    Both are reported because the gap between them *is* the finding.
-
-    Masks are omitted (identity), so this is pure geometry and needs no trained
-    model -- which is what lets it gate the sweep instead of following it.
-    """
-    regions = default_regions(grid, 10)
-    lo = (pad * grid - grid) // 2
-
-    def chain(data):
-        f = Field(data, DX, WAVELENGTH)
-        for _ in range(n_hops):
-            f = angular_spectrum(f, z)
-        return f.data
-
-    def integrate(intensity):
-        return np.array([intensity[r.y0:r.y1, r.x0:r.x1].sum() for r in regions])
-
-    plane, logit, flips = [], [], 0
-    for k in range(len(fields)):
-        on_grid = chain(fields[k])
-
-        big = np.zeros((pad * grid, pad * grid), dtype=complex)
-        big[lo:lo + grid, lo:lo + grid] = fields[k]
-        reference = chain(big)[lo:lo + grid, lo:lo + grid]
-
-        plane.append(np.linalg.norm(on_grid - reference) / np.linalg.norm(reference))
-        a, b = integrate(np.abs(on_grid) ** 2), integrate(np.abs(reference) ** 2)
-        logit.append(np.linalg.norm(a - b) / np.linalg.norm(b))
-        flips += int(np.argmax(a) != np.argmax(b))
-
-    return {"plane_error": float(np.mean(plane)), "logit_error": float(np.mean(logit)),
-            "argmax_flips": flips, "n_probe": len(fields)}
-
-
+# Both derivations live in photonn.propagate: they are pure geometry, they gate
+# this sweep before any model exists, and keeping local copies is what let the
+# same number drift into four places.
 def geometry_row(z_mm: float, layers: int, fields: np.ndarray, *, grid: int) -> dict:
     z = z_mm * 1e-3
     hops = layers + 1
@@ -184,39 +146,15 @@ def geometry_row(z_mm: float, layers: int, fields: np.ndarray, *, grid: int) -> 
         "grid": grid,
         "z_mm": z_mm, "layers": layers, "hops": hops,
         "reach_px_per_hop": reach, "reach_px_total": hops * reach,
-        "required_px": required_reach_px(grid),
+        "required_px": required_reach_px(grid, default_regions(grid, 10)),
         "sampling_ok": bool(check_sampling(probe, z).ok),
         "wrap_one_hop": float(np.mean([wraparound_error(Field(f, DX, WAVELENGTH), z)
                                        for f in fields])),
     }
-    row.update(stack_wraparound(z, hops, fields, grid=grid))
+    row.update(stack_wraparound_error(
+        (Field(f, DX, WAVELENGTH) for f in fields), z, hops,
+        default_regions(grid, 10)))
     return row
-
-
-def required_reach_px(grid: int) -> float:
-    """Total reach the stack needs before it can compute the mapping at all.
-
-    Worst case, per axis: the input pixel at one edge of the entrance window must
-    be able to influence the detector pixel farthest from it. Below this the
-    failure is geometric rather than statistical -- part of the digit physically
-    cannot reach the detector that needs it, whatever the masks say. Same
-    derivation as :mod:`apps.export_analogy_web`; duplicated here rather than
-    imported because that module reads the trained handoff and this must run for
-    a grid no model has been trained on yet.
-
-    Note it scales with the grid: ``default_regions`` and ``train._embed`` both
-    place things as *fractions* of ``n``, so a larger grid is a proportionally
-    larger device and needs proportionally more reach. That is exactly why the
-    wrap budget alone does not answer the grid question.
-    """
-    win = max(1, int(round(0.5 * grid)))                # train.embed_input(input_frac=0.5)
-    off = (grid - win) // 2
-    window = [off, off + win - 1]
-    regions = [[r.y0, r.y1, r.x0, r.x1] for r in default_regions(grid, 10)]
-    det_x = [min(r[2] for r in regions), max(r[3] - 1 for r in regions)]
-    det_y = [min(r[0] for r in regions), max(r[1] - 1 for r in regions)]
-    return float(max(window[1] - det_x[0], det_x[1] - window[0],
-                     window[1] - det_y[0], det_y[1] - window[0]))
 
 
 def probe_fields(n: int = 16, *, grid: int) -> np.ndarray:
@@ -256,7 +194,7 @@ def report_geometry(args, fields=None):
         varying, fixed = "mask count", f"z = {args.z:g} mm"
     else:
         varying, fixed = "separation", f"{args.layers} masks"
-    need = required_reach_px(args.grid)
+    need = required_reach_px(args.grid, default_regions(args.grid, 10))
     print(f"grid {args.grid} ({args.grid * DX * 1e3:.3f} mm across), dx {DX*1e6:g} um, "
           f"lambda {WAVELENGTH*1e9:g} nm | varying {varying}, {fixed}")
     print(f"z_crit = {z_crit*1e3:.3f} mm   reach/hop = z x {WAVELENGTH/(2*DX**2):.1f} px/m")

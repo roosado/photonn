@@ -22,8 +22,10 @@ import numpy as np
 import pytest
 
 from apps.export_sweep_web import check_layout
-from apps.sweep_optics import DX, WAVELENGTH, config_tag, required_reach_px, stack_wraparound
+from apps.sweep_optics import DX, WAVELENGTH, config_tag
 from photonn.detect import default_regions
+from photonn.fields import Field
+from photonn.propagate import required_reach_px, stack_wraparound_error
 
 #: The published Phase-3 correspondence result (docs/phase3_mesh.md): the worst
 #: input pixel sits 74 px from the detector pixel farthest from it, at 128.
@@ -37,7 +39,7 @@ def canonical_regions(grid, **kw):
 # ------------------------------------------------------------------ requirement
 
 def test_required_reach_reproduces_the_published_figure():
-    assert required_reach_px(128) == SHIPPED_REQUIRED_PX
+    assert required_reach_px(128, default_regions(128, 10)) == SHIPPED_REQUIRED_PX
 
 
 @pytest.mark.parametrize("grid", [128, 256, 512])
@@ -52,10 +54,16 @@ def test_required_reach_scales_with_the_grid(grid):
     ``-1`` does not scale, which is why the raw numbers (74, 149, 299) look 1-3 px
     short of doubling while ``need + 1`` (75, 150, 300) doubles exactly.
     """
-    assert required_reach_px(grid) + 1 == (SHIPPED_REQUIRED_PX + 1) * grid / 128
+    assert (required_reach_px(grid, default_regions(grid, 10)) + 1
+            == (SHIPPED_REQUIRED_PX + 1) * grid / 128)
 
 
 # ------------------------------------------------------------------------ wrap
+
+def wrap(z, hops, fields, grid):
+    """stack_wraparound_error over bare arrays, at the shipped operating point."""
+    return stack_wraparound_error((Field(f, DX, WAVELENGTH) for f in fields), z,
+                                  hops, default_regions(grid, 10))
 
 def test_wrap_depends_on_total_reach_not_on_how_it_is_split():
     """Two configs with equal total reach must wrap equally, at any z/L split.
@@ -72,8 +80,8 @@ def test_wrap_depends_on_total_reach_not_on_how_it_is_split():
     fields[:, off:off + win, off:off + win] = rng.random((2, win, win))
 
     # z * (L + 1) held constant: 1 mask over 2 hops, 3 masks over 4 hops.
-    a = stack_wraparound(4e-3, 2, fields, grid=grid)
-    b = stack_wraparound(2e-3, 4, fields, grid=grid)
+    a = wrap(4e-3, 2, fields, grid)
+    b = wrap(2e-3, 4, fields, grid)
 
     assert a["logit_error"] == pytest.approx(b["logit_error"], rel=1e-6)
     assert a["plane_error"] == pytest.approx(b["plane_error"], rel=1e-6)
@@ -84,8 +92,8 @@ def test_wrap_grows_with_total_reach():
     grid = 64
     fields = np.zeros((1, grid, grid), dtype=complex)
     fields[:, 16:48, 16:48] = 1.0
-    near = stack_wraparound(1e-3, 2, fields, grid=grid)
-    far = stack_wraparound(8e-3, 2, fields, grid=grid)
+    near = wrap(1e-3, 2, fields, grid)
+    far = wrap(8e-3, 2, fields, grid)
     assert far["plane_error"] > near["plane_error"]
 
 

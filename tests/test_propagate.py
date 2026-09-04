@@ -33,7 +33,10 @@ def test_angular_spectrum_matches_gaussian_beam():
     """angular_spectrum of a Gaussian waist matches validate.gaussian_beam at z."""
     n, dx, w0, z = 256, 8e-6, 200e-6, 0.1  # z >> z_crit; band-limited ASM still exact here
     launched = V.gaussian_beam(n, dx, LAM, w0, z=0.0)
-    numeric = P.angular_spectrum(launched, z)
+    # The claim under test *is* that the band-limited ASM stays exact past
+    # z_crit, so the runtime criterion is suspended rather than satisfied.
+    with V.relaxed():
+        numeric = P.angular_spectrum(launched, z)
     analytic = V.gaussian_beam(n, dx, LAM, w0, z=z)
 
     rms = np.sqrt(np.mean((_norm(numeric) - _norm(analytic)) ** 2))
@@ -48,7 +51,12 @@ def test_fraunhofer_circular_aperture_is_airy():
     """fraunhofer of a circular aperture matches validate.airy_pattern."""
     n, dx, a, z = 1024, 2e-6, 100e-6, 0.2  # z well beyond the aperture far-field distance
     aperture = E.aperture(Field(np.ones((n, n)), dx, LAM), "circular", size=2 * a)
-    far = P.fraunhofer(aperture, z)
+    # z = 0.2 m is beyond the far-field distance of the 200 um *aperture*
+    # (0.15 m), which is the distance that matters here. check_sampling takes
+    # the worst case D = n*dx, the whole 2 mm grid, whose far field starts at
+    # 15.8 m -- correct as a conservative guard, wrong for this measurement.
+    with V.relaxed():
+        far = P.fraunhofer(aperture, z)
     airy = V.airy_pattern(n, dx, LAM, a, z)
 
     # Same output grid, so compare pixel-for-pixel over the bright central region.
@@ -101,10 +109,16 @@ def test_check_sampling_rejects_unknown_method():
 
 
 def _substep(field, z, steps):
-    """Propagate ``z`` as ``steps`` equal sub-hops."""
+    """Propagate ``z`` as ``steps`` equal sub-hops.
+
+    Runs with the sampling criterion suspended: the caller is measuring how
+    the propagator behaves *above* z_crit, so refusing to go there would
+    refuse the experiment.
+    """
     out = field
-    for _ in range(steps):
-        out = P.angular_spectrum(out, z / steps)
+    with V.relaxed():
+        for _ in range(steps):
+            out = P.angular_spectrum(out, z / steps)
     return out
 
 
@@ -144,7 +158,9 @@ def test_substep_propagation_diverges_above_z_crit():
     z = 12 * z_crit
 
     launched = V.gaussian_beam(n, dx, lam, 20e-6, z=0.0)
-    whole = P.angular_spectrum(launched, z)
+    # 12x z_crit on purpose: the divergence being measured only exists there.
+    with V.relaxed():
+        whole = P.angular_spectrum(launched, z)
     split = _substep(launched, z, 8)
     rel = np.abs(split.data - whole.data).max() / np.abs(whole.data).max()
     assert rel > 1e-3, f"expected sub-stepping to diverge above z_crit; got {rel:.2e}"
@@ -206,3 +222,40 @@ def test_wraparound_error_estimate_is_stable_in_pad_factor():
 def test_wraparound_error_rejects_pad_factor_below_two():
     with pytest.raises(ValueError, match="pad_factor"):
         P.wraparound_error(Field(_centred_square(64, 8), 8e-6, 532e-9), 1e-3, pad_factor=1)
+
+
+# -- the criterion is enforced, not merely available ---------------------------
+
+def test_a_mis_sampled_propagation_raises():
+    """CLAUDE.md: sampling checks as runtime assertions, not just tests.
+
+    The three `assert_*` helpers in validate.py had no caller outside two test
+    lines, so a propagation past z_crit returned a quietly aliased field and the
+    figure that inherited it looked fine. Now it refuses.
+    """
+    n, dx = 128, 8e-6
+    field = Field(np.ones((n, n)), dx, LAM)
+    z_crit = n * dx**2 / LAM
+    with pytest.raises(ValueError, match="Sampling criterion violated"):
+        P.angular_spectrum(field, 10 * z_crit)
+
+
+def test_the_criterion_can_be_suspended_deliberately():
+    """...and going past it on purpose says so at the call site."""
+    n, dx = 128, 8e-6
+    field = Field(np.ones((n, n)), dx, LAM)
+    z_crit = n * dx**2 / LAM
+    with V.relaxed():
+        out = P.angular_spectrum(field, 10 * z_crit)
+    assert out.n == n
+    # Restored on exit, including if the block raised.
+    with pytest.raises(ValueError, match="Sampling criterion violated"):
+        P.angular_spectrum(field, 10 * z_crit)
+
+
+def test_a_non_unitary_decomposition_is_caught():
+    """The other half of the same rule, on the mesh side."""
+    import photonn.mzi as M
+
+    with pytest.raises(ValueError, match="not unitary"):
+        M.assert_decomposition_unitary({"n": 2, "ops": [], "diag": np.array([2.0, 2.0])})

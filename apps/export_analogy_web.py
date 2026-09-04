@@ -36,7 +36,9 @@ import numpy as np
 
 from photonn.detect import default_regions
 from photonn.layers import MZIMeshLayer
-from photonn.propagate import diffraction_reach_px
+from apps.web_bundle import write_bundle
+from photonn.handoff import read_handoff
+from photonn.propagate import diffraction_reach_px, required_reach_px_axes
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 D2NN_H5 = os.path.join(_REPO, "exports", "d2nn_phase2.h5")
@@ -44,15 +46,6 @@ MESH_H5 = os.path.join(_REPO, "exports", "mesh_phase3.h5")
 OUT_JS = os.path.join(_REPO, "apps", "web", "analogy_geom.js")
 
 SCHEMA = "analogy-geom/1"
-
-
-def _acc_from_description(attrs) -> float:
-    """Pull ``test_acc=...`` out of a handoff's free-text description attribute."""
-    for token in str(attrs["description"]).split("|"):
-        key, _, value = token.strip().partition("=")
-        if key == "test_acc":
-            return float(value)
-    raise KeyError("no test_acc in the handoff description")
 
 
 def d2nn_geometry() -> dict:
@@ -64,7 +57,7 @@ def d2nn_geometry() -> dict:
     with h5py.File(D2NN_H5, "r") as f:
         geo, op = dict(f["geometry"].attrs), dict(f["operating_point"].attrs)
         seps = f["geometry"]["layer_separations_m"][...]
-        accuracy = _acc_from_description(f.attrs)
+    accuracy = read_handoff(D2NN_H5).test_acc
 
     n, n_layers = int(geo["grid_size"]), int(geo["n_layers"])
     dx, lam = float(op["pixel_pitch_m"]), float(op["wavelength_m"])
@@ -87,12 +80,12 @@ def d2nn_geometry() -> dict:
     det_y = [min(r[0] for r in regions), max(r[1] - 1 for r in regions)]
 
     # Worst case, per axis: an input pixel at one edge of the window must be able
-    # to reach the detector pixel farthest from it. Reach is per-axis (the FFT
-    # band is a square in (fx, fy)), so x and y are separate one-dimensional tests.
-    def required(window, extent):
-        return max(window[1] - extent[0], extent[1] - window[0])
-
-    need_x, need_y = required(input_window, det_x), required(input_window, det_y)
+    # to reach the detector pixel farthest from it.
+    # int() because these are inclusive pixel indices and the bundle has always
+    # carried them as integers; propagate returns float for consistency with
+    # diffraction_reach_px, which genuinely is not integral.
+    need_x, need_y = (int(v) for v in
+                      required_reach_px_axes(n, default_regions(n), input_frac=input_frac))
     need = max(need_x, need_y)
 
     reach_hop = diffraction_reach_px(n, dx, lam, z)
@@ -116,8 +109,8 @@ def d2nn_geometry() -> dict:
 
 def mesh_geometry(n_modes: int = 36) -> dict:
     """Clements topology of the trained mesh, read from the layer that defines it."""
+    accuracy = read_handoff(MESH_H5).test_acc
     with h5py.File(MESH_H5, "r") as f:
-        accuracy = _acc_from_description(f.attrs)
         modes = int(dict(f["operating_point"].attrs)["n_modes"])
         n_phases = int(f["parameters/phase_theta"].shape[0])
     if modes != n_modes:
@@ -163,17 +156,9 @@ _HEADER = """/*
 
 def write_geom_js(path: str = OUT_JS) -> str:
     geom = {"schema": SCHEMA, "d2nn": d2nn_geometry(), "mesh": mesh_geometry()}
-    body = json.dumps(geom, indent=2, sort_keys=True)
-    text = (
-        _HEADER
-        + "(function () {\n  \"use strict\";\n  var G = "
-        + body.replace("\n", "\n  ")
-        + ";\n  if (typeof module !== \"undefined\" && module.exports) module.exports = G;\n"
-        + "  if (typeof window !== \"undefined\") window.PHOTONN_ANALOGY_GEOM = G;\n})();\n"
-    )
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text)
-    return path
+    return write_bundle(path, geom, header=_HEADER,
+                        window_name="PHOTONN_ANALOGY_GEOM", var_name="G",
+                        sort_keys=True)
 
 
 def main():

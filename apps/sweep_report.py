@@ -26,9 +26,13 @@ import numpy as np
 import torch
 from matplotlib.patches import Polygon, Rectangle
 
-from apps.sweep_optics import BASE_LAYERS, BASE_Z_MM, ISO_REACH_PX as ISO_TARGET_PX
+from apps.sweep_optics import (BASE_LAYERS, BASE_Z_MM, DEFAULT_GRID as GRID, DX,
+                               ISO_REACH_PX as ISO_TARGET_PX, WAVELENGTH)
+from apps.web_bundle import write_bundle
+from photonn.detect import default_regions
+from photonn.elements import phase_mask
 from photonn.fields import Field
-from photonn.propagate import angular_spectrum
+from photonn.propagate import angular_spectrum, required_reach_px
 from photonn.train import encode_input, load_dataset
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -36,9 +40,21 @@ SWEEP_JSON = _REPO / "exports" / "sweep" / "optics_sweep.json"
 OUT_PNG = _REPO / "docs" / "figures" / "optics_sweep.png"
 OUT_JS = _REPO / "apps" / "web" / "optics_sweep.js"
 
-GRID, DX, WAVELENGTH = 128, 8e-6, 532e-9
-INPUT_LO, INPUT_HI = 32, 95        # entrance window, train.embed_input(input_frac=0.5)
-REQUIRED_PX = 74.0                 # worst-case input->detector distance (docs/phase3_mesh.md)
+# Grid, pitch and wavelength come from the sweep this figure reports on, rather
+# than being re-typed: a figure quoting a different operating point than the
+# run it plots is wrong in a way nothing would catch.
+INPUT_FRAC = 0.5                   # train.embed_input default
+
+#: The entrance window and the worst-case input->detector distance, derived
+#: rather than typed. This figure is where the connectivity bound is *published*
+#: (docs/phase3_mesh.md, and the /optics widget reads it out of the JS bundle
+#: this module writes), and it was a literal 74.0 here while three other places
+#: computed it -- so a grid or layout change moved the study and left the
+#: headline number quoting the old one.
+_WIN = max(1, int(round(INPUT_FRAC * GRID)))
+INPUT_LO = (GRID - _WIN) // 2
+INPUT_HI = INPUT_LO + _WIN - 1
+REQUIRED_PX = required_reach_px(GRID, default_regions(GRID, 10), input_frac=INPUT_FRAC)
 
 BEAM = "#0f9e8f"
 FRINGE = "#c9701f"
@@ -68,7 +84,12 @@ def detector_plane(z_mm: float, layers: int, digit: np.ndarray, masks=None) -> n
     for i in range(layers + 1):
         f = angular_spectrum(f, z)
         if masks is not None and i < layers:
-            f = Field(f.data * np.exp(1j * masks[i]), DX, WAVELENGTH)
+            # elements.phase_mask rather than the multiply written out here: it
+            # validates the mask shape and, unlike rebuilding the Field, carries
+            # `z` through instead of silently resetting it to 0. Harmless in this
+            # function (only |E|^2 is read) and exactly the kind of quiet
+            # discard the field-carries-its-position rule exists to prevent.
+            f = phase_mask(f, masks[i])
     return np.abs(f.data) ** 2
 
 
@@ -317,8 +338,7 @@ def build_js(doc, out=OUT_JS):
         ],
     }
 
-    Path(out).parent.mkdir(parents=True, exist_ok=True)
-    Path(out).write_text(
+    header = (
         "/*\n"
         " * optics_sweep.js -- measured accuracies from the Phase-2 optics sweep.\n"
         " *\n"
@@ -330,9 +350,13 @@ def build_js(doc, out=OUT_JS):
         " * Accuracies are the reduced ranking protocol (see .protocol), NOT the\n"
         " * 60k x 40 epoch deliverable number.\n"
         " */\n"
-        f"var OPTICS_SWEEP = {json.dumps(bundle, indent=2)};\n"
-        "if (typeof module !== 'undefined') { module.exports = OPTICS_SWEEP; }\n",
-        encoding="utf-8")
+    )
+    # Through the shared writer, like every other bundle. This one used to be the
+    # odd one out -- a bare top-level `var` with no IIFE and no explicit window
+    # assignment -- which is why web_bundle.read_bundle could not parse it and why
+    # it was the one generated bundle with no reader at all.
+    write_bundle(out, bundle, header=header, window_name="OPTICS_SWEEP",
+                 var_name="OPTICS_SWEEP")
     print(f"wrote {out}")
 
 

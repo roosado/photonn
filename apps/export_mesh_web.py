@@ -39,6 +39,9 @@ import os
 import h5py
 import numpy as np
 
+from apps.web_bundle import write_bundle
+from photonn.handoff import read_handoff
+
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MESH_H5 = os.path.join(_REPO, "exports", "mesh_phase3.h5")
 OUT_JS = os.path.join(_REPO, "apps", "web", "mesh_weights.js")
@@ -69,15 +72,6 @@ def decode(b64: str, span: float) -> np.ndarray:
     return (codes + 0.5) / LEVELS * span
 
 
-def _acc_from_description(attrs) -> float:
-    """Pull ``test_acc=...`` out of the handoff's free-text description."""
-    for token in str(attrs["description"]).split("|"):
-        key, _, value = token.strip().partition("=")
-        if key == "test_acc":
-            return float(value)
-    raise KeyError("no test_acc in the handoff description")
-
-
 def mesh_weights(path: str = MESH_H5) -> dict:
     """Read the trained settings out of the schema-0.2.0 mesh handoff."""
     with h5py.File(path, "r") as f:
@@ -96,7 +90,7 @@ def mesh_weights(path: str = MESH_H5) -> dict:
         phi = p["phase_phi"][...]
         sigma = p["sigma"][...]
         out_phase = p["out_phase"][...]
-        accuracy = _acc_from_description(f.attrs)
+    accuracy = read_handoff(path).test_acc
 
     if order != "V,U":
         raise ValueError(f"mesh_order is {order!r}; the widget composes U.Sigma.V")
@@ -152,17 +146,8 @@ _HEADER = """/*
 
 
 def write_weights_js(path: str = OUT_JS) -> str:
-    body = json.dumps(mesh_weights(), indent=2, sort_keys=True)
-    text = (
-        _HEADER
-        + "(function () {\n  \"use strict\";\n  var W = "
-        + body.replace("\n", "\n  ")
-        + ";\n  if (typeof module !== \"undefined\" && module.exports) module.exports = W;\n"
-        + "  if (typeof window !== \"undefined\") window.PHOTONN_MESH = W;\n})();\n"
-    )
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text)
-    return path
+    return write_bundle(path, mesh_weights(), header=_HEADER,
+                        window_name="PHOTONN_MESH", var_name="W", sort_keys=True)
 
 
 def main():

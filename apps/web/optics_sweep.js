@@ -9,330 +9,334 @@
  * Accuracies are the reduced ranking protocol (see .protocol), NOT the
  * 60k x 40 epoch deliverable number.
  */
-var OPTICS_SWEEP = {
-  "grid": 128,
-  "dx": 8e-06,
-  "wavelength": 5.32e-07,
-  "input_lo": 32,
-  "input_hi": 95,
-  "required_px": 74.0,
-  "z_crit_mm": 15.398496240601501,
-  "floor_acc": 0.12425,
-  "protocol": {
-    "epochs": 12,
-    "n_train": 20000,
-    "n_val": 4000,
-    "seed": 20260724,
-    "split_seed": 20260806
-  },
-  "points": [
-    {
-      "z_mm": 1.0,
-      "layers": 5,
-      "acc": 0.47975,
-      "reach_total": 24.9375,
-      "reach_hop": 4.15625,
-      "params": 81920,
-      "wrap_logit": 6.263109243207289e-05,
-      "wrap_plane": 0.003121750793055102
+(function () {
+  "use strict";
+  var OPTICS_SWEEP = {
+    "grid": 128,
+    "dx": 8e-06,
+    "wavelength": 5.32e-07,
+    "input_lo": 32,
+    "input_hi": 95,
+    "required_px": 74.0,
+    "z_crit_mm": 15.398496240601501,
+    "floor_acc": 0.12425,
+    "protocol": {
+      "epochs": 12,
+      "n_train": 20000,
+      "n_val": 4000,
+      "seed": 20260724,
+      "split_seed": 20260806
     },
-    {
-      "z_mm": 2.0,
-      "layers": 5,
-      "acc": 0.701,
-      "reach_total": 49.875,
-      "reach_hop": 8.3125,
-      "params": 81920,
-      "wrap_logit": 0.00016085614969339572,
-      "wrap_plane": 0.01772220154056641
-    },
-    {
-      "z_mm": 3.0,
-      "layers": 5,
-      "acc": 0.77125,
-      "reach_total": 74.81250000000001,
-      "reach_hop": 12.468750000000002,
-      "params": 81920,
-      "wrap_logit": 0.0006182455041225533,
-      "wrap_plane": 0.05826679204934352
-    },
-    {
-      "z_mm": 5.0,
-      "layers": 5,
-      "acc": 0.79025,
-      "reach_total": 124.68750000000003,
-      "reach_hop": 20.781250000000004,
-      "params": 81920,
-      "wrap_logit": 0.008980720980387996,
-      "wrap_plane": 0.14768468309334787
-    },
-    {
-      "z_mm": 8.0,
-      "layers": 5,
-      "acc": 0.78675,
-      "reach_total": 199.5,
-      "reach_hop": 33.25,
-      "params": 81920,
-      "wrap_logit": 0.04157553207580774,
-      "wrap_plane": 0.2970950003940216
-    },
-    {
-      "z_mm": 12.0,
-      "layers": 5,
-      "acc": 0.77425,
-      "reach_total": 299.25000000000006,
-      "reach_hop": 49.87500000000001,
-      "params": 81920,
-      "wrap_logit": 0.1237472831848973,
-      "wrap_plane": 0.4820765806336387
-    }
-  ],
-  "iso_reach_px": 124.68750000000003,
-  "iso": [
-    {
-      "z_mm": 10.0,
-      "layers": 2,
-      "acc": 0.7055,
-      "reach_total": 124.68750000000003,
-      "reach_hop": 41.56250000000001,
-      "params": 32768,
-      "wrap_logit": 0.008980720980386981,
-      "wrap_plane": 0.14768468309334776
-    },
-    {
-      "z_mm": 5.0,
-      "layers": 5,
-      "acc": 0.79025,
-      "reach_total": 124.68750000000003,
-      "reach_hop": 20.781250000000004,
-      "params": 81920,
-      "wrap_logit": 0.008980720980387996,
-      "wrap_plane": 0.14768468309334787
-    },
-    {
-      "z_mm": 3.0,
-      "layers": 9,
-      "acc": 0.83075,
-      "reach_total": 124.68750000000001,
-      "reach_hop": 12.468750000000002,
-      "params": 147456,
-      "wrap_logit": 0.00898072098052478,
-      "wrap_plane": 0.1476846830933348
-    },
-    {
-      "z_mm": 2.0,
-      "layers": 14,
-      "acc": 0.85175,
-      "reach_total": 124.6875,
-      "reach_hop": 8.3125,
-      "params": 229376,
-      "wrap_logit": 2.113222561563607e-05,
-      "wrap_plane": 0.009974615763234149
-    },
-    {
-      "z_mm": 1.4286,
-      "layers": 20,
-      "acc": 0.86875,
-      "reach_total": 124.68999375000003,
-      "reach_hop": 5.937618750000001,
-      "params": 327680,
-      "wrap_logit": 0.008980510789961954,
-      "wrap_plane": 0.14768961339434378
-    },
-    {
-      "z_mm": 1.0345,
-      "layers": 28,
-      "acc": 0.87775,
-      "reach_total": 124.68957812500004,
-      "reach_hop": 4.299640625000001,
-      "params": 458752,
-      "wrap_logit": 0.008980545923980714,
-      "wrap_plane": 0.14768879166503707
-    },
-    {
-      "z_mm": 0.7317,
-      "layers": 40,
-      "acc": 0.88375,
-      "reach_total": 124.68625312500002,
-      "reach_hop": 3.0411281250000006,
-      "params": 655360,
-      "wrap_logit": 0.00898082551730368,
-      "wrap_plane": 0.14768221801008552
-    },
-    {
-      "z_mm": 0.5263,
-      "layers": 56,
-      "acc": 0.8885,
-      "reach_total": 124.68375937500005,
-      "reach_hop": 2.187434375000001,
-      "params": 917504,
-      "wrap_logit": 0.008981033445895854,
-      "wrap_plane": 0.1476772879778239
-    },
-    {
-      "z_mm": 0.3704,
-      "layers": 80,
-      "acc": 0.89125,
-      "reach_total": 124.69747500000003,
-      "reach_hop": 1.5394750000000004,
-      "params": 1310720,
-      "wrap_logit": 0.008979871659532207,
-      "wrap_plane": 0.14770440536949403
-    }
-  ],
-  "scaling": [
-    {
-      "z_mm": 10.0,
-      "layers": 2,
-      "acc": 0.7055,
-      "reach_total": 124.68750000000003,
-      "reach_hop": 41.56250000000001,
-      "params": 32768,
-      "wrap_logit": 0.008980720980386981,
-      "wrap_plane": 0.14768468309334776
-    },
-    {
-      "z_mm": 1.0,
-      "layers": 5,
-      "acc": 0.47975,
-      "reach_total": 24.9375,
-      "reach_hop": 4.15625,
-      "params": 81920,
-      "wrap_logit": 6.263109243207289e-05,
-      "wrap_plane": 0.003121750793055102
-    },
-    {
-      "z_mm": 2.0,
-      "layers": 5,
-      "acc": 0.701,
-      "reach_total": 49.875,
-      "reach_hop": 8.3125,
-      "params": 81920,
-      "wrap_logit": 0.00016085614969339572,
-      "wrap_plane": 0.01772220154056641
-    },
-    {
-      "z_mm": 3.0,
-      "layers": 5,
-      "acc": 0.77125,
-      "reach_total": 74.81250000000001,
-      "reach_hop": 12.468750000000002,
-      "params": 81920,
-      "wrap_logit": 0.0006182455041225533,
-      "wrap_plane": 0.05826679204934352
-    },
-    {
-      "z_mm": 5.0,
-      "layers": 5,
-      "acc": 0.79025,
-      "reach_total": 124.68750000000003,
-      "reach_hop": 20.781250000000004,
-      "params": 81920,
-      "wrap_logit": 0.008980720980387996,
-      "wrap_plane": 0.14768468309334787
-    },
-    {
-      "z_mm": 8.0,
-      "layers": 5,
-      "acc": 0.78675,
-      "reach_total": 199.5,
-      "reach_hop": 33.25,
-      "params": 81920,
-      "wrap_logit": 0.04157553207580774,
-      "wrap_plane": 0.2970950003940216
-    },
-    {
-      "z_mm": 12.0,
-      "layers": 5,
-      "acc": 0.77425,
-      "reach_total": 299.25000000000006,
-      "reach_hop": 49.87500000000001,
-      "params": 81920,
-      "wrap_logit": 0.1237472831848973,
-      "wrap_plane": 0.4820765806336387
-    },
-    {
-      "z_mm": 3.0,
-      "layers": 9,
-      "acc": 0.83075,
-      "reach_total": 124.68750000000001,
-      "reach_hop": 12.468750000000002,
-      "params": 147456,
-      "wrap_logit": 0.00898072098052478,
-      "wrap_plane": 0.1476846830933348
-    },
-    {
-      "z_mm": 2.0,
-      "layers": 14,
-      "acc": 0.85175,
-      "reach_total": 124.6875,
-      "reach_hop": 8.3125,
-      "params": 229376,
-      "wrap_logit": 2.113222561563607e-05,
-      "wrap_plane": 0.009974615763234149
-    },
-    {
-      "z_mm": 1.4286,
-      "layers": 20,
-      "acc": 0.86875,
-      "reach_total": 124.68999375000003,
-      "reach_hop": 5.937618750000001,
-      "params": 327680,
-      "wrap_logit": 0.008980510789961954,
-      "wrap_plane": 0.14768961339434378
-    },
-    {
-      "z_mm": 1.0345,
-      "layers": 28,
-      "acc": 0.87775,
-      "reach_total": 124.68957812500004,
-      "reach_hop": 4.299640625000001,
-      "params": 458752,
-      "wrap_logit": 0.008980545923980714,
-      "wrap_plane": 0.14768879166503707
-    },
-    {
-      "z_mm": 0.7317,
-      "layers": 40,
-      "acc": 0.88375,
-      "reach_total": 124.68625312500002,
-      "reach_hop": 3.0411281250000006,
-      "params": 655360,
-      "wrap_logit": 0.00898082551730368,
-      "wrap_plane": 0.14768221801008552
-    },
-    {
-      "z_mm": 0.5263,
-      "layers": 56,
-      "acc": 0.8885,
-      "reach_total": 124.68375937500005,
-      "reach_hop": 2.187434375000001,
-      "params": 917504,
-      "wrap_logit": 0.008981033445895854,
-      "wrap_plane": 0.1476772879778239
-    },
-    {
-      "z_mm": 0.3704,
-      "layers": 80,
-      "acc": 0.89125,
-      "reach_total": 124.69747500000003,
-      "reach_hop": 1.5394750000000004,
-      "params": 1310720,
-      "wrap_logit": 0.008979871659532207,
-      "wrap_plane": 0.14770440536949403
-    }
-  ],
-  "full": [
-    {
-      "layers": 5,
-      "acc": 0.799,
-      "label": "5 masks"
-    },
-    {
-      "layers": 56,
-      "acc": 0.904,
-      "label": "56 masks"
-    }
-  ]
-};
-if (typeof module !== 'undefined') { module.exports = OPTICS_SWEEP; }
+    "points": [
+      {
+        "z_mm": 1.0,
+        "layers": 5,
+        "acc": 0.47975,
+        "reach_total": 24.9375,
+        "reach_hop": 4.15625,
+        "params": 81920,
+        "wrap_logit": 6.263109243207289e-05,
+        "wrap_plane": 0.003121750793055102
+      },
+      {
+        "z_mm": 2.0,
+        "layers": 5,
+        "acc": 0.701,
+        "reach_total": 49.875,
+        "reach_hop": 8.3125,
+        "params": 81920,
+        "wrap_logit": 0.00016085614969339572,
+        "wrap_plane": 0.01772220154056641
+      },
+      {
+        "z_mm": 3.0,
+        "layers": 5,
+        "acc": 0.77125,
+        "reach_total": 74.81250000000001,
+        "reach_hop": 12.468750000000002,
+        "params": 81920,
+        "wrap_logit": 0.0006182455041225533,
+        "wrap_plane": 0.05826679204934352
+      },
+      {
+        "z_mm": 5.0,
+        "layers": 5,
+        "acc": 0.79025,
+        "reach_total": 124.68750000000003,
+        "reach_hop": 20.781250000000004,
+        "params": 81920,
+        "wrap_logit": 0.008980720980387996,
+        "wrap_plane": 0.14768468309334787
+      },
+      {
+        "z_mm": 8.0,
+        "layers": 5,
+        "acc": 0.78675,
+        "reach_total": 199.5,
+        "reach_hop": 33.25,
+        "params": 81920,
+        "wrap_logit": 0.04157553207580774,
+        "wrap_plane": 0.2970950003940216
+      },
+      {
+        "z_mm": 12.0,
+        "layers": 5,
+        "acc": 0.77425,
+        "reach_total": 299.25000000000006,
+        "reach_hop": 49.87500000000001,
+        "params": 81920,
+        "wrap_logit": 0.1237472831848973,
+        "wrap_plane": 0.4820765806336387
+      }
+    ],
+    "iso_reach_px": 124.68750000000003,
+    "iso": [
+      {
+        "z_mm": 10.0,
+        "layers": 2,
+        "acc": 0.7055,
+        "reach_total": 124.68750000000003,
+        "reach_hop": 41.56250000000001,
+        "params": 32768,
+        "wrap_logit": 0.008980720980386981,
+        "wrap_plane": 0.14768468309334776
+      },
+      {
+        "z_mm": 5.0,
+        "layers": 5,
+        "acc": 0.79025,
+        "reach_total": 124.68750000000003,
+        "reach_hop": 20.781250000000004,
+        "params": 81920,
+        "wrap_logit": 0.008980720980387996,
+        "wrap_plane": 0.14768468309334787
+      },
+      {
+        "z_mm": 3.0,
+        "layers": 9,
+        "acc": 0.83075,
+        "reach_total": 124.68750000000001,
+        "reach_hop": 12.468750000000002,
+        "params": 147456,
+        "wrap_logit": 0.00898072098052478,
+        "wrap_plane": 0.1476846830933348
+      },
+      {
+        "z_mm": 2.0,
+        "layers": 14,
+        "acc": 0.85175,
+        "reach_total": 124.6875,
+        "reach_hop": 8.3125,
+        "params": 229376,
+        "wrap_logit": 2.113222561563607e-05,
+        "wrap_plane": 0.009974615763234149
+      },
+      {
+        "z_mm": 1.4286,
+        "layers": 20,
+        "acc": 0.86875,
+        "reach_total": 124.68999375000003,
+        "reach_hop": 5.937618750000001,
+        "params": 327680,
+        "wrap_logit": 0.008980510789961954,
+        "wrap_plane": 0.14768961339434378
+      },
+      {
+        "z_mm": 1.0345,
+        "layers": 28,
+        "acc": 0.87775,
+        "reach_total": 124.68957812500004,
+        "reach_hop": 4.299640625000001,
+        "params": 458752,
+        "wrap_logit": 0.008980545923980714,
+        "wrap_plane": 0.14768879166503707
+      },
+      {
+        "z_mm": 0.7317,
+        "layers": 40,
+        "acc": 0.88375,
+        "reach_total": 124.68625312500002,
+        "reach_hop": 3.0411281250000006,
+        "params": 655360,
+        "wrap_logit": 0.00898082551730368,
+        "wrap_plane": 0.14768221801008552
+      },
+      {
+        "z_mm": 0.5263,
+        "layers": 56,
+        "acc": 0.8885,
+        "reach_total": 124.68375937500005,
+        "reach_hop": 2.187434375000001,
+        "params": 917504,
+        "wrap_logit": 0.008981033445895854,
+        "wrap_plane": 0.1476772879778239
+      },
+      {
+        "z_mm": 0.3704,
+        "layers": 80,
+        "acc": 0.89125,
+        "reach_total": 124.69747500000003,
+        "reach_hop": 1.5394750000000004,
+        "params": 1310720,
+        "wrap_logit": 0.008979871659532207,
+        "wrap_plane": 0.14770440536949403
+      }
+    ],
+    "scaling": [
+      {
+        "z_mm": 10.0,
+        "layers": 2,
+        "acc": 0.7055,
+        "reach_total": 124.68750000000003,
+        "reach_hop": 41.56250000000001,
+        "params": 32768,
+        "wrap_logit": 0.008980720980386981,
+        "wrap_plane": 0.14768468309334776
+      },
+      {
+        "z_mm": 1.0,
+        "layers": 5,
+        "acc": 0.47975,
+        "reach_total": 24.9375,
+        "reach_hop": 4.15625,
+        "params": 81920,
+        "wrap_logit": 6.263109243207289e-05,
+        "wrap_plane": 0.003121750793055102
+      },
+      {
+        "z_mm": 2.0,
+        "layers": 5,
+        "acc": 0.701,
+        "reach_total": 49.875,
+        "reach_hop": 8.3125,
+        "params": 81920,
+        "wrap_logit": 0.00016085614969339572,
+        "wrap_plane": 0.01772220154056641
+      },
+      {
+        "z_mm": 3.0,
+        "layers": 5,
+        "acc": 0.77125,
+        "reach_total": 74.81250000000001,
+        "reach_hop": 12.468750000000002,
+        "params": 81920,
+        "wrap_logit": 0.0006182455041225533,
+        "wrap_plane": 0.05826679204934352
+      },
+      {
+        "z_mm": 5.0,
+        "layers": 5,
+        "acc": 0.79025,
+        "reach_total": 124.68750000000003,
+        "reach_hop": 20.781250000000004,
+        "params": 81920,
+        "wrap_logit": 0.008980720980387996,
+        "wrap_plane": 0.14768468309334787
+      },
+      {
+        "z_mm": 8.0,
+        "layers": 5,
+        "acc": 0.78675,
+        "reach_total": 199.5,
+        "reach_hop": 33.25,
+        "params": 81920,
+        "wrap_logit": 0.04157553207580774,
+        "wrap_plane": 0.2970950003940216
+      },
+      {
+        "z_mm": 12.0,
+        "layers": 5,
+        "acc": 0.77425,
+        "reach_total": 299.25000000000006,
+        "reach_hop": 49.87500000000001,
+        "params": 81920,
+        "wrap_logit": 0.1237472831848973,
+        "wrap_plane": 0.4820765806336387
+      },
+      {
+        "z_mm": 3.0,
+        "layers": 9,
+        "acc": 0.83075,
+        "reach_total": 124.68750000000001,
+        "reach_hop": 12.468750000000002,
+        "params": 147456,
+        "wrap_logit": 0.00898072098052478,
+        "wrap_plane": 0.1476846830933348
+      },
+      {
+        "z_mm": 2.0,
+        "layers": 14,
+        "acc": 0.85175,
+        "reach_total": 124.6875,
+        "reach_hop": 8.3125,
+        "params": 229376,
+        "wrap_logit": 2.113222561563607e-05,
+        "wrap_plane": 0.009974615763234149
+      },
+      {
+        "z_mm": 1.4286,
+        "layers": 20,
+        "acc": 0.86875,
+        "reach_total": 124.68999375000003,
+        "reach_hop": 5.937618750000001,
+        "params": 327680,
+        "wrap_logit": 0.008980510789961954,
+        "wrap_plane": 0.14768961339434378
+      },
+      {
+        "z_mm": 1.0345,
+        "layers": 28,
+        "acc": 0.87775,
+        "reach_total": 124.68957812500004,
+        "reach_hop": 4.299640625000001,
+        "params": 458752,
+        "wrap_logit": 0.008980545923980714,
+        "wrap_plane": 0.14768879166503707
+      },
+      {
+        "z_mm": 0.7317,
+        "layers": 40,
+        "acc": 0.88375,
+        "reach_total": 124.68625312500002,
+        "reach_hop": 3.0411281250000006,
+        "params": 655360,
+        "wrap_logit": 0.00898082551730368,
+        "wrap_plane": 0.14768221801008552
+      },
+      {
+        "z_mm": 0.5263,
+        "layers": 56,
+        "acc": 0.8885,
+        "reach_total": 124.68375937500005,
+        "reach_hop": 2.187434375000001,
+        "params": 917504,
+        "wrap_logit": 0.008981033445895854,
+        "wrap_plane": 0.1476772879778239
+      },
+      {
+        "z_mm": 0.3704,
+        "layers": 80,
+        "acc": 0.89125,
+        "reach_total": 124.69747500000003,
+        "reach_hop": 1.5394750000000004,
+        "params": 1310720,
+        "wrap_logit": 0.008979871659532207,
+        "wrap_plane": 0.14770440536949403
+      }
+    ],
+    "full": [
+      {
+        "layers": 5,
+        "acc": 0.799,
+        "label": "5 masks"
+      },
+      {
+        "layers": 56,
+        "acc": 0.904,
+        "label": "56 masks"
+      }
+    ]
+  };
+  if (typeof module !== "undefined" && module.exports) module.exports = OPTICS_SWEEP;
+  if (typeof window !== "undefined") window.OPTICS_SWEEP = OPTICS_SWEEP;
+})();

@@ -126,6 +126,55 @@ def b64(arr: np.ndarray, dtype: str) -> str:
     return base64.b64encode(np.ascontiguousarray(arr, dtype=dtype).tobytes()).decode("ascii")
 
 
+#: The payload inside a generated bundle, whatever local name it was given.
+#: Was ``var W`` only, which is why a second parser had to exist for the one
+#: bundle that used ``var G`` and why the one using ``var OPTICS_SWEEP`` had none.
+_PAYLOAD = re.compile(r"var\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\{.*?\});\n", re.S)
+
+
+def bundle_text(body: str, *, header: str, window_name: str, var_name: str) -> str:
+    """The IIFE wrapper every generated bundle shares, around a rendered JSON body.
+
+    Written out longhand by five exporters in three shapes -- which is why
+    :func:`read_bundle` understood only three of them and a second parser existed
+    for a fourth.
+
+    ``body`` is already-rendered JSON, so a caller that formats it specially
+    keeps doing so: :mod:`apps.export_d2nn_web` puts one key per line to keep its
+    400 KB base64 strings on single lines, which is a real choice rather than
+    drift.
+
+    ``window_name`` is explicit because it is not derivable -- ``mesh_weights.js``
+    publishes ``PHOTONN_MESH``, ``analogy_geom.js`` publishes
+    ``PHOTONN_ANALOGY_GEOM``, neither of which follows from the filename.
+    """
+    return (
+        header
+        + '(function () {\n  "use strict";\n'
+        + f"  var {var_name} = {body};\n"
+        + f'  if (typeof module !== "undefined" && module.exports) module.exports = {var_name};\n'
+        + f'  if (typeof window !== "undefined") window.{window_name} = {var_name};\n'
+        + "})();\n"
+    )
+
+
+def write_bundle(path, payload: dict, *, header: str, window_name: str,
+                 var_name: str = None, indent: int = 2,
+                 sort_keys: bool = False) -> str:
+    """Render ``payload`` as a bundle and write it; return the path.
+
+    ``newline="\\n"`` for the reason ``build_site.main`` uses it: these files are
+    committed and ``.gitattributes`` normalises them to LF, so translating here
+    makes the working tree churn on every regeneration.
+    """
+    body = json.dumps(payload, indent=indent, sort_keys=sort_keys).replace("\n", "\n  ")
+    text = bundle_text(body, header=header, window_name=window_name,
+                       var_name=var_name or js_global(path))
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(text, encoding="utf-8", newline="\n")
+    return str(path)
+
+
 def read_bundle(path) -> dict:
     """Parse a generated bundle's payload back out of its IIFE.
 
@@ -134,10 +183,10 @@ def read_bundle(path) -> dict:
     gallery, and how the tests read a bundle without running Node.
     """
     text = Path(path).read_text(encoding="utf-8")
-    body = re.search(r"var W = (\{.*?\});\n", text, re.S)
+    body = _PAYLOAD.search(text)
     if body is None:
-        raise SystemExit(f"{path} does not look like a generated weights bundle.")
-    return json.loads(body.group(1))
+        raise SystemExit(f"{path} does not look like a generated bundle.")
+    return json.loads(body.group(2))
 
 
 def js_global(out_path) -> str:

@@ -32,12 +32,16 @@ MUTED = "#6b7789"
 
 
 def load_geom(path: str = GEOM_JS) -> dict:
-    """Parse the generated geometry bundle. It is a JSON object inside a JS shim."""
-    text = open(path, encoding="utf-8").read()
-    body = re.search(r"var G = (\{.*?\});\n", text, re.S)
-    if body is None:
-        raise ValueError(f"{path} does not look like a generated analogy_geom bundle.")
-    return json.loads(body.group(1))
+    """Parse the generated geometry bundle.
+
+    Thin now: ``web_bundle.read_bundle`` understands every bundle the project
+    emits, so this is a name rather than a second implementation. It used to be
+    the second of two parsers, because ``read_bundle`` matched ``var W`` only and
+    this bundle is written as ``var ANALOGY_GEOM``.
+    """
+    from apps.web_bundle import read_bundle
+
+    return read_bundle(path)
 
 
 def _interleave(kind_a, n_a, kind_b, n_b, start):

@@ -57,8 +57,9 @@ import h5py
 import numpy as np
 import torch
 
-from apps.web_bundle import b64, encode_masks, js_global, quantise_phase, read_bundle
+from apps.web_bundle import bundle_text, b64, encode_masks, js_global, quantise_phase, read_bundle
 from photonn.detect import default_regions
+from photonn.handoff import read_handoff
 from photonn.models import D2NN
 from photonn.train import embed_input, load_dataset
 
@@ -148,6 +149,10 @@ def load_handoff(h5_path=H5_PATH):
         readout_gain=float(op["readout_gain"]),
         phase_scale=float(op["phase_scale_rad"]),
         input_frac=float(op["input_frac"]),
+        # Where the detectors sit, read from the file (schema 0.3.0 on) rather
+        # than re-derived from whatever detect.default_regions currently defaults
+        # to. photonn.handoff owns the fallback for older files, in one place.
+        regions=read_handoff(h5_path).regions,
         masks=masks, labels=labels, canvases=canvases,
     )
 
@@ -373,17 +378,15 @@ def write_weights_js(hand, regions, gallery, prov, masks_b64, bits, path, header
     payload.update(gallery)
     payload["provenance"] = prov
 
+    # One key per line, rather than json.dumps(indent=2): the mask and gallery
+    # values are single base64 strings hundreds of kilobytes long, and an indented
+    # dump would wrap none of them while indenting everything else for nothing.
+    # That formatting choice is why bundle_text takes a rendered body rather than
+    # a payload -- the wrapper is shared, the body is this module's own.
     body = ",\n    ".join(f'"{k}": {json.dumps(v)}' for k, v in payload.items())
-    js = f"""{header}(function () {{
-  "use strict";
-  var W = {{
-    {body}
-  }};
-  if (typeof module !== "undefined" && module.exports) module.exports = W;
-  if (typeof window !== "undefined") window.{js_global(path)} = W;
-}})();
-"""
-    with open(path, "w", encoding="utf-8") as fh:
+    js = bundle_text("{\n    " + body + "\n  }", header=header,
+                     window_name=js_global(path), var_name="W")
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(js)
     return len(js)
 
@@ -425,7 +428,7 @@ def write_fixture(hand, digits28, canvases, logits, preds, labels, path=FIXTURE_
         "cases": cases,
         "resize_cases": resize_cases,
     }
-    with open(path, "w", encoding="utf-8") as fh:
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
         json.dump(fixture, fh)
     return os.path.getsize(path)
 
@@ -462,7 +465,11 @@ def main(argv=None):
     print(f"  provenance: {prov['accuracy']} on {prov['scored_on']}, "
           f"{prov['protocol']['n_train']} images x {prov['protocol']['epochs']} epochs")
 
-    regions = default_regions(hand["n"], 10)
+    # The layout the handoff carries, not a fresh derivation from whatever
+    # detect.default_regions currently defaults to -- those agree today only
+    # because nothing has moved them yet, and apps/score_readout.py exists to
+    # move them.
+    regions = hand["regions"]
     gallery, gallery_idx = gallery_payload(digits28, labels, preds, args.gallery_from)
     n_gallery = len(gallery["gallery_labels"])
     masks_b64, max_err = encode_masks(hand["masks"], args.bits)

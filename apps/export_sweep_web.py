@@ -31,6 +31,8 @@ import numpy as np
 
 from apps.web_bundle import encode_masks, read_bundle
 from photonn.detect import default_regions
+from apps.sweep_optics import DEFAULT_GRID, DX, WAVELENGTH
+from apps.web_bundle import write_bundle
 from photonn.propagate import diffraction_reach_px
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -39,7 +41,8 @@ SWEEP_DIR = _REPO / "exports" / "sweep"
 OUT_JS = _REPO / "apps" / "web" / "d2nn_sweep_weights.js"
 
 #: Grid of a sweep run that predates ``--grid`` (its records carry no "grid" key).
-LEGACY_GRID, DX, WAVELENGTH = 128, 8e-6, 532e-9
+#: dx and lambda are the sweep's own, imported rather than re-typed.
+LEGACY_GRID = DEFAULT_GRID
 PHASE_SCALE, INPUT_FRAC, READOUT_GAIN = float(np.pi), 0.5, 10.0
 
 #: Region coordinates are integers, so the same layout at two grid sizes agrees
@@ -170,15 +173,8 @@ def main():
  */
 """
     out = Path(args.out)
-    out.write_text(
-        header
-        + "(function () {\n  \"use strict\";\n  var W = "
-        + json.dumps(bundle, indent=2).replace("\n", "\n  ")
-        + ";\n"
-        "  if (typeof module !== \"undefined\" && module.exports) module.exports = W;\n"
-        "  if (typeof window !== \"undefined\") window.D2NN_SWEEP_WEIGHTS = W;\n"
-        "})();\n",
-        encoding="utf-8")
+    write_bundle(out, bundle, header=header, window_name="D2NN_SWEEP_WEIGHTS",
+                 var_name="W")
     print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
     print(f"  {n_layers} masks, z={run['z_mm']:g} mm, val {run['val_acc']:.4f}, "
           f"max quantisation error {max_err:.4f} rad")

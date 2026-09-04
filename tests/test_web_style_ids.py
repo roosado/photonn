@@ -72,13 +72,46 @@ def test_the_injected_css_is_namespaced_to_the_id_owner(widget):
     hand: this is a property every such widget has to hold, and a hand-kept list
     silently exempts the next one somebody adds.
     """
+    prefixes = css_prefixes(widget)
+    assert len(prefixes) <= 2, (
+        f"{widget} styles several unrelated class prefixes {sorted(prefixes)}; "
+        "its rules can reach into other widgets"
+    )
+
+
+def css_prefixes(widget):
+    """The class prefixes a widget's stylesheet writes rules for."""
     src = open(os.path.join(WEB, widget), encoding="utf-8").read()
     css = re.search(r"const CSS = `(.*?)`", src, re.S)
     assert css, f"{widget} has no CSS template literal"
     selectors = re.findall(r"^\s*([.#][\w-]+)", css.group(1), re.M)
     assert selectors, f"{widget} CSS has no top-level selectors"
-    prefixes = {s.split("-")[0].lstrip(".#") for s in selectors}
-    assert len(prefixes) <= 2, (
-        f"{widget} styles several unrelated class prefixes {sorted(prefixes)}; "
-        "its rules can reach into other widgets"
+    return {s.split("-")[0].lstrip(".#") for s in selectors}
+
+
+def test_no_two_widgets_share_a_class_prefix():
+    """The other half of the same rule, and the half that stayed broken.
+
+    A unique id stops the *injection* being skipped. It does nothing about two
+    widgets writing rules for the same classes: both stylesheets then land, every
+    rule applies to both widgets, and the one that injected last wins.
+
+    That is exactly what survived the ``ds-style`` fix. The id was renamed and the
+    class prefix was not, so ``d2nn_stage.js`` and ``digit_source.js`` went on
+    sharing ``.ds-root``, ``.ds-seg`` and ``.ds-btn`` -- and on the optics page,
+    where both mount, the source's segmented control silently rendered at the
+    stage's padding and both roots took the stage's gap.
+
+    The test above asks whether one widget uses too many prefixes. Neither file
+    ever failed it. This asks the question that was actually being got wrong.
+    """
+    owners = defaultdict(list)
+    for widget in style_id_owners():
+        for prefix in css_prefixes(widget):
+            owners[prefix].append(widget)
+    clashes = {p: files for p, files in owners.items() if len(files) > 1}
+    assert not clashes, (
+        "these widgets write rules for the same class prefix, so on a page "
+        "carrying both, the one that injects last restyles the other: "
+        f"{ {p: sorted(f) for p, f in clashes.items()} }"
     )

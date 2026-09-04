@@ -49,6 +49,14 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   const DEFAULT_NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
     : (typeof require !== "undefined" ? require("./d2nn.js") : null);
@@ -82,20 +90,9 @@
 .ds-hint{font-size:12px;color:var(--pe-muted);max-width:26ch;margin:0;}
 `;
 
-  function injectStyle() {
-    if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   const DEFAULT_HINT =
     "Draw a digit. It is re-centred and scaled the way MNIST was built, then sent "

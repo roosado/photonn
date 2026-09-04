@@ -56,6 +56,14 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   // Backing-store scale, capped at 2x.
   //
   // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
@@ -64,42 +72,17 @@
   // imageSmoothingQuality "high" on every orbit frame, so this is the difference
   // between a smooth orbit and a slideshow on exactly the devices least able to
   // afford it.
-  const MAX_DPR = 2;
-  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const canvasScale = P.scale;
 
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
     : (typeof require !== "undefined" ? require("./d2nn.js") : null);
 
-  // Same inferno LUT as the filmstrip and the diffraction explorer, so every
-  // optical-intensity image on the site speaks one visual language.
-  const INFERNO = [
-    [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
-    [188, 55, 84], [221, 81, 58], [243, 120, 25], [252, 255, 164],
-  ];
-  // Cyclic map for phase: it must join end-to-end, because -pi and +pi are the
-  // same setting of the same mask. A sequential map would draw a false seam.
-  const TWILIGHT = [
-    [226, 217, 226], [151, 180, 212], [76, 123, 189], [48, 63, 125], [24, 24, 45],
-    [56, 32, 58], [120, 52, 84], [186, 88, 89], [222, 148, 116], [226, 217, 226],
-  ];
-
-  function makeLUT(anchors) {
-    const lut = new Uint8ClampedArray(256 * 3);
-    const seg = anchors.length - 1;
-    for (let i = 0; i < 256; i++) {
-      const t = i / 255 * seg;
-      const k = Math.min(seg - 1, Math.floor(t));
-      const f = t - k;
-      const a = anchors[k], b = anchors[k + 1];
-      lut[i * 3] = a[0] + (b[0] - a[0]) * f;
-      lut[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
-      lut[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
-    }
-    return lut;
-  }
-  const LUT_I = makeLUT(INFERNO);
-  const LUT_P = makeLUT(TWILIGHT);
+  // The site's two ramps, from plot.js: inferno for intensity, and a cyclic
+  // map for phase, which must join end to end because -pi and +pi are the
+  // same setting of the same mask.
+  const LUT_I = P.LUT_INTENSITY;
+  const LUT_P = P.LUT_PHASE;
 
   const GAMMA = 0.5;          // sqrt stretch; detector intensity spans decades
   const DEPTH_SPAN = 6.0;     // drawn stack length, in half-aperture units
@@ -174,50 +157,39 @@
   // visible until a page carried both: on the optics page the stage lost, and its
   // toolbar unwrapped and its canvas collapsed to the 300px default. Guarded by
   // tests/test_web_style_ids.py.
-  const STYLE_ID = "d2nn-stage-style";
+  const STYLE_ID = "st-style";
   const CSS = `
-.ds-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
+.st-root{--pe-fg:#1b1f24;--pe-muted:#5a6472;--pe-panel:#f4f6f9;--pe-border:#d7dde5;
   --pe-accent:#3b6ea5;--pe-ok:#3f8f4e;--pe-warn:#c14a3d;
   color:var(--pe-fg);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   display:flex;flex-direction:column;gap:12px;}
-@media (prefers-color-scheme:dark){.ds-root{--pe-fg:#e6eaf0;--pe-muted:#9aa6b5;
+@media (prefers-color-scheme:dark){.st-root{--pe-fg:#e6eaf0;--pe-muted:#9aa6b5;
   --pe-panel:#1c2128;--pe-border:#30363d;--pe-accent:#6ea8e0;--pe-ok:#5cc06e;--pe-warn:#e0705f;}}
-.ds-box{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
+.st-box{background:var(--pe-panel);border:1px solid var(--pe-border);border-radius:10px;
   padding:12px 14px;}
-.ds-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
-.ds-seg{display:flex;border:1px solid var(--pe-border);border-radius:7px;overflow:hidden;}
-.ds-seg button{border:0;background:transparent;color:var(--pe-muted);padding:6px 12px;
+.st-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.st-seg{display:flex;border:1px solid var(--pe-border);border-radius:7px;overflow:hidden;}
+.st-seg button{border:0;background:transparent;color:var(--pe-muted);padding:6px 12px;
   font:inherit;font-size:12px;font-weight:600;cursor:pointer;}
-.ds-seg button[aria-pressed=true]{background:var(--pe-accent);color:#fff;}
-.ds-btn{border:1px solid var(--pe-border);background:transparent;color:var(--pe-fg);
+.st-seg button[aria-pressed=true]{background:var(--pe-accent);color:#fff;}
+.st-btn{border:1px solid var(--pe-border);background:transparent;color:var(--pe-fg);
   border-radius:7px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer;}
-.ds-btn:hover{border-color:var(--pe-accent);color:var(--pe-accent);}
-.ds-btn[aria-pressed=true]{border-color:var(--pe-accent);color:var(--pe-accent);
+.st-btn:hover{border-color:var(--pe-accent);color:var(--pe-accent);}
+.st-btn[aria-pressed=true]{border-color:var(--pe-accent);color:var(--pe-accent);
   background:color-mix(in srgb,var(--pe-accent) 12%,transparent);}
-.ds-btn:disabled{opacity:.5;cursor:default;}
-.ds-spacer{flex:1 1 auto;}
-.ds-canvas{display:block;width:100%;touch-action:none;cursor:grab;border-radius:8px;}
-.ds-canvas.drag{cursor:grabbing;}
-.ds-foot{display:flex;gap:14px;flex-wrap:wrap;justify-content:space-between;
+.st-btn:disabled{opacity:.5;cursor:default;}
+.st-spacer{flex:1 1 auto;}
+.st-canvas{display:block;width:100%;touch-action:none;cursor:grab;border-radius:8px;}
+.st-canvas.drag{cursor:grabbing;}
+.st-foot{display:flex;gap:14px;flex-wrap:wrap;justify-content:space-between;
   font-size:11.5px;color:var(--pe-muted);margin-top:8px;}
-.ds-foot b{color:var(--pe-fg);font-variant-numeric:tabular-nums;font-weight:600;}
-.ds-note{font-size:12px;color:var(--pe-muted);margin:0;}
+.st-foot b{color:var(--pe-fg);font-variant-numeric:tabular-nums;font-weight:600;}
+.st-note{font-size:12px;color:var(--pe-muted);margin:0;}
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   /**
    * Orthographic basis for azimuth `theta` and elevation `phi` (radians).
@@ -247,48 +219,10 @@
    * additive blending already makes darkness contribute nothing. Alpha-keying on
    * top of that would attenuate every mid-tone twice and dim the whole beam.
    */
-  function renderBitmap(data, n, lut, gamma, cyclic) {
-    const off = document.createElement("canvas");
-    off.width = n; off.height = n;
-    const ctx = off.getContext("2d");
-    const img = ctx.createImageData(n, n);
-    const d = img.data;
+  const renderBitmap = (data, n, lut, gamma, cyclic) =>
+    P.raster(data, n, { lut, gamma, cyclic });
 
-    let lo = 0, hi = 1;
-    if (cyclic) { lo = -Math.PI; hi = Math.PI; }
-    else {
-      hi = 0;
-      for (let i = 0; i < data.length; i++) if (data[i] > hi) hi = data[i];
-      if (hi <= 0) hi = 1;
-    }
-    const span = hi - lo;
-
-    for (let i = 0; i < n * n; i++) {
-      let v = (data[i] - lo) / span;
-      if (v < 0) v = 0; else if (v > 1) v = 1;
-      if (gamma !== 1) v = Math.pow(v, gamma);
-      const li = (v * 255) | 0;
-      d[i * 4] = lut[li * 3];
-      d[i * 4 + 1] = lut[li * 3 + 1];
-      d[i * 4 + 2] = lut[li * 3 + 2];
-      d[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return off;
-  }
-
-  function palette(root) {
-    const cs = getComputedStyle(root);
-    const get = (k, f) => (cs.getPropertyValue(k).trim() || f);
-    return {
-      fg: get("--pe-fg", "#1b1f24"),
-      muted: get("--pe-muted", "#5a6472"),
-      panel: get("--pe-panel", "#f4f6f9"),
-      border: get("--pe-border", "#d7dde5"),
-      accent: get("--pe-accent", "#3b6ea5"),
-      warn: get("--pe-warn", "#c14a3d"),
-    };
-  }
+  const palette = P.palette;
 
   function mount(container, opts) {
     opts = opts || {};
@@ -329,44 +263,44 @@
       drag: null,
     };
 
-    const root = el("div", "pe-root ds-root");
+    const root = el("div", "pe-root st-root");
     container.innerHTML = "";
     container.appendChild(root);
 
-    const box = el("div", "ds-box");
-    const bar = el("div", "ds-bar");
+    const box = el("div", "st-box");
+    const bar = el("div", "st-bar");
 
-    const seg = el("div", "ds-seg");
+    const seg = el("div", "st-seg");
     const btnLight = el("button", null, "Light arriving");
     const btnPhase = el("button", null, "Mask phase");
     seg.appendChild(btnLight); seg.appendChild(btnPhase);
     bar.appendChild(seg);
 
-    const btnBeam = el("button", "ds-btn", "Beam between masks");
-    const btnSweep = el("button", "ds-btn", "▶ Sweep");
+    const btnBeam = el("button", "st-btn", "Beam between masks");
+    const btnSweep = el("button", "st-btn", "▶ Sweep");
     bar.appendChild(btnBeam); bar.appendChild(btnSweep);
 
     // Manual mode only: the stage stops chasing the pen and re-renders here.
-    const btnRefresh = el("button", "ds-btn ds-refresh", "⟳ Refresh");
+    const btnRefresh = el("button", "st-btn st-refresh", "⟳ Refresh");
     if (MODE === "manual") bar.appendChild(btnRefresh);
 
-    bar.appendChild(el("div", "ds-spacer"));
-    const btnReset = el("button", "ds-btn", "Reset view");
+    bar.appendChild(el("div", "st-spacer"));
+    const btnReset = el("button", "st-btn", "Reset view");
     bar.appendChild(btnReset);
     box.appendChild(bar);
 
-    const canvas = el("canvas", "ds-canvas");
+    const canvas = el("canvas", "st-canvas");
     canvas.setAttribute("role", "img");
     box.appendChild(canvas);
 
-    const foot = el("div", "ds-foot");
+    const foot = el("div", "st-foot");
     const footL = el("div", null, "");
     const footR = el("div", null, "");
     foot.appendChild(footL); foot.appendChild(footR);
     box.appendChild(foot);
     root.appendChild(box);
 
-    root.appendChild(el("p", "ds-note",
+    root.appendChild(el("p", "st-note",
       "Drag to orbit. Every panel carries the light actually computed on it, and the haze "
       + "between them is the light at those in-between depths, computed the same way "
       + "rather than shaded in. No rays are drawn on purpose: light here behaves as a "
@@ -644,9 +578,19 @@
       const w = canvas.clientWidth || 720;
       const h = Math.max(300, Math.min(430, Math.round(w * 0.52)));
       const dpr = canvasScale();
+      const pxW = Math.round(w * dpr), pxH = Math.round(h * dpr);
       canvas.style.height = h + "px";
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
+      // Guarded on the bitmap size actually changing, for the same reason as
+      // errors.js:fitCanvas -- assigning `canvas.width` throws the bitmap away
+      // and allocates a new one even when the value is unchanged. This matters
+      // more here than anywhere else: `draw` is the rAF body for both orbiting
+      // and the 3.2 s sweep, so unguarded it reallocated a ~1440x860 surface
+      // every frame, on the one widget on the site that actually animates.
+      // Nothing depends on the implicit clear; the clearRect below is explicit.
+      if (canvas.width !== pxW || canvas.height !== pxH) {
+        canvas.width = pxW;
+        canvas.height = pxH;
+      }
       const ctx = canvas.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
@@ -921,10 +865,8 @@
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
 
-    if (typeof MutationObserver !== "undefined") {
-      new MutationObserver(requestDraw).observe(document.documentElement,
-        { attributes: true, attributeFilter: ["data-theme"] });
-    }
+    // The page theme rewrites the CSS variables; canvases must repaint.
+    P.onThemeChange(requestDraw);
     if (typeof ResizeObserver !== "undefined") new ResizeObserver(requestDraw).observe(root);
     else window.addEventListener("resize", requestDraw);
 

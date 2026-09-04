@@ -115,9 +115,14 @@ const codes = Buffer.alloc(N * N);
 for (let i = 0; i < codes.length; i++) codes[i] = (i * 37 + (i >> 7) * 11) & 255;
 const MASK = { n: N, mask_b64: codes.toString("base64") };
 
+const PLOT = fs.readFileSync(path.join(__dirname, "..", "apps", "web", "plot.js"), "utf8");
+
 function load(env) {
   const src = fs.readFileSync(SRC, "utf8");
   env.win.PHOTONN_ERR_MASK = MASK;
+  // plot.js first: errors.js reads window.PhotonnPlot at module scope, so it has
+  // to be evaluated before the widget -- the same load order build_site emits.
+  loadWidget(PLOT, env, {});
   loadWidget(src, env, { atob: (b64) => Buffer.from(b64, "base64").toString("binary") });
   return env.win.PhotonnErrors;
 }

@@ -28,6 +28,8 @@ const { makeEnv: makeStubEnv, loadWidget } = require("./dom_stub.js");
 
 const SRC = path.join(__dirname, "..", "apps", "web", "interfere.js");
 const SOURCE = fs.readFileSync(SRC, "utf8");
+const PLOT = fs.readFileSync(
+  require("path").join(__dirname, "..", "apps", "web", "plot.js"), "utf8");
 
 /** The plot pane's max-width, read off the stylesheet that ships. */
 function readPlotCap(src) {
@@ -62,6 +64,8 @@ function makeEnv(containerWidth, deviceRatio) {
 }
 
 function load(env) {
+  // plot.js first: interfere.js reads window.PhotonnPlot at module scope.
+  loadWidget(PLOT, env);
   loadWidget(SOURCE, env);
   return env.win.PhotonnInterfere;
 }

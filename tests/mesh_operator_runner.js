@@ -16,25 +16,27 @@
 const fs = require("fs");
 const path = require("path");
 
+const { makeEnv, loadWidget } = require("./dom_stub.js");
+
 const WEB = path.join(__dirname, "..", "apps", "web");
 const weights = require(path.join(WEB, "mesh_weights.js"));
-const src = fs.readFileSync(path.join(WEB, "errors.js"), "utf8");
 
-// errors.js only touches the DOM when a widget mounts; the operator build does
-// not, so the stubs here need to be no more than enough to let the file load.
-const doc = {
-  getElementById: () => null,
-  createElement: () => ({ appendChild() {}, style: {}, setAttribute() {} }),
-  head: { appendChild() {} },
-};
-const win = {
-  document: doc, devicePixelRatio: 1, addEventListener() {},
-  PHOTONN_MESH: weights,
-};
-new Function("window", "document", "module", "atob", src)(
-  win, doc, { exports: {} }, (b64) => Buffer.from(b64, "base64").toString("binary"));
+// Through the shared loader, not a private copy of it. This file used to
+// hand-roll its own `doc`/`win`/`new Function` block for the same errors.js that
+// error_widget_runner.js loads through dom_stub -- the extraction that produced
+// dom_stub stopped at the two runners the commit was looking at.
+//
+// errors.js only touches the DOM when a widget mounts, and the operator build
+// does not, so the layout and context stubs here are never reached.
+const env = makeEnv({ dpr: 1, layoutWidth: () => 640, ctxStub: () => ({}) });
+env.win.PHOTONN_MESH = weights;
 
-const probe = win.PhotonnErrors._mesh;
+const atob = (b64) => Buffer.from(b64, "base64").toString("binary");
+// plot.js first: errors.js reads window.PhotonnPlot at module scope.
+loadWidget(fs.readFileSync(path.join(WEB, "plot.js"), "utf8"), env, { atob });
+loadWidget(fs.readFileSync(path.join(WEB, "errors.js"), "utf8"), env, { atob });
+
+const probe = env.win.PhotonnErrors._mesh;
 const M = probe.load();
 const n = M.n;
 

@@ -15,6 +15,14 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   // Backing-store scale, capped at 2x.
   //
   // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
@@ -23,28 +31,11 @@
   // imageSmoothingQuality "high" on every orbit frame, so this is the difference
   // between a smooth orbit and a slideshow on exactly the devices least able to
   // afford it.
-  const MAX_DPR = 2;
-  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const canvasScale = P.scale;
 
-  // Inferno-style colormap anchors (matplotlib inferno, 9 stops) -> 256 LUT.
-  const ANCHORS = [
-    [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
-    [188, 55, 84], [221, 81, 58], [243, 120, 25], [252, 255, 164],
-  ];
-  const LUT = (function () {
-    const lut = new Uint8ClampedArray(256 * 3);
-    const seg = ANCHORS.length - 1;
-    for (let i = 0; i < 256; i++) {
-      const t = i / 255 * seg;
-      const k = Math.min(seg - 1, Math.floor(t));
-      const f = t - k;
-      const a = ANCHORS[k], b = ANCHORS[k + 1];
-      lut[i * 3] = a[0] + (b[0] - a[0]) * f;
-      lut[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
-      lut[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
-    }
-    return lut;
-  })();
+  // One ramp for the whole site, from plot.js -- this file used to build
+  // its own copy of the same nine inferno anchors.
+  const LUT = P.LUT_INTENSITY;
 
   const STYLE_ID = "pe-style";
   const CSS = `
@@ -91,20 +82,9 @@
 .pe-axis{font-size:11px;color:var(--pe-muted);text-align:center;margin-top:2px;}
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   function control(label, valueSpanId) {
     const wrap = el("div", "pe-ctl");
@@ -231,19 +211,8 @@
       let peak = 0;
       for (let i = 0; i < intensity.length; i++) if (intensity[i] > peak) peak = intensity[i];
       const inv = peak > 0 ? 1 / peak : 0;
-      off.width = n; off.height = n;
-      const img = offCtx.createImageData(n, n);
-      const d = img.data;
-      for (let i = 0; i < n * n; i++) {
-        let v = intensity[i] * inv;
-        if (v < 0) v = 0; else if (v > 1) v = 1;
-        const li = (v * 255) | 0;
-        d[i * 4] = LUT[li * 3];
-        d[i * 4 + 1] = LUT[li * 3 + 1];
-        d[i * 4 + 2] = LUT[li * 3 + 2];
-        d[i * 4 + 3] = 255;
-      }
-      offCtx.putImageData(img, 0, 0);
+      // Into the existing offscreen canvas: this runs on every slider move.
+      P.rasterInto(off, intensity, n, { lut: LUT });
 
       const dpr = canvasScale();
       const W = 320;
@@ -269,9 +238,11 @@
       for (let ix = 0; ix < n; ix++) { const v = intensity[mid + ix]; if (v > peak) peak = v; }
       const inv = peak > 0 ? 1 / peak : 0;
 
-      const style = getComputedStyle(root);
-      const accent = style.getPropertyValue("--pe-accent").trim() || "#3b6ea5";
-      const border = style.getPropertyValue("--pe-border").trim() || "#ccc";
+      // The shared palette: one place converts this site's custom properties
+      // into ink, so a colour change is one edit rather than nine.
+      const pal = P.palette(root);
+      const accent = pal.accent;
+      const border = pal.border;
       const pad = 6, baseY = H - 16;
 
       // axis baseline
@@ -290,7 +261,7 @@
 
       // x tick labels (min / 0 / max in mm)
       const half = (n >> 1) * dx * 1e3;
-      ctx.fillStyle = style.getPropertyValue("--pe-muted").trim() || "#888";
+      ctx.fillStyle = pal.muted;
       ctx.font = "10px system-ui, sans-serif";
       ctx.textBaseline = "top";
       ctx.textAlign = "left"; ctx.fillText((-half).toFixed(1), pad, baseY + 3);
@@ -363,6 +334,10 @@
     btnCirc.addEventListener("click", () => setShape("circular"));
     btnSq.addEventListener("click", () => setShape("square"));
     gbtns.forEach((b) => b.addEventListener("click", () => setGrid(+b.dataset.g)));
+
+    // The cross-section is drawn from the page's CSS variables, so a theme
+    // change has to repaint it -- both sources, via plot.js.
+    P.onThemeChange(() => compute());
 
     // init
     setShape(state.shape);

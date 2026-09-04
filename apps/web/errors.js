@@ -33,8 +33,14 @@
   "use strict";
 
   const STYLE_ID = "ex-style";
-  const MAX_DPR = 2;
-  function dpr() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+
+  // Shared canvas primitives: the dpr clamp, the guarded resize, the width
+  // and theme observers, the ramps and the rasteriser. Read at module scope,
+  // so plot.js has to be emitted before this file -- apps/build_site.py does
+  // that, and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
 
   const SRC = (typeof window !== "undefined" && window.PHOTONN_ERR_MASK)
     ? window.PHOTONN_ERR_MASK
@@ -84,20 +90,9 @@
 .ex-flag.ok{color:var(--ex-ok);} .ex-flag.warn{color:var(--ex-warn);}
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   function b64ToBytes(b64) {
     const bin = atob(b64);
@@ -163,66 +158,10 @@
     return c;
   }
 
-  /**
-   * Size a plot canvas to the width it is *actually* laid out at, so that one
-   * drawing unit is one CSS pixel in both directions.
-   *
-   * The panel canvases carry square bitmaps and can be left to `width:100%`,
-   * but a plot cannot. These used to draw into a fixed 420-unit space and then
-   * let `width:100%` stretch the bitmap to whatever the column happened to be,
-   * which scales x without scaling y: the chart came out flattened on a wide
-   * screen and stretched tall on a narrow one, and the text with it. Measuring
-   * first is the whole fix. `heightFor` maps the measured width to a height, so
-   * the shape stays sane across the range rather than being pinned to one.
-   *
-   * `setTransform` is correct here, unlike in d2nn_stage.js: a resize clears the
-   * context, so the dpr scale has to be re-established after one, and re-applying
-   * the same absolute transform when the guard skipped the resize is a no-op.
-   */
-  function fitCanvas(c, heightFor) {
-    const r = dpr();
-    const W = Math.max(240, Math.round(c.getBoundingClientRect().width || 420));
-    const H = Math.round(heightFor(W));
-    const pxW = Math.round(W * r), pxH = Math.round(H * r);
-    // Guarded on the bitmap size actually changing. Assigning `canvas.width`
-    // throws the bitmap away and allocates a new one *even when the value is
-    // unchanged* -- it is the `canvas.width = canvas.width` clear idiom -- and
-    // this runs on every slider event, where the width never moves. Nothing
-    // depends on the implicit clear: every caller repaints the whole surface as
-    // its first act. The CSS height is written either way, because a canvas that
-    // has never been sized is already exactly 300x150 and would otherwise be left
-    // with no height at all at that one size.
-    if (c.width !== pxW || c.height !== pxH) {
-      c.width = pxW;
-      c.height = pxH;
-    }
-    c.style.height = H + "px";
-    const ctx = c.getContext("2d");
-    ctx.setTransform(r, 0, 0, r, 0, 0);
-    return { ctx, W, H };
-  }
-
-  /**
-   * Re-run `fn` when `target` changes width, and only then.
-   *
-   * Guarded on the measured width rather than firing on every observation
-   * because `fn` sets the canvas height, which is itself a resize: an unguarded
-   * observer would answer its own callback forever.
-   */
-  function onWidthChange(target, fn) {
-    let last = -1;
-    const check = function () {
-      const w = Math.round(target.getBoundingClientRect().width);
-      if (w === last) return;
-      last = w;
-      fn();
-    };
-    if (typeof window.ResizeObserver === "function") {
-      new window.ResizeObserver(check).observe(target);
-    } else {
-      window.addEventListener("resize", check);
-    }
-  }
+  // fitCanvas/onWidthChange live in plot.js now; every widget that draws
+  // needs them and each had its own copy, in two incompatible shapes.
+  const fitCanvas = (c, heightFor) => P.fit(c, heightFor);
+  const onWidthChange = (t, fn) => P.onWidthChange(t, fn);
 
   function slider(parent, label, min, max, step, value) {
     const wrap = el("div");

@@ -48,6 +48,14 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
     : (typeof require !== "undefined" ? require("./d2nn.js") : null);
@@ -115,13 +123,7 @@
 .dc-col .big{transition:opacity .12s;}
 `;
 
-  function injectStyle() {
-    if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
-    const el = document.createElement("style");
-    el.id = STYLE_ID;
-    el.textContent = CSS;
-    document.head.appendChild(el);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
   /**
    * Detector plane, gamma-stretched, with the ten readout boxes drawn on.
@@ -132,24 +134,13 @@
    */
   function drawPlane(canvas, net, res) {
     const n = net.N;
-    canvas.width = n; canvas.height = n;
+    // The site's inferno ramp, at the same sqrt stretch this used before. It
+    // previously approximated that ramp analytically per pixel ("magma-ish:
+    // black -> violet -> orange -> white"), which made it the one
+    // optical-intensity image on the site not speaking the shared visual
+    // language every other one does.
+    P.rasterInto(canvas, res.intensity, n, { gamma: 0.5 });
     const ctx = canvas.getContext("2d");
-    const im = ctx.createImageData(n, n);
-
-    let peak = 0;
-    for (let i = 0; i < res.intensity.length; i++) {
-      if (res.intensity[i] > peak) peak = res.intensity[i];
-    }
-    const inv = peak > 0 ? 1 / peak : 0;
-    for (let i = 0; i < n * n; i++) {
-      const t = Math.pow(res.intensity[i] * inv, 0.5);
-      // magma-ish ramp: black -> violet -> orange -> white
-      im.data[i * 4] = Math.min(255, 255 * Math.pow(t, 0.8));
-      im.data[i * 4 + 1] = Math.min(255, 255 * Math.pow(Math.max(0, t - 0.25) / 0.75, 1.6));
-      im.data[i * 4 + 2] = Math.min(255, 255 * (t < 0.5 ? t * 1.5 : Math.pow((t - 0.5) * 2, 2) * 0.9 + 0.1));
-      im.data[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(im, 0, 0);
 
     const regions = net.weights.regions;
     for (let c = 0; c < regions.length; c++) {

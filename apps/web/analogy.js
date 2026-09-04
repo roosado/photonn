@@ -26,6 +26,14 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   // Backing-store scale, capped at 2x.
   //
   // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
@@ -34,8 +42,7 @@
   // imageSmoothingQuality "high" on every orbit frame, so this is the difference
   // between a smooth orbit and a slideshow on exactly the devices least able to
   // afford it.
-  const MAX_DPR = 2;
-  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const canvasScale = P.scale;
 
   const GEOM = (typeof window !== "undefined" && window.PHOTONN_ANALOGY_GEOM)
     ? window.PHOTONN_ANALOGY_GEOM
@@ -94,50 +101,18 @@
 }
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   function fmt(x, d) { return x.toFixed(d == null ? 1 : d); }
   function group(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " "); }
 
   /** Size a canvas to its CSS box at device resolution; return a ready 2D context. */
-  function fitCanvas(canvas, cssW, cssH) {
-    const dpr = canvasScale();
-    canvas.style.height = cssH + "px";
-    canvas.width = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
-    return ctx;
-  }
+  const fitCanvas = (canvas, cssW, cssH) => P.fitTo(canvas, cssW, cssH).ctx;
 
   /** Resolve the widget's live theme colours (the page toggle rewrites them). */
-  function palette(root) {
-    const cs = getComputedStyle(root);
-    const get = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
-    return {
-      fg: get("--pe-fg", "#1b1f24"),
-      muted: get("--pe-muted", "#5a6472"),
-      border: get("--pe-border", "#d7dde5"),
-      phase: get("--pe-accent", "#3b6ea5"),
-      mix: get("--pa-mix", "#c9701f"),
-      warn: get("--pe-warn", "#c14a3d"),
-      ok: get("--pe-ok", "#3f8f4e"),
-    };
-  }
+  const palette = P.palette;
 
   function label(ctx, text, x, y, color, size, align, weight) {
     ctx.fillStyle = color;
@@ -661,15 +636,8 @@
       if (hbox) setHover(hbox.kind);
     });
 
-    // The page theme toggle rewrites the CSS variables; canvases must repaint.
-    if (typeof MutationObserver !== "undefined") {
-      new MutationObserver(redraw).observe(document.documentElement,
-        { attributes: true, attributeFilter: ["data-theme"] });
-    }
-    if (window.matchMedia) {
-      const mq = window.matchMedia("(prefers-color-scheme:dark)");
-      if (mq.addEventListener) mq.addEventListener("change", redraw);
-    }
+    // The page theme rewrites the CSS variables; canvases must repaint.
+    P.onThemeChange(redraw);
     if (typeof ResizeObserver !== "undefined") {
       new ResizeObserver(redraw).observe(root);
     } else {

@@ -19,6 +19,14 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   // Backing-store scale, capped at 2x.
   //
   // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
@@ -27,8 +35,7 @@
   // imageSmoothingQuality "high" on every orbit frame, so this is the difference
   // between a smooth orbit and a slideshow on exactly the devices least able to
   // afford it.
-  const MAX_DPR = 2;
-  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const canvasScale = P.scale;
 
   const NET = (typeof window !== "undefined" && window.PhotonnD2NN_Net)
     ? window.PhotonnD2NN_Net
@@ -36,24 +43,8 @@
 
   // Same inferno LUT the diffraction explorer uses, so both widgets speak one
   // visual language for optical intensity.
-  const ANCHORS = [
-    [0, 0, 4], [22, 11, 57], [66, 10, 104], [106, 23, 110], [147, 38, 103],
-    [188, 55, 84], [221, 81, 58], [243, 120, 25], [252, 255, 164],
-  ];
-  const LUT = (function () {
-    const lut = new Uint8ClampedArray(256 * 3);
-    const seg = ANCHORS.length - 1;
-    for (let i = 0; i < 256; i++) {
-      const t = i / 255 * seg;
-      const k = Math.min(seg - 1, Math.floor(t));
-      const f = t - k;
-      const a = ANCHORS[k], b = ANCHORS[k + 1];
-      lut[i * 3] = a[0] + (b[0] - a[0]) * f;
-      lut[i * 3 + 1] = a[1] + (b[1] - a[1]) * f;
-      lut[i * 3 + 2] = a[2] + (b[2] - a[2]) * f;
-    }
-    return lut;
-  })();
+  // One ramp for the whole site, from plot.js.
+  const LUT = P.LUT_INTENSITY;
 
   // Detector-plane intensity spans several decades; a sqrt display stretch makes
   // the ten regions legible. Stated in the caption -- the numbers are untouched.
@@ -112,20 +103,9 @@
 .pd-note{font-size:12px;color:var(--pe-muted);margin:0;}
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   /** Peak-normalised inferno render of an n x n map onto a canvas of `size` CSS px. */
   function renderMap(canvas, data, n, size, gamma) {

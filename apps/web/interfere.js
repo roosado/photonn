@@ -36,9 +36,16 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   const STYLE_ID = "if-style";
-  const MAX_DPR = 2;
-  function dpr() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const dpr = P.scale;
 
   const CSS = `
 .if-root{--if-fg:#1b1f24;--if-muted:#5a6472;--if-panel:#f4f6f9;--if-border:#d7dde5;
@@ -80,20 +87,9 @@
 }
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   // ------------------------------------------------------------------ physics
   //: wavelengths drawn across the pane. Three is enough to read the shift as a
@@ -165,28 +161,7 @@
    * scale has to be re-established after one, and re-applying the same absolute
    * transform when the guard below skipped the resize is a no-op.
    */
-  function fitCanvas(c, heightFor) {
-    const r = dpr();
-    const W = Math.max(240, Math.round(c.getBoundingClientRect().width || 420));
-    const H = Math.round(heightFor(W));
-    const pxW = Math.round(W * r), pxH = Math.round(H * r);
-    // Guarded on the bitmap size actually changing. Assigning `canvas.width`
-    // throws the bitmap away and allocates a new one *even when the value is
-    // unchanged* -- it is the `canvas.width = canvas.width` clear idiom -- and
-    // this runs on every slider event, where the width never moves. Nothing
-    // depends on the implicit clear: every caller repaints the whole surface as
-    // its first act. The CSS height is written either way, because a canvas that
-    // has never been sized is already exactly 300x150 and would otherwise be left
-    // with no height at all at that one size.
-    if (c.width !== pxW || c.height !== pxH) {
-      c.width = pxW;
-      c.height = pxH;
-    }
-    c.style.height = H + "px";
-    const ctx = c.getContext("2d");
-    ctx.setTransform(r, 0, 0, r, 0, 0);
-    return { ctx, W, H };
-  }
+  const fitCanvas = (c, heightFor) => P.fit(c, heightFor);
 
   /**
    * Re-run `fn` when `target` changes width, and only then.

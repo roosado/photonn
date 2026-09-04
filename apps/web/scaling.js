@@ -23,8 +23,16 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   const STYLE_ID = "sc-style";
-  const MAX_DPR = 2;
+  const MAX_DPR = P.MAX_DPR;
   const D = (typeof window !== "undefined" && window.OPTICS_SWEEP)
     ? window.OPTICS_SWEEP
     : (typeof require !== "undefined" ? require("./optics_sweep.js") : null);
@@ -50,20 +58,9 @@
 .sc-note b{color:var(--sc-fg);}
 `;
 
-  function injectStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const s = document.createElement("style");
-    s.id = STYLE_ID;
-    s.textContent = CSS;
-    document.head.appendChild(s);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function el(tag, cls, html) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (html != null) e.innerHTML = html;
-    return e;
-  }
+  const el = P.el;
 
   /** One run per depth: the one spending closest to the iso-reach budget. */
   function depthSeries() {
@@ -108,11 +105,18 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
 
-      const cs = getComputedStyle(root);
-      const col = (n, f) => (cs.getPropertyValue(n).trim() || f);
-      const fg = col("--sc-fg", "#1b1f24"), muted = col("--sc-muted", "#5a6472");
-      const border = col("--sc-border", "#d7dde5");
-      const cRank = col("--sc-rank", "#6a7f99"), cFull = col("--sc-full", "#c9701f");
+      // This widget has its own --sc-* variables rather than the site's --pe-*
+      // set, so it reads them by name through the shared reader instead of using
+      // the palette preset. The fallbacks are the same either way.
+      const c = P.readVars(root, {
+        fg: ["--sc-fg", "#1b1f24"],
+        muted: ["--sc-muted", "#5a6472"],
+        border: ["--sc-border", "#d7dde5"],
+        rank: ["--sc-rank", "#6a7f99"],
+        full: ["--sc-full", "#c9701f"],
+      });
+      const fg = c.fg, muted = c.muted, border = c.border;
+      const cRank = c.rank, cFull = c.full;
 
       const padL = 46, padR = 14, padT = 12, padB = 34;
       const W = cssW - padL - padR, H = cssH - padT - padB;
@@ -178,10 +182,11 @@
 
     draw();
     window.addEventListener("resize", draw);
-    if (window.matchMedia) {
-      const mq = window.matchMedia("(prefers-color-scheme:dark)");
-      (mq.addEventListener ? mq.addEventListener.bind(mq, "change") : mq.addListener.bind(mq))(draw);
-    }
+    // Every axis label, gridline and both series are drawn from the page's CSS
+    // variables, so a theme change has to repaint. plot.js watches both sources:
+    // the `data-theme` attribute this site's toggle writes, and the OS
+    // preference for a reader who never touches it.
+    P.onThemeChange(draw);
     return { redraw: draw };
   }
 

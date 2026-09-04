@@ -25,6 +25,14 @@
 (function () {
   "use strict";
 
+  // Shared canvas primitives (apps/web/plot.js): the dpr clamp, the guarded
+  // resize, the width and theme observers, the palette, the colour ramps and the
+  // scalar-field rasteriser. Read at module scope, so plot.js must be emitted
+  // first -- build_site.py does that and the Node runners require() it.
+  const P = (typeof window !== "undefined" && window.PhotonnPlot)
+    ? window.PhotonnPlot
+    : (typeof require !== "undefined" ? require("./plot.js") : null);
+
   // Backing-store scale, capped at 2x.
   //
   // A dpr-3 phone would otherwise get 2.25x the pixels of a dpr-2 one for a
@@ -33,8 +41,7 @@
   // imageSmoothingQuality "high" on every orbit frame, so this is the difference
   // between a smooth orbit and a slideshow on exactly the devices least able to
   // afford it.
-  const MAX_DPR = 2;
-  function canvasScale() { return Math.min(window.devicePixelRatio || 1, MAX_DPR); }
+  const canvasScale = P.scale;
 
   const DATA = (typeof window !== "undefined" && window.OPTICS_SWEEP)
     ? window.OPTICS_SWEEP
@@ -69,40 +76,11 @@
 .po-note{font-size:11.5px;color:var(--pe-muted);margin:8px 0 0;}
 `;
 
-  function injectStyle() {
-    if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
-    const el = document.createElement("style");
-    el.id = STYLE_ID;
-    el.textContent = CSS;
-    document.head.appendChild(el);
-  }
+  const injectStyle = () => P.injectStyle(STYLE_ID, CSS);
 
-  function fitCanvas(canvas, cssW, cssH) {
-    const dpr = canvasScale();
-    canvas.style.height = cssH + "px";
-    canvas.width = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    const ctx = canvas.getContext("2d");
-    // Bake the dpr into the transform once, as analogy.js does, so every draw
-    // below can work in CSS pixels and stay sharp on high-DPI screens.
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
-    return ctx;
-  }
+  const fitCanvas = (canvas, cssW, cssH) => P.fitTo(canvas, cssW, cssH).ctx;
 
-  function palette(root) {
-    const cs = getComputedStyle(root);
-    const get = (name, fallback) => (cs.getPropertyValue(name).trim() || fallback);
-    return {
-      fg: get("--pe-fg", "#1b1f24"),
-      muted: get("--pe-muted", "#5a6472"),
-      border: get("--pe-border", "#d7dde5"),
-      accent: get("--pe-accent", "#3b6ea5"),
-      mix: get("--po-mix", "#c9701f"),
-      warn: get("--pe-warn", "#c14a3d"),
-      ok: get("--pe-ok", "#3f8f4e"),
-    };
-  }
+  const palette = P.palette;
 
   function label(ctx, text, x, y, color, size, align, weight) {
     ctx.fillStyle = color;
@@ -331,12 +309,8 @@
     }
 
     slider.addEventListener("input", update);
-    if (window.matchMedia) {
-      const mq = window.matchMedia("(prefers-color-scheme:dark)");
-      const onTheme = () => update();
-      if (mq.addEventListener) mq.addEventListener("change", onTheme);
-      else if (mq.addListener) mq.addListener(onTheme);
-    }
+    // Both theme sources, via plot.js -- see its onThemeChange.
+    P.onThemeChange(() => update());
     window.addEventListener("resize", update);
     update();
     return { update };

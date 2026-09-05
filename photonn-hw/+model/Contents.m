@@ -14,5 +14,10 @@
 %   subpixel_shift    - Fourier translation by a non-integer number of samples.
 %   encode_input      - Reconstruct the complex input field from stored [0,1] maps.
 %   detector_regions  - Fixed detector layout (port of detect.default_regions).
+%                       The fallback: from schema 0.3.0 the handoff carries the
+%                       layout and evaluate reads it, so the two sides no longer
+%                       agree only by two copies of one arithmetic being kept in
+%                       step across two languages.
+%   regions_from_handoff - That carried layout, in the same struct form.
 %   readout           - Region-intensity readout + photon-budget reference.
 %   evaluate          - Full forward pass over the test set -> accuracy/predictions.

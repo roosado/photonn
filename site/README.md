@@ -179,6 +179,7 @@ scans every committed bundle and fails on any status word.
 
 | File | Page | What it does |
 |---|---|---|
+| `plot.js` | all four that draw | the shared canvas module — see below |
 | `interfere.js` | index | two waves reinforcing and cancelling, on one slider |
 | `d2nn.js` + `d2nn_demo.js` | index | the live classifier |
 | `d2nn_stage.js` | index, optics | the 3D optical stack |
@@ -187,7 +188,27 @@ scans every committed bundle and fails on any status word.
 | `mesh_weights.js` | tolerance | the trained chip's 2,628 settings, 16-bit, for `errors.js` |
 | `scaling.js` | optics | accuracy against mask count |
 | `d2nn_compare.js` | optics | 5 masks vs 56 masks, one digit |
+| `digit_source.js` | optics | the digit picker and drawing pad `d2nn_compare.js` mounts |
 | `analogy.js` | *(none)* | kept for `apps/analogy_demo.py`; the site no longer mounts it |
+| `optics.js` | *(none)* | same — kept for `apps/optics_demo.py`, and its `reachPerHop` is a live cross-check of `propagate.diffraction_reach_px` |
+
+`plot.js` holds what nine widgets each used to carry a private copy of: the
+device-pixel-ratio clamp, the guarded canvas resize, the width and theme
+observers, the palette read, the two colour ramps and the scalar-field
+rasteriser. The copies had drifted — `fitCanvas` existed in four files in two
+incompatible shapes, and three widgets learned about theme changes from a source
+this site's own toggle never fires — so this is one guard, one ramp and one
+theme hook rather than nine of each.
+
+It is read at **module scope**, so it must be evaluated before any widget.
+`build_site` emits it in the page-script slot, which every body places above every
+widget bundle; that gives exactly one copy per page. `/chip` gets none, because it
+carries no canvas, and `Page.widgets` is what makes that answerable.
+
+`/chip` mounts nothing at all. Every other page's hosts are declared in
+`build_site.PAGES` and checked against the markup by `tests/test_site_widgets.py`,
+because `mount_queue.js` deliberately skips a container it cannot find — so a
+mistyped id would otherwise produce a page silently missing a widget.
 
 None of them start until after the first paint, and then **one at a time, in the order the
 reader meets them**. That order is read off the DOM by `mount_queue.js`, not taken from the

@@ -35,6 +35,7 @@ photonn/
 ├── train.py          # training loops, datasets, input encoding schemes
 ├── detect.py         # detector regions, photon budget, shot and thermal noise
 ├── export.py         # serialize trained parameters for MATLAB handoff
+├── handoff.py        # read one back: the single Python reader of that file
 └── validate.py       # analytic test cases and invariant checks
 
 photonn-hw/
@@ -50,12 +51,21 @@ photonn-hw/
 
 Python writes a single HDF5 (or `.mat` v7.3) file containing:
 - trained parameters (phase mask arrays, or mesh phase angles)
-- geometry metadata: grid size, physical extent, layer separations
-- wavelength and any other operating-point constants
+- geometry metadata: grid size, physical extent, layer separations, and — since
+  schema 0.3.0 — the detector layout, so the as-built model reads where the
+  detectors sit rather than re-deriving it from constants typed on both sides
+- the operating point: a **closed set**, listed in `photonn.export.OPERATING_POINT`
+  with the model kinds that require each constant. The writer rejects an
+  unrecognised key and a missing required one; both readers refuse a file that
+  lacks one rather than defaulting it. A default here is indistinguishable from a
+  correct value downstream, which is how a renamed field used to become a silent
+  10× rescale instead of an error
 - the frozen test set and its labels
-- a schema version string
+- the trained accuracy, and a schema version string
 
-MATLAB reads this file and never writes back into the Python pipeline.
+MATLAB reads this file and never writes back into the Python pipeline. Python
+reads it too, through `photonn/handoff.py` — that is not a reverse path, and it
+replaced four modules each opening h5py and re-stating the schema by hand.
 
 **This boundary is one-directional by design.** It enforces the separation between the
 design model (Python, ideal) and the as-built model (MATLAB, imperfect). Do not add a
@@ -139,7 +149,10 @@ precision per component to hold accuracy above a threshold.
 - Idealized component models parameterized by literature-sourced values
 - One classification task, kept simple (MNIST or smaller). Reuse it across all phases so results are comparable
 - Analytic validation tests for every physics function
-- Sampling and unitarity checks as runtime assertions, not just tests
+- Sampling and unitarity checks as runtime assertions, not just tests. Enforced:
+  the propagators call `validate.assert_sampling` and `clements_decompose` checks
+  its own result. A caller deliberately outside the criterion says so with
+  `validate.relaxed()` rather than the check simply not existing
 - Citations as inline comments next to every physical constant
 
 ### Do not build

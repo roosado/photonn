@@ -177,9 +177,22 @@ actually does: the corner of the cone is the Nyquist ray, which carries little
 energy in practice. It says where the design sits relative to a hard limit.
 
 Derived, never typed: `apps/export_analogy_web.py` reads the reach from
-`propagate.diffraction_reach_px`, the detector layout from `detect.default_regions`
-and the topology from `layers.MZIMeshLayer._schedule`, and writes
-`apps/web/analogy_geom.js`. `tests/test_correspondence.py` re-derives all of it.
+`propagate.diffraction_reach_px`, the **requirement** from
+`propagate.required_reach_px_axes`, the detector layout from
+`detect.default_regions` and the topology from `layers.MZIMeshLayer._schedule`,
+and writes `apps/web/analogy_geom.js`. `tests/test_correspondence.py` re-derives
+all of it.
+
+The requirement moved into `propagate` on 2026-09-04, and the paragraph above was
+only three-quarters true until it did. The 74 px had been computed independently
+in `export_analogy_web` and in `sweep_optics`, and typed as the bare literal
+`74.0` in `sweep_report` and in `tests/test_sweep_geometry`. `sweep_report` is the
+module that *publishes* this number — into `figures/optics_sweep.png` and into the
+bundle the site's `/optics` page draws its connectivity bound from — so a change
+of grid or detector layout would have moved the study while the headline went on
+quoting the old figure. It is one function now, taking `(n, regions, input_frac)`
+and no trained model, which is why it can gate a sweep for a grid nothing has been
+trained on yet. It reproduces 74.0, and (74, 70) per axis, exactly.
 The interactive version of this figure is `apps/web/analogy.js` (the site's
 `chip.html`); the static one is below.
 

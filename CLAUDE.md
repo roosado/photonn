@@ -29,7 +29,8 @@ photonn/
 ├── fields.py         # complex field objects: physical extent, sampling, wavelength, units
 ├── propagate.py      # angular spectrum, Fresnel, Fraunhofer; sampling validators
 ├── elements.py       # phase masks, amplitude masks, lenses, apertures
-├── mzi.py            # 2x2 MZI transfer matrix, Clements/Reck decomposition, mesh forward pass
+├── mzi.py            # 2x2 MZI transfer matrix, Clements/Reck decomposition, mesh forward pass,
+│                     # and the Phase-5 electro-optic activation (an MZI driven by its own light)
 ├── layers.py         # differentiable (torch/jax) wrappers around propagate/elements/mzi
 ├── models.py         # D2NN and mesh network definitions
 ├── train.py          # training loops, datasets, input encoding schemes
@@ -139,6 +140,37 @@ Deliverables: App Designer dashboard with per-source sliders, live accuracy, con
 matrix, and a spatial sensitivity map. Plus a tolerance document stating required
 precision per component to hold accuracy above a threshold.
 
+### Phase 5 — Electro-optic activation (mesh only)
+
+Phases 2–4 measured the linearity wall: stacked optics collapse to one linear map, so two
+meshes with nothing between them do no better than one. Phase 5 puts one physical
+nonlinearity between mesh layers and asks the project's question of the result.
+
+- The device is the electro-optic activation of Williamson, Hughes, Minkov, Bartlett, Pai
+  & Fan, *IEEE JSTQE* 26(1):7700412 (2020), doi:10.1109/JSTQE.2019.2930455. A tap coupler
+  sends a fraction α of each mode's light to a photodiode; the amplified photocurrent sets
+  the internal phase of an MZI that the rest of the same light crosses. The signal stays
+  optical and coherent: no fresh beam, no digital step between layers
+- It is our own MZI with a power-driven phase, and is verified against the `mzi`
+  primitives the way Clements is verified by reconstruction (agreement to 1.8e-15 was
+  measured in a scratch probe, 2026-10-04)
+- **Gate first.** Reproduce the paper's linear-versus-activated gain inside this framework
+  before anything enters the library. The first probe (36 modes, 5 epochs) did *not*
+  reproduce it. If the gain does not reproduce, that is the phase's finding: write it up
+  and stop
+- Then the Phase-4 question, asked of the new machine: how precisely must the activation
+  be built, and what does crossing the wall cost the mesh's existing tolerances. Absolute
+  optical power stops cancelling in the readout once an intensity-dependent element sits
+  mid-network, so loss and the photon budget are re-measured, not carried over
+- Mesh only. A photodiode-and-modulator loop per pixel between D²NN plates is not a
+  free-space device anyone builds; the D²NN's linearity limit stays as documented
+- The task stays MNIST and the readout stays "integrate intensity, softmax". The only
+  model-side change is a second mesh layer
+
+Deliverable: a two-layer activated mesh with an as-built correctness anchor, the
+activation's own tolerance edges, the mesh edges re-measured at the new depth, and a site
+page presenting both — or, if the gate fails, a written null result.
+
 ---
 
 ## Scope boundaries
@@ -159,8 +191,8 @@ precision per component to hold accuracy above a threshold.
 
 - Full-wave electromagnetic simulation (FDTD, FEM). If real component S-parameters are ever wanted, they get imported as data — the solver is not part of this project.
 - Vector/polarization-resolved propagation. Scalar only.
-- Nonlinear optical materials or physical activation functions. The nonlinearity limitation is to be characterized and documented, not engineered around.
-- Convolutional or otherwise elaborate electronic network layers. The electronic side stays at "integrate intensity, softmax." If the model needs a bigger electronic head to work, that is a finding, not a problem to fix.
+- Nonlinear optical materials (Kerr media, saturable absorbers, phase-change cells), and any physical activation other than Phase 5's electro-optic one. The linearity limitation is still characterised and documented, not engineered around: Phase 5 admits one activation as a *device to put a tolerance on*, not as an accuracy fix, and any accuracy it buys is reported next to what it costs. The D²NN gets no activation.
+- Convolutional or otherwise elaborate electronic network layers. The electronic side stays at "integrate intensity, softmax." If the model needs a bigger electronic head to work, that is a finding, not a problem to fix. The Phase-5 activation's photodiode and amplifier are analog, per-mode and weightless — part of the device, not a layer. Nothing digital sits between optical layers.
 - Multiple datasets or a benchmarking suite. One task.
 - In-situ / hardware-in-the-loop training. In-silico training then transfer is the entire premise.
 - Training or optimization in MATLAB.
@@ -192,7 +224,8 @@ These may be revisited only after Phase 4 is complete:
 
 Still open. Do not assume an answer; ask.
 
-3. **Quantum branch placement.** Inline in Phase 3, or a separate deeper Phase 5.
+3. **Quantum branch placement.** Inline in Phase 3, or a separate deeper phase after
+   Phase 5 (which is now the electro-optic activation).
 
 ### Resolved
 
@@ -219,6 +252,13 @@ Kept here so a later session does not reopen a question the project already answ
    it publishes measured tolerance *edges* (properties of the network and its topology, which
    will not move) with every realistic as-built value marked `UNSOURCED` and no margin column.
    The gap is a table in `docs/parameter_sources.md`, not a silence.
+5. **Physical nonlinearity** → **admitted once, on the mesh** (2026-10-04). Williamson et
+   al.'s electro-optic activation (Phase 5), chosen because it is built from parts the mesh
+   already has and its parameters — responsivity, amplifier gain, V_π — are electronics
+   with datasheets rather than material constants. Materials and the D²NN stay out.
+   In-situ training stays out too, which is why the on-chip version (Bandyopadhyay et al.,
+   *Nat. Photon.* 18:1335 (2024), trained in situ) is evidence that the device exists, not
+   a method to copy.
 
 ---
 

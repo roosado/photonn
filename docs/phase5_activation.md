@@ -229,8 +229,9 @@ readout/in  1e-24  1e-18  1e-12  1e-8   1.3e-6 1.1e-5 1.3e-4 1.1e-3 1.1e-2 0.041
 
 Two regimes, cleanly separated:
 
-- **Below ~30 mW the function does not change.** Twelve decades of input power leave the
-  accuracy at 0.8862 – 0.8869, because a pure cubic is scale-covariant under
+- **Below ~30 mW the function does not change.** Ten and a half decades of input power
+  leave the accuracy at 0.8862 – 0.8869 (and the MATLAB model's noiseless curve extends it
+  to 1 fW, thirteen decades), because a pure cubic is scale-covariant under
   `region / total`. What changes is the light: the readout's share falls as `P²`.
 - **Above it the function breaks.** At 100 mW the brightest mode writes 3.5 rad and a few
   percent of inputs open past half; by 300 mW the network is at 0.35. That is the

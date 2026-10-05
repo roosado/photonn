@@ -55,9 +55,13 @@ CEILING_KB = {
     # is for -- it is the study's destination page and the only one that grew.
     "tolerance.html": 290,    # ten error sources, seven widgets, nine figures
     "optics.html": 1150,      # two models (one 56 masks at 4 bits) + the 56-mask budget
+    # Measured 216 KB when it landed (Phase 5): four figures 93 KB, the activation
+    # widget 25, the trained chip at 16 bits 24, mesh.js 7, the shared chrome and
+    # prose the rest. Ceiling at the file's usual ~15 % over.
+    "activation.html": 250,   # the device curve + the live two-layer chip + four figures
 }
 
-#: The whole site, as a reader walking the sequential path would meet it. Five
+#: The whole site, as a reader walking the sequential path would meet it. Six
 #: pages now rather than three, and the extra weight is real content -- the eight
 #: candidate-L56 figures that make "depth costs tolerance" showable.
 #:
@@ -77,7 +81,12 @@ CEILING_KB = {
 #: Every per-page ceiling above is unchanged and still passes. /chip gets no copy
 #: at all -- it carries no canvas, and ``Page.widgets`` is what makes that
 #: answerable.
-TOTAL_BUDGET_KB = 1960
+#:
+#: Raised from 1960 to 2210 when the sixth page landed (Phase 5, the activation):
+#: its measured 216 KB plus the same ~15 % every per-page ceiling carries. The site
+#: had 46 KB of headroom, so a sixth page could not fit under the old figure; that
+#: is the one ceiling the page was allowed to raise, and no other moved with it.
+TOTAL_BUDGET_KB = 2210
 
 
 #: Every page a reader can reach, taken from PAGES rather than restated. The
@@ -111,7 +120,7 @@ def test_page_is_within_budget(name, ceiling):
 def test_the_whole_site_is_within_budget():
     total = sum(size_kb(n) for n in PAGE_FILES)
     assert total <= TOTAL_BUDGET_KB, (
-        f"the five pages total {total:.0f} KB against a {TOTAL_BUDGET_KB} KB ceiling"
+        f"the {len(PAGE_FILES)} pages total {total:.0f} KB against a {TOTAL_BUDGET_KB} KB ceiling"
     )
 
 

@@ -1,0 +1,363 @@
+<div class="spectral-rule"></div>
+@@TOPBAR@@
+
+<main class="wrap">
+
+  <section class="hero col reveal">
+    <p class="eyebrow">One bend in the light</p>
+    <h1>A second layer, <em>paid for in light</em></h1>
+    <div class="underbar"></div>
+    <p class="standfirst">Two interferometer meshes with nothing between them compute exactly
+    what one mesh computes. This page puts one physical nonlinearity between them, an
+    interferometer that sets its own delay from the light passing through it, and asks the
+    project&rsquo;s question of the result: <b>what does crossing the wall buy on this chip, and
+    what does it cost to build?</b> It buys a second layer that is worth something. It costs
+    <b>light, not precision</b>.</p>
+    <div class="stat-strip">
+      <div class="stat"><span class="v">+3.4</span><span class="l">points of accuracy a second layer is worth with the device between the meshes (&plusmn;0.4 over three runs); without it, nothing</span></div>
+      <div class="stat"><span class="v">10&nbsp;mW</span><span class="l">the least light per input the activated chip works on at its design speed, against 10&nbsp;&micro;W for one mesh</span></div>
+      <div class="stat"><span class="v">2.5&times;10<sup>&minus;5</sup></span><span class="l">the fraction of the light the trained device lets through: it never once reaches its own threshold</span></div>
+    </div>
+  </section>
+
+  @@TOC@@
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The wall, on this chip</p>
+      <h2 data-toc="The wall, on this chip">Two meshes with nothing between them are one mesh</h2></div></div>
+    <div class="prose col">
+      <p>One layer of the chip is a mesh of Mach&ndash;Zehnder interferometers that realises a
+      matrix, @@MATH_act_usv@@: two lossless meshes around a row of attenuators. Stack a second layer after the first with
+      nothing in between, and the two matrices simply multiply:</p>
+      @@MATH_two_layers@@
+      <p>That product is one more matrix of the same size, which a single layer could already
+      have realised. So a second linear layer adds adjustable numbers and no new kind of
+      function, and the measurement agrees exactly. Trained three times each under one protocol,
+      one layer scores <strong>0.8598</strong> and two layers score <strong>0.8604</strong>. Twice
+      the hardware buys six ten-thousandths, which is nothing.</p>
+      <p>Those numbers come from a different input than the rest of the site. The chip on the
+      earlier pages reads a 6&times;6 shrunken digit, 36 brightnesses on 36 waveguides. Here the
+      digit enters as its <strong>16 lowest spatial frequencies</strong>, each a complex number
+      carrying both a brightness and a phase, which is what a lens does to an image for free. That
+      is an encoding change, not a task change: still the same handwritten digits, still one
+      digit per input. Why the input had to change is the subject of the gate below; the short
+      version is that on the 6&times;6 input nothing this page tried made depth pay.</p>
+      <p>The only nonlinear step in either layer is the detector at the very end, which squares
+      the light. To make the second layer count, something has to bend the light <em>between</em>
+      the meshes.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The device</p>
+      <h2 data-toc="The device">An interferometer that sets its own delay from its own light</h2></div></div>
+    <div class="prose col">
+      <p>The device is Williamson and co-workers&rsquo; electro-optic activation.<sup class="r">1</sup>
+      On each waveguide, a <strong>tap</strong> (a coupler that splits off a small fixed fraction
+      @@MATH_act_alpha@@ of the light, here a tenth) sends that sample to a <strong>photodiode</strong>, which
+      turns light into an electric current in proportion to its power. The ratio is the
+      photodiode&rsquo;s <strong>responsivity</strong>, about one amp per watt. An
+      <strong>amplifier</strong> turns the current into a voltage, and that voltage drives the delay
+      inside one more Mach&ndash;Zehnder interferometer, which the other nine tenths of the
+      <em>same</em> light then crosses. A length of waveguide holds that light back while the
+      electronics catch up.</p>
+      <p>Nothing is converted and re-sent. The signal never leaves the waveguide, so it stays
+      <strong>coherent</strong>: it keeps the phase relationships the next mesh depends on, and no
+      digital step sits between the layers. What comes out is the input times a factor that
+      depends on the input&rsquo;s own power:</p>
+      @@MATH_eo@@
+      <p>Here @@MATH_act_h@@ is half the delay on the device&rsquo;s interferometer: a
+      fixed <strong>bias</strong> @@MATH_act_phib@@ set by a steady voltage, plus whatever the light
+      itself writes through the photodiode. How many radians each watt writes is set entirely by
+      electronics:</p>
+      @@MATH_eo_gain@@
+      <p>with @@MATH_act_G@@ the amplifier&rsquo;s gain in ohms, @@MATH_act_R@@ the
+      responsivity, and @@MATH_act_vpi@@ the <strong>half-wave voltage</strong>, the voltage that delays the light by half a wavelength. The fraction of the
+      light that gets through is then</p>
+      @@MATH_eo_T@@
+      <p>This is not a new kind of component. It is the same interferometer the meshes are built
+      from, with a delay the light sets for itself, and the equation above equals one built from
+      this project&rsquo;s own coupler and phase-shifter matrices to <strong>2.6&times;10<sup>&minus;14</sup></strong>,
+      round-off, over two thousand random cases.</p>
+      <p>The widget draws that transmission. The bias decides <em>whether</em> weak light gets
+      through, and the gain decides <em>where</em> the device switches. With the bias at
+      &pi;, the setting the paper and this chip both use, the device is dark for weak light and
+      opens as the light brightens, a shape often compared to a ReLU. Hold that comparison loosely
+      until the next section.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="eo-curve"></div></div>
+      <p class="cap">Live. The device as trained, in watts: tap 0.1, bias &pi;, gain
+      157&nbsp;rad/W. Move the sliders to see what each control does to the curve; the trained chip
+      below keeps its own settings fixed.</p>
+    </div>
+
+    <div class="prose col">
+      <p><strong>Where the numbers come from.</strong> The tap, bias and gain are the paper&rsquo;s
+      design values, the gain expressed per watt at a 1&nbsp;mW input. The responsivity is
+      measured: a germanium photodiode on a commercial silicon platform reaches about
+      1.0&nbsp;A/W, read off a published plot.<sup class="r">3</sup> The 10&nbsp;V half-wave voltage
+      is the paper&rsquo;s worked example, and the 5&nbsp;k&Omega; amplifier gain is whatever makes the
+      product come out; no datasheet in this project shows that gain at the 10&nbsp;GHz the device is
+      designed to run at, and the source files mark it unsourced.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">The gate</p>
+      <h2 data-toc="The gate">Does it make depth real?</h2></div></div>
+    <div class="prose col">
+      <p>Before this device was built into anything, the paper&rsquo;s own claim had to be
+      reproduced here, with a rule written down in advance: on the paper&rsquo;s setup the activated
+      pair of meshes must beat the plain pair by at least 5 points, and on this project&rsquo;s own
+      input it must beat a single mesh by more than run-to-run noise. A first quick attempt did
+      not reproduce the gain, so the possible causes were tried one at a time, each at three
+      random starts.</p>
+    </div>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>Setup</th><th>One mesh</th><th>Two meshes</th><th>Two meshes, device between</th></tr></thead>
+        <tbody>
+          <tr><td>This project&rsquo;s 6&times;6 input</td><td>0.7212</td><td>0.7045</td><td>0.7315, inside noise</td></tr>
+          <tr><td>The paper&rsquo;s setup, as published</td><td>0.7954</td><td>0.8066</td><td><strong>0.8946</strong>, 8.8 points up</td></tr>
+          <tr><td><strong>The paper&rsquo;s input, this project&rsquo;s readout</strong></td><td><strong>0.8598</strong></td><td>0.8604</td><td><strong>0.8942</strong>, 3.4 points up</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p><strong>The paper&rsquo;s gain reproduces.</strong> On its own setup the device is worth
+      8.8 points over two plain meshes, against the 7.2 the paper reports. <strong>On the 6&times;6
+      input it is not worth anything measurable</strong>, and neither the paper&rsquo;s style of mesh
+      nor letting training set the device&rsquo;s gain and bias changed that. So, as the rule
+      allowed, the chip on this page reads the paper&rsquo;s input, and with this project&rsquo;s
+      ordinary readout the device makes a second layer worth <strong>3.4 points</strong>. Hold the
+      attenuators ahead of the device to what a passive chip can do, so nothing amplifies the light
+      on its way in, and it is still worth 3.3.</p>
+      <p>One run of the gate failed for a reason worth recording. Every activated network trained
+      to chance, because the standard function for building a complex number from a size and an
+      angle computes its slope with the wrong sign when the size is negative, and at this bias it
+      always is. The forward calculation was right to thirteen decimal places; only the slope was
+      wrong. A test now checks that slope against finite differences.</p>
+      <p><strong>Now look at where the trained device actually operates.</strong> Pick a digit and
+      watch its sixteen modes land on the curve.</p>
+    </div>
+
+    <div class="explorer-band reveal">
+      <div class="pe-host"><div id="eo-net"></div></div>
+      <p class="cap">Live. The trained two-layer chip, 1,056 settings stored at 16 bits, running
+      here one digit at a time; it agrees with the reference model on every gallery digit.
+      Each dot is one mode arriving at its device. The slider sets the light entering the chip,
+      with every source of noise switched off.</p>
+    </div>
+
+    <div class="prose col">
+      <p><strong>No mode ever gets near the threshold.</strong> Across all 10,000 test digits,
+      <strong>none</strong> of the 160,000 mode arrivals passes half-open. The light writes a median
+      of 3.9&nbsp;thousandths of a radian on each device, and the bank lets through
+      <strong>2.5&times;10<sup>&minus;5</sup></strong> of what reaches it. The device is not working
+      as a switch here. It is working as a <strong>cube</strong>: deep in its dark region the output
+      is minus a constant times @@MATH_act_cube@@, the input cubed, and that is the whole of the
+      nonlinearity that makes the second layer pay.</p>
+      <p>A cube has a property that matters for everything below. Scale the input up or down and
+      the output scales by the cube, but every mode by the same factor, and the readout divides by
+      the total anyway. So with no noise the chip computes the same answer from a femtowatt to
+      30&nbsp;mW, more than thirteen decades: the trained function does not care how bright the light is. What
+      changes is how much light reaches the detectors, which falls as the square of the input
+      power on top of the input power itself. Drag the slider down and watch the photon count.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">What it costs</p>
+      <h2 data-toc="What it costs">The same budget, on the activated chip</h2></div></div>
+    <div class="prose col">
+      <p>The as-built model was rebuilt in MATLAB, reproduced the trained chip&rsquo;s
+      <strong>0.8864</strong> exactly on all 10,000 test digits, and was then broken one
+      imperfection at a time, as the earlier budgets were: each error drawn ten times at random,
+      each chip judged against <strong>95% of its own ideal</strong>, and each limit quoted as the
+      largest error that holds and the smallest that fails. The one-layer chip on the same input,
+      at <strong>0.8555</strong>, went through the very same sweeps, so every row below is one
+      protocol and two machines.</p>
+    </div>
+
+    <h3 class="sub-h col">The mesh&rsquo;s own errors, at twice the depth</h3>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>Error</th><th>One layer</th><th>Two layers, device between</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td>Each delay set wrong</td><td>holds 0.03&nbsp;rad, fails 0.05</td><td>holds <strong>0.03&nbsp;rad</strong>, fails 0.05</td><td>unchanged</td></tr>
+          <tr><td>Couplers splitting unevenly</td><td>holds 0.01, fails 0.02</td><td>holds <strong>0.01</strong>, fails 0.02</td><td>unchanged</td></tr>
+          <tr><td>Heaters warming their neighbours</td><td>holds 0.002, fails 0.005</td><td>holds <strong>0.002</strong>, fails 0.005</td><td>unchanged</td></tr>
+          <tr><td>Light lost in each interferometer</td><td>holds 0.5&nbsp;dB, fails 0.8</td><td>holds <strong>0.3&nbsp;dB</strong>, fails 0.5</td><td>one step tighter</td></tr>
+          <tr><td>Wavelength drift</td><td>holds 5&nbsp;nm, fails 10</td><td>holds <strong>2&nbsp;nm</strong> at 1&nbsp;mW, <strong>10&nbsp;nm</strong> at 30&nbsp;mW</td><td>set by the device</td></tr>
+          <tr><td><strong>Light per input, one input per 100&nbsp;ps</strong></td><td>holds 10&nbsp;&micro;W, fails 1</td><td>holds <strong>10&nbsp;mW</strong>, fails 3; holds 100&nbsp;mW, fails again at 300</td><td><strong>1,000&times; more, and a ceiling</strong></td></tr>
+          <tr><td>Light per input, one input per millisecond</td><td>holds 1&nbsp;pW, fails 0.1</td><td>holds <strong>100&nbsp;&micro;W</strong>, fails 10</td><td>10<sup>8</sup>&times; more</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p><strong>The chip does not have to be built any more precisely.</strong> Delays, couplers
+      and heaters keep the one-layer chip&rsquo;s limits to the same step of the sweep. What the
+      device adds is a demand for light the linear chip never had. One mesh works on anything
+      above 10&nbsp;&micro;W at its design speed. The activated chip needs <strong>10&nbsp;mW</strong>,
+      a thousand times more, because its readout gets light as the cube of the input. And it has a
+      <strong>ceiling</strong>: above 100&nbsp;mW the brightest modes write whole radians on their
+      devices, the cube stops being a cube, and the chip computes something it was never trained
+      to. At 300&nbsp;mW it is down to 0.35. The linear chip has no ceiling at all.</p>
+    </div>
+
+    <figure class="plate col reveal"><img src="@@FIG_act_power@@" alt="Accuracy against input power for one layer and for two layers with the device, at two symbol times, with the noise-free curve" loading="lazy"><figcaption><span class="fign" data-fig="window"></span>The power window. Blue is the activated chip, orange the one-layer chip; solid lines run one input per millisecond, dashed one per 100&nbsp;ps. The grey dotted line is the activated chip with no noise at all, flat for thirteen decades and then falling off its ceiling. Each dotted bar is that chip&rsquo;s own 95% pass mark.</figcaption></figure>
+
+    <div class="prose col">
+      <p>Fig&nbsp;@@FIGREF_window@@ also shows something about speed. The linear chip only cares
+      about the energy per input, power times time, so its two curves are the same curve shifted.
+      The activated chip responds to <em>power</em>, so short bright pulses beat long dim ones:
+      at one input per 100&nbsp;ps it needs about 1&nbsp;pJ of light per input, at one per
+      millisecond about 100&nbsp;nJ, <strong>a hundred thousand times</strong> more energy for the
+      same answer. The device wants to run fast, which is what it was designed for. At the setting
+      the paper chose, 1&nbsp;mW at 10&nbsp;GHz, it gets about one photon per input at the
+      detectors, and classifies at 0.18.</p>
+    </div>
+
+    <h3 class="sub-h col">The device&rsquo;s own errors</h3>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>Error</th><th>At 1&nbsp;mW</th><th>At 30&nbsp;mW</th></tr></thead>
+        <tbody>
+          <tr><td>Bias set wrong</td><td>holds <strong>0.001&nbsp;rad</strong>, fails 0.003</td><td>holds 0.03&nbsp;rad, fails 0.1</td></tr>
+          <tr><td>The device&rsquo;s couplers splitting unevenly</td><td>holds <strong>0.0003</strong>, fails 0.001</td><td>holds past 0.03, the largest tried</td></tr>
+          <tr><td>Amplifier noise, at 10&nbsp;GHz</td><td>holds 10&nbsp;pA/&radic;Hz, fails 30</td><td>holds past 100, the largest tried</td></tr>
+          <tr><td>Tap fraction varying device to device</td><td colspan="2">holds a spread of 0.02 around 0.1, fails at 0.05</td></tr>
+          <tr><td>Gain calibrated wrong</td><td colspan="2">holds anywhere from 0.1&times; to 100&times; the design; fails at 300&times;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p>At 1&nbsp;mW these are the tightest numbers anywhere in this project: a bias held to a
+      thousandth of a radian, thirty times tighter than the mesh&rsquo;s own delays, and couplers
+      within three parts in ten thousand of an even split. All three bad ones share one
+      mechanism. The device sits on its dark setting, and each of these errors leaks a little
+      <em>unbent</em> light through it, competing with a cubed signal that is itself only a
+      thousandth of the field. The cubed signal grows with power and the leak does not, so at
+      30&nbsp;mW every one of them relaxes thirty times or more, as Fig&nbsp;@@FIGREF_bias@@ shows.
+      Wavelength drift is the same story in disguise: a longer wavelength lowers the
+      device&rsquo;s bias a little, which is why the activated chip holds 2&nbsp;nm at 1&nbsp;mW and
+      10&nbsp;nm at 30.</p>
+      <p>Gain calibration is free. A wrong gain on every device multiplies every cube by the same
+      factor, and the readout divides that out. It is the one error a builder could correct
+      afterwards, and the one that does not matter.</p>
+    </div>
+
+    <div class="plate-grid reveal">
+      <figure class="plate"><img src="@@GRIDFIG_act_bias@@" alt="Accuracy against the device's bias error at 1 mW and at 30 mW" loading="lazy"><figcaption><span class="fign" data-fig="bias"></span>Bias error, at the design power and at 30&nbsp;mW: the same chip, thirty times more forgiving with thirty times the light.</figcaption></figure>
+      <figure class="plate"><img src="@@GRIDFIG_act_phase@@" alt="Accuracy against delay error, for each layer of the activated chip alone and for one layer" loading="lazy"><figcaption><span class="fign" data-fig="layers"></span>Delay error, applied to both layers, to each alone, and to the one-layer chip. The first layer is where precision is spent.</figcaption></figure>
+    </div>
+
+    <div class="prose col">
+      <p><strong>Where precision goes.</strong> Fig&nbsp;@@FIGREF_layers@@ splits the delay error
+      by layer. Errors in the first mesh fail at 0.03&nbsp;rad; errors in the second hold to
+      0.05, looser than a single mesh. An error ahead of the device is cubed along with the light,
+      tripling it; one after the device is not. A builder spends the precision budget on the first
+      mesh and can relax the second.</p>
+    </div>
+  </section>
+
+  <section class="phase reveal">
+    <div class="phase-head col">
+      <div><p class="eyebrow">Registered before the measurement</p>
+      <h2 data-toc="Eight predictions">Eight predictions, and what came back</h2></div></div>
+    <div class="prose col">
+      <p>Before the budget ran, eight predictions were written down and committed with the code
+      that would test them, so that a result could not be explained after the fact. Two were
+      wrong and one only half right, and the misses are as informative as the hits.</p>
+    </div>
+    <div class="tbl-wrap col">
+      <table class="tbl">
+        <thead><tr><th>Predicted</th><th>Measured</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Twice the depth makes the delays &radic;2 more demanding</td><td>the same limit, 0.03&nbsp;rad</td><td><strong>wrong</strong></td></tr>
+          <tr><td>The first layer is the more demanding one</td><td>0.03 against 0.08 to fail</td><td>held</td></tr>
+          <tr><td>The light needed rises to about 25&nbsp;&micro;W at 1&nbsp;ms and 5&nbsp;mW at 100&nbsp;ps, with a window one to two decades wide</td><td>10&ndash;100&nbsp;&micro;W and 3&ndash;10&nbsp;mW; the window is 10&ndash;100&nbsp;mW</td><td>held</td></tr>
+          <tr><td>Lost light hurts the first layer about three times as much, and the second as much as one mesh</td><td>four times as much; the second <em>less</em> than one mesh</td><td>half held</td></tr>
+          <tr><td>6 interferometers in the second layer&rsquo;s last mesh cannot affect the answer, and none in the first layer</td><td>exactly those 6, and none</td><td>held</td></tr>
+          <tr><td>The bias holds near 0.0003&nbsp;rad, fails by 0.003, and relaxes 30&times; at 30&nbsp;mW</td><td>holds 0.001, fails 0.003, relaxes exactly 30&times;</td><td>held</td></tr>
+          <tr><td>The device&rsquo;s couplers are about three times tighter than its bias</td><td>3.3 times</td><td>held</td></tr>
+          <tr><td>Gain calibration is free, and its limit is the power ceiling</td><td>free from 0.1&times; to 100&times;</td><td>held</td></tr>
+          <tr><td>Amplifier noise fails near 1&ndash;2&nbsp;pA/&radic;Hz</td><td>holds 10, fails 30</td><td><strong>wrong</strong> by ten times</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose col">
+      <p>The first miss is the useful one. On the earlier pages the chip needed its delays ten
+      times more accurate than the glass stack because errors pile up through 72 interferometers in
+      a row. Doubling the row did not tighten the limit here at all, because what sets it is
+      <em>which side of the device</em> an error sits on, not how many interferometers it crosses.
+      Serial pile-up is real in one linear mesh; across a nonlinearity it is not the whole
+      story.</p>
+      <p>The cone of interferometers that cannot affect the answer, worked out on paper before
+      anything was measured, survives exactly. Six of the second layer&rsquo;s last mesh are
+      outside it, the same six the closed form names. The first layer has none, because the
+      device hands every mode on to a full second mesh.</p>
+    </div>
+    <figure class="plate col reveal"><img src="@@FIG_act_sensitivity@@" alt="Per-interferometer sensitivity for the four meshes of the activated chip" loading="lazy"><figcaption><span class="fign" data-fig="cone"></span>How far the answer moves when one interferometer is detuned, for each of the four meshes. The first layer carries 70% of it; the pale corner of the last mesh is the six that carry none.</figcaption></figure>
+
+    <div class="prose col">
+      <div class="finding">
+        <p class="tag">Finding &middot; crossing the wall costs light, not precision</p>
+        <p class="body">One interferometer per waveguide, setting its own delay from its own light,
+        makes a second layer worth <strong>3.4 points</strong> where a second plain layer is worth
+        nothing. It does so as a pure cube, so the chip needs <strong>1,000&times; the light</strong>
+        of one mesh at its design speed and stops working above 100&nbsp;mW. Its own tolerances are
+        the tightest in the study at low power and relax as the light grows, so the place to run
+        it is the top of that window. <strong>Nothing has to be built more precisely; it has to be
+        run brighter.</strong></p>
+      </div>
+      <ol class="refs">
+        <li><b>1</b>I. A. D. Williamson, T. W. Hughes, M. Minkov, B. Bartlett, S. Pai and S. Fan,
+        &ldquo;Reprogrammable electro-optic nonlinear activation functions for optical neural
+        networks,&rdquo; <em>IEEE Journal of Selected Topics in Quantum Electronics</em> 26(1), 7700412
+        (2020). <a href="https://doi.org/10.1109/JSTQE.2019.2930455">doi:10.1109/JSTQE.2019.2930455</a>
+        &middot; preprint <a href="https://arxiv.org/abs/1903.04579">arXiv:1903.04579</a></li>
+        <li><b>2</b>S. Bandyopadhyay et al., <em>Nature Photonics</em> 18, 1335 (2024). The same
+        principle on a chip, with a microring, trained on the hardware itself.</li>
+        <li><b>3</b>L. Meyer et al., &ldquo;Deep neural network inference on an integrated,
+        reconfigurable photonic tensor processor,&rdquo; <em>Nature Communications</em> 17, 3396 (2026).
+        <a href="https://doi.org/10.1038/s41467-026-71599-2">doi:10.1038/s41467-026-71599-2</a>.
+        Responsivity read from Fig.&nbsp;2e.</li>
+      </ol>
+    </div>
+  </section>
+
+  @@NEXT@@
+
+  <footer class="reveal">
+    <div class="foot-grid">
+      <div><h3>The device</h3><p>Williamson et al.&rsquo;s activation,<sup class="r">1</sup> built in
+        the code from this project&rsquo;s own interferometer matrices and held to the paper&rsquo;s
+        closed form to round-off. A chip version exists,<sup class="r">2</sup> trained on the
+        hardware itself, which this project&rsquo;s train-then-build premise rules out; it is evidence
+        that the device can be made, not a method copied here.</p></div>
+      <div><h3>Reproducing it</h3><p><span class="q">apps/eo_gate.py</span> runs the gate;
+        <span class="q">apps/train_deep_mesh.py</span> trains both chips;
+        <span class="q">run_error_budget_deep.m</span> runs the budget in about two minutes, seeds
+        29000&ndash;50999. The full record, predictions included, is
+        <span class="q">docs/phase5_activation.md</span>.</p></div>
+      <div><h3>Still open</h3><p>Every device value but the responsivity is a design value or
+        unsourced, so the limits above are properties of this chip and its device model, not
+        verdicts on a real amplifier or modulator. The amplifier is modelled as white noise over its
+        bandwidth, with no roll-off.</p></div>
+    </div>
+    <p class="colophon">photonn &middot; a portfolio study in optical computing and fabrication tolerance.
+    Every physical constant on this page is cited in the source; unsourced values are flagged, never invented.</p>
+  </footer>
+
+</main>
+
+@@PAGE_SCRIPT@@
+@@ACTIVATION_BUNDLE@@
+@@ACTIVATION_MOUNT@@

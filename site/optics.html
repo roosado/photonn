@@ -57,7 +57,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .theme-toggle:hover{color:var(--ink);border-color:var(--beam);}
 .theme-toggle:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
 .topbar-right{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;}
-/* Five pages share one row, so the nav is quieter than a row of pills would be:
+/* Six pages share one row, so the nav is quieter than a row of pills would be:
    only the page you are on is drawn as one. */
 .topbar-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
 .topbar-nav a{font-family:var(--mono);font-size:.74rem;letter-spacing:.03em;text-decoration:none;
@@ -277,7 +277,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   <div class="topbar-in">
     <span class="brand"><b>photonn</b><span class="brand-tail"> &middot; a fabrication-tolerance study of optical neural networks</span></span>
     <div class="topbar-right">
-      <nav class="topbar-nav" aria-label="Sections"><a href="./">The machine</a><a href="physics.html">The physics</a><a href="chip.html">The chip</a><a href="tolerance.html">Tolerance</a><a href="optics.html" aria-current="page">Going deeper</a></nav>
+      <nav class="topbar-nav" aria-label="Sections"><a href="./">The machine</a><a href="physics.html">The physics</a><a href="chip.html">The chip</a><a href="tolerance.html">Tolerance</a><a href="optics.html" aria-current="page">Going deeper</a><a href="activation.html">Two layers</a></nav>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme">◐ theme</button>
     </div>
   </div>
@@ -526,7 +526,9 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       detector. <strong>Adding plates buys a better approximation of the same limited thing.</strong>
       The curve flattens because it is converging on the best that thing can do.</p>
       <p>So the answer is not more masks. It is a nonlinear step somewhere in the middle, which is
-      exactly what this design does not have and, per its scope, does not try to build.</p>
+      exactly what this design does not have and, per its scope, does not try to build. The chip
+      can be given one from its own parts, and <a class="link" href="activation.html">the next
+      page does &rarr;</a></p>
     </div>
   </section>
 
@@ -537,11 +539,18 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     <div class="prose col">
       <p>This is an active research problem, and the approaches split by where the nonlinearity is
       made to come from. Three families, and a note on what this project can and cannot vouch for.</p>
-      <p><strong>Convert to electronics and back.</strong> Detect the light part-way through, apply
-      the nonlinearity in a circuit, then re-modulate a fresh beam. It certainly works, since the
-      detector&rsquo;s squaring is already a nonlinearity and this simply uses it more than once. What
-      it costs is the thing optics was supposed to avoid: a conversion, and its energy and latency,
-      at every layer.</p>
+      <p><strong>Turn some of the light into a current.</strong> Detect it part-way through and
+      use the electronics, in one of two ways that cost different things. The first <em>re-sends a
+      fresh beam</em>: detect, compute the nonlinearity in a circuit, and modulate new light for the
+      next layer. It certainly works, since the detector&rsquo;s squaring is already a nonlinearity,
+      and working photonic processors run exactly this loop with the step between layers done
+      digitally.<sup class="r">2</sup> What it costs is the thing optics was supposed to avoid: a
+      conversion, and its energy and latency, at every layer. The second <em>keeps the same
+      light</em>: tap a small fraction off to a photodiode, and let its amplified current set the
+      delay of an interferometer that the rest of that light crosses.<sup class="r">3</sup> The
+      signal stays optical and keeps its phase, and only the tapped fraction is converted, but every
+      waveguide still needs its own detector, amplifier and delay line. A chip version
+      exists.<sup class="r">4</sup></p>
       <p><strong>Use a material that responds to intensity.</strong> Saturable absorbers, which
       become more transparent as light gets brighter, and phase-change materials, which switch state.
       The optics stays optical. The difficulty is that these effects are weak at the power levels an
@@ -554,15 +563,26 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       wave physics stays perfectly linear.<sup class="r">1</sup> The nonlinearity comes from the
       encoding, not from any material. They propose an integrated-photonics implementation and show
       the gradients needed for training can be measured directly in scattering experiments.</p>
-      <p><strong>What this project can vouch for stops at the wall itself.</strong> The measurement
-      here is that a stack of phase masks is one linear operator and that scaling it has sharply
-      diminishing returns. Which of the routes above is the right one is not something this study
-      tested, and nothing on this page should be read as evidence for any of them.</p>
+      <p><strong>What this project can vouch for is narrow.</strong> The measurement here is that a
+      stack of phase masks is one linear operator and that scaling it has sharply diminishing
+      returns. Of the routes above it has tested exactly one, the same-light loop, on the chip rather
+      than the stack, and only as far as <a class="link" href="activation.html">the next page
+      measures it &rarr;</a>: it makes a second layer pay, and pays for it in light. Nothing here is
+      evidence about the other routes.</p>
       <ol class="refs">
         <li><b>1</b>C. C. Wanjura and F. Marquardt, &ldquo;Fully nonlinear neuromorphic computing
         with linear wave scattering,&rdquo; <em>Nature Physics</em> (2024).
         <a href="https://doi.org/10.1038/s41567-024-02534-9">doi:10.1038/s41567-024-02534-9</a>
         &middot; preprint <a href="https://arxiv.org/abs/2308.16181">arXiv:2308.16181</a></li>
+        <li><b>2</b>L. Meyer et al., &ldquo;Deep neural network inference on an integrated,
+        reconfigurable photonic tensor processor,&rdquo; <em>Nature Communications</em> 17, 3396 (2026).
+        <a href="https://doi.org/10.1038/s41467-026-71599-2">doi:10.1038/s41467-026-71599-2</a></li>
+        <li><b>3</b>I. A. D. Williamson et al., &ldquo;Reprogrammable electro-optic nonlinear
+        activation functions for optical neural networks,&rdquo; <em>IEEE Journal of Selected Topics in
+        Quantum Electronics</em> 26(1), 7700412 (2020).
+        <a href="https://doi.org/10.1109/JSTQE.2019.2930455">doi:10.1109/JSTQE.2019.2930455</a></li>
+        <li><b>4</b>S. Bandyopadhyay et al., <em>Nature Photonics</em> 18, 1335 (2024), trained on the
+        hardware itself.</li>
       </ol>
     </div>
   </section>
@@ -599,10 +619,6 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <p class="eyebrow">Not built yet</p>
       <h2 id="what-comes-next">What comes next</h2></div></div>
     <div class="prose col">
-      <p><strong>Alignment and calibration tolerances.</strong> The error budget covers component
-      errors only. Plate spacing, sideways registration, delays reading systematically high or low,
-      and detector offsets are all unmodelled, and for a free-space build they are plausibly the
-      harder problem. Four new error sources, the same framework.</p>
       <p><strong>What a foundry actually achieves.</strong> The chip has since had
       <a class="link" href="chip.html">the same treatment &rarr;</a>, and the failure mode is
       confirmed: errors there accumulate <em>in sequence</em>, so it needs its delays ten times more
@@ -620,7 +636,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
     </div>
   </section>
 
-  <a class="pagenext reveal" href="./"><span class="k">Back to the start</span><span class="t">This neural network is made of light &rarr;</span><span class="b">A digit enters as a beam, crosses five plates of fabricated glass, and the answer is where the light lands. It runs live, in your browser.</span></a>
+  <a class="pagenext reveal" href="activation.html"><span class="k">Next</span><span class="t">A second layer, paid for in light &rarr;</span><span class="b">The one route through the wall this project could build and measure: an interferometer that sets its own delay from its own light. It makes a second layer worth 3.4 points, and what it costs is light, not precision.</span></a>
 
   <footer class="reveal">
     <div class="foot-grid">

@@ -57,7 +57,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .theme-toggle:hover{color:var(--ink);border-color:var(--beam);}
 .theme-toggle:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
 .topbar-right{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;}
-/* Five pages share one row, so the nav is quieter than a row of pills would be:
+/* Six pages share one row, so the nav is quieter than a row of pills would be:
    only the page you are on is drawn as one. */
 .topbar-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
 .topbar-nav a{font-family:var(--mono);font-size:.74rem;letter-spacing:.03em;text-decoration:none;
@@ -277,7 +277,7 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   <div class="topbar-in">
     <span class="brand"><b>photonn</b><span class="brand-tail"> &middot; a fabrication-tolerance study of optical neural networks</span></span>
     <div class="topbar-right">
-      <nav class="topbar-nav" aria-label="Sections"><a href="./">The machine</a><a href="physics.html" aria-current="page">The physics</a><a href="chip.html">The chip</a><a href="tolerance.html">Tolerance</a><a href="optics.html">Going deeper</a></nav>
+      <nav class="topbar-nav" aria-label="Sections"><a href="./">The machine</a><a href="physics.html" aria-current="page">The physics</a><a href="chip.html">The chip</a><a href="tolerance.html">Tolerance</a><a href="optics.html">Going deeper</a><a href="activation.html">Two layers</a></nav>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle colour theme">◐ theme</button>
     </div>
   </div>
@@ -435,11 +435,10 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
       <math><mi>exp</mi><mo>(</mo><mi>i</mi><mo>&middot;</mo><mi>&pi;</mi><mo>&middot;</mo><mi>image</mi><mo>)</mo></math> before the optics ever sees them, and
       that step is not linear. This is why the choice of encoding measurably changes the accuracy
       that can be reached. It is quietly doing work the linear optics downstream cannot do.</p>
-      <p>By the project&rsquo;s own scope this limit is <strong>measured and described, not
-      engineered around</strong>. There is no attempt to add a nonlinear step in the optics, no
-      exotic materials, and no larger electronic network bolted on the end to compensate. If a
-      bigger electronic stage would lift the accuracy, that is a result worth reporting, not a bug
-      to fix.</p>
+      <p>For the glass stack this limit is <strong>measured and described, not engineered
+      around</strong>: no nonlinear step in the optics, no exotic materials, no bigger electronics
+      bolted on the end. The chip can bend its own light with parts it already has, and
+      <a class="link" href="activation.html">the last page builds that &rarr;</a></p>
       <p>One thing this argument does <em>not</em> settle is how close any particular stack gets to
       the best operator its masks could implement. Five masks score 0.799, and it would be easy to
       read that as the ceiling above being reached. It is not:

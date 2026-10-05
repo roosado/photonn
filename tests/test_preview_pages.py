@@ -75,7 +75,7 @@ def test_a_preview_page_mounts_every_host_it_declares(module_name):
 
 
 def test_every_preview_shares_one_shell():
-    """The shell is one module, so its chrome is one edit rather than five."""
+    """The shell is one module, so its chrome is one edit rather than one per page."""
     from apps import preview
 
     for module_name in PREVIEWS:

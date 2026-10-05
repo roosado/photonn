@@ -1,7 +1,7 @@
 """Every link between pages has to land somewhere.
 
 The site used to be three pages wired together by two hardcoded href tokens, and
-eyeballing them was enough. It is now five pages with a topbar listing all of them
+eyeballing them was enough. It is now six pages with a topbar listing all of them
 and a sequential "next" hand-off at the foot of each, so every page carries six or
 more internal links and a rename silently breaks a dozen of them at once.
 

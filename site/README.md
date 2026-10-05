@@ -1,10 +1,10 @@
 # photonn — the generated site
 
-Five pages, each a **single self-contained HTML document**: CSS, JavaScript and every figure are
+Six pages, each a **single self-contained HTML document**: CSS, JavaScript and every figure are
 inlined (figures as base64 data URIs), so they make **no external requests** and work offline —
 including straight off `file://`.
 
-They read in order, and the topbar lists all five:
+They read in order, and the topbar lists all six:
 
 1. **`index.html`** — *This neural network is made of light.* The trained D²NN running its
    forward pass in your browser: pick or draw a digit, watch it cross five phase masks onto ten
@@ -50,7 +50,17 @@ They read in order, and the topbar lists all five:
 5. **`optics.html`** — what scaling buys, and where it stops. The depth-vs-accuracy chart, the
    5-mask model running beside the 56-mask one on one digit, what the
    extra masks cost in tolerance, and then the wall: a mask stack is one linear operator, so
-   depth converges rather than compounds, and the way through is a nonlinearity.
+   depth converges rather than compounds, and the way through is a nonlinearity. Its
+   electronics route is split in two since Phase 5, **fresh beam** (Meyer et al. 2026) and
+   **same light** (Williamson et al. 2020), because they cost different things.
+6. **`activation.html`** — *A second layer, paid for in light* (Phase 5,
+   `docs/phase5_activation.md`). The chip given one electro-optic activation between two
+   meshes: the wall shown on this chip's own numbers, the device and its equation with a
+   **live transfer curve**, the gate that had to pass before anything was built, the **trained
+   two-layer chip running live** with each digit's sixteen modes drawn on the device's curve and
+   an input-power slider, the budget against the one-layer chip on the same input, and eight
+   predictions registered before it ran. Its claim is the page's title: depth is worth 3.4
+   points, and the price is light, not precision.
 
 Plus **`_artifact_body.html`** — a body-only variant of the front page for publishing as a
 claude.ai Artifact (that host supplies its own `<head>`/`<body>`, and needs absolute links since
@@ -186,6 +196,9 @@ scans every committed bundle and fails on any status word.
 | `explorer.js` | physics | the diffraction explorer |
 | `errors.js` | tolerance | **seven** error-mechanism widgets, one per source |
 | `mesh_weights.js` | tolerance | the trained chip's 2,628 settings, 16-bit, for `errors.js` |
+| `mesh.js` | tolerance, activation | the mesh built in the browser: decoder, Clements schedule, factored MZI block, column-by-column build. Pure computation; moved out of `errors.js` byte-identically |
+| `activation.js` | activation | the device curve (mode `device`) and the trained two-layer chip live (mode `network`) |
+| `deep_mesh_weights.js` | activation | the Phase-5 chip's 1,056 settings at 16 bits, its operating point, and a 16-digit gallery with encoded inputs |
 | `scaling.js` | optics | accuracy against mask count |
 | `d2nn_compare.js` | optics | 5 masks vs 56 masks, one digit |
 | `digit_source.js` | optics | the digit picker and drawing pad `d2nn_compare.js` mounts |
@@ -298,7 +311,7 @@ These pages are **generated, not hand-edited** — edit `apps/build_site.py`, or
 sources under `apps/web/`, and rebuild:
 
 ```bash
-python -m apps.build_site      # writes all six files above
+python -m apps.build_site      # writes all seven files above
 ```
 
 The build is deterministic: running it twice produces byte-identical output.
@@ -315,6 +328,7 @@ If the **trained model** changes, regenerate in this order before rebuilding the
 python -m apps.export_d2nn_web      # -> apps/web/d2nn_weights.js, tests/fixtures/d2nn_reference.json
 python -m apps.export_analogy_web   # -> apps/web/analogy_geom.js
 python -m apps.export_mesh_web      # -> apps/web/mesh_weights.js   (needs handoff schema 0.2.0)
+python -m apps.export_deep_mesh_web # -> apps/web/deep_mesh_weights.js, tests/fixtures/deep_mesh_reference.json
 python -m apps.analogy_figure       # -> docs/figures/phase3_correspondence.png
 python -m apps.build_site
 ```
@@ -326,8 +340,8 @@ reads its points from there rather than carrying its own copy:
 python -m apps.sweep_report         # -> apps/web/optics_sweep.js, docs/figures/optics_sweep.png
 ```
 
-`apps/web/d2nn_weights.js`, `apps/web/analogy_geom.js` and `apps/web/mesh_weights.js` are
-**committed on purpose**: `.gitignore` excludes `*.h5`/`*.pt`, so they are the repo's only copies
+`apps/web/d2nn_weights.js`, `apps/web/analogy_geom.js`, `apps/web/mesh_weights.js` and
+`apps/web/deep_mesh_weights.js` are **committed on purpose**: `.gitignore` excludes `*.h5`/`*.pt`, so they are the repo's only copies
 of what the trained models say, and the only way the site rebuilds from a fresh clone.
 
 The standalone one-widget pages (`apps/d2nn_demo.html`, `apps/diffraction_explorer.html`,
@@ -343,8 +357,13 @@ constants in `apps/build_site.py`, and they have gone stale before — the toler
 live site were the pre-retrain values for four months. After any retrain or any re-run of the
 error budget, re-grep `build_site.py` for the accuracies, the power budget *and* the tolerance
 edges, not just the headline — `/tolerance` now quotes edges for **two** machines, so a mesh
-re-run moves numbers there too. `docs/tolerance_d2nn.md`, `docs/tolerance_mesh.md` and
-`docs/phase2_dnn.md` are the sources of record.
+re-run moves numbers there too. `docs/tolerance_d2nn.md`, `docs/tolerance_mesh.md`,
+`docs/phase2_dnn.md` and `docs/phase5_activation.md` are the sources of record.
+
+**One page is checked.** `/activation` quotes more four-place accuracies than any other, so
+`tests/test_activation_numbers.py` fails if any of them is missing from
+`docs/phase5_activation.md` or `docs/tolerance_mesh.md`. It checks the page against the
+documents of record, not against the model.
 
 ## Publishing
 

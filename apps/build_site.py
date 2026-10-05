@@ -1,4 +1,4 @@
-"""Build the photonn site: five self-contained HTML pages.
+"""Build the photonn site: six self-contained HTML pages.
 
 The site is an explainer of optical neural networks that *lands* on the project's
 central question rather than opening with it. A reader meets the working machine
@@ -11,6 +11,8 @@ fabricated -- which is the answer to "why don't we already have these".
   site/tolerance.html  -- the fabrication error budget for both machines: the
                           study's destination, and where they stop being alike
   site/optics.html     -- live work: how much better the optics could still be
+  site/activation.html -- the chip given one nonlinearity between two layers:
+                          what crossing the wall buys, and what it costs to build
   site/_artifact_body.html -- body-only front page for publishing as a claude.ai
                               Artifact, which supplies its own <head>/<body>
 
@@ -61,7 +63,7 @@ class Page(NamedTuple):
 
     key: str      # link token (@@HREF_key@@) and the stem of the filename
     file: str     # name written into site/
-    nav: str      # topbar label -- short, five of these share one row
+    nav: str      # topbar label -- short, six of these share one row
     title: str    # <title>
     head: str     # human name, used by the "next" hand-off card
     desc: str     # <meta name="description">
@@ -78,7 +80,7 @@ class Page(NamedTuple):
     widgets: tuple = ()
 
 
-#: Reading order. The topbar lists all five; each page hands off to the next.
+#: Reading order. The topbar lists all six; each page hands off to the next.
 PAGES = (
     Page(
         "index", "index.html", "The machine",
@@ -135,6 +137,24 @@ PAGES = (
         "fifty-six-mask network costs in fabrication tolerance to collect it.",
         widgets=("scaling", "compare", "stage3d"),
     ),
+    # After /optics, which ends on "the way through is a nonlinearity" and names the
+    # routes: this is the one route the project could build, on the one machine that
+    # admits it. After /tolerance too, because its budget compares against the chip
+    # budget that closes that page (plan 09's rule: a comparison lives on the later
+    # of the two pages it compares). Every string here is a claim, written from
+    # docs/phase5_activation.md.
+    Page(
+        "activation", "activation.html", "Two layers",
+        "photonn &middot; a second layer, paid for in light",
+        "A second layer, paid for in light",
+        "One electro-optic activation between two interferometer meshes makes a second "
+        "layer worth 3.4 points on this chip, as a pure cube of the light, and the price "
+        "is light rather than precision.",
+        "The one route through the wall this project could build and measure: an "
+        "interferometer that sets its own delay from its own light. It makes a second layer "
+        "worth 3.4 points, and what it costs is light, not precision.",
+        widgets=("eo-curve", "eo-net"),
+    ),
 )
 
 PAGE_BY_KEY = {p.key: p for p in PAGES}
@@ -177,6 +197,13 @@ FIGURES = {
     # page's confusion_ideal rather than "what does fabrication cost?" -- which the
     # six tolerance curves beside it already answer.
     "cand_confusion_ideal": "photonn-hw/figures_candidate_L56/confusion_ideal.png",
+    # Phase 5 (docs/phase5_activation.md), from run_error_budget_deep.m. Never
+    # figures_mesh/ or figures/: those are the published one-layer budgets.
+    "act_power": "photonn-hw/figures_phase5/tolerance_power.png",
+    "act_bias": "photonn-hw/figures_phase5/tolerance_eo_bias.png",
+    "act_phase": "photonn-hw/figures_phase5/tolerance_phase.png",
+    # Four panels in a row, 3.9:1. Readable full width, which is where it goes.
+    "act_sensitivity": "photonn-hw/figures_phase5/sensitivity_map.png",
 }
 
 # A figure is encoded at roughly 2x the CSS width it is actually displayed at,
@@ -317,7 +344,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .theme-toggle:hover{color:var(--ink);border-color:var(--beam);}
 .theme-toggle:focus-visible{outline:2px solid var(--beam);outline-offset:2px;}
 .topbar-right{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;}
-/* Five pages share one row, so the nav is quieter than a row of pills would be:
+/* Six pages share one row, so the nav is quieter than a row of pills would be:
    only the page you are on is drawn as one. */
 .topbar-nav{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
 .topbar-nav a{font-family:var(--mono);font-size:.74rem;letter-spacing:.03em;text-decoration:none;
@@ -863,6 +890,29 @@ MATH = {
     "reach": mathml(mrow("reach = z &middot; &lambda; / ( 2 &middot; dx^2 )")),
     # /tolerance -- the 95%-of-ideal pass mark
     "bar": mathml("<mo>&ge;</mo><mn>0.7591</mn>"),
+    # /activation -- Williamson et al. (2020), Eqs. (6) and (7). |z|^2 is written out,
+    # as "intensity" is, because the compact notation has no grouping for bars.
+    "two_layers": mathml(
+        mrow("( U_2 &Sigma;_2 V_2 ) ( U_1 &Sigma;_1 V_1 ) = M"), display=True),
+    "eo": mathml(
+        mrow("f ( z ) = j") + msqrt(mrow("1 &minus; &alpha;"))
+        + mrow("exp ( &minus; j h ) cos ( h ) z , h =")
+        + "<mfrac><mrow><msub><mi>g</mi><mi>&phi;</mi></msub>"
+          "<msup><mrow><mo>|</mo><mi>z</mi><mo>|</mo></mrow><mn>2</mn></msup>"
+          "<mo>+</mo><msub><mi>&phi;</mi><mi>b</mi></msub></mrow><mn>2</mn></mfrac>",
+        display=True),
+    "eo_gain": mathml(mrow("g_&phi; =") + mfrac("&pi; &alpha; G &#8476;", "V_&pi;"), display=True),
+    "eo_T": mathml(
+        mrow("T ( P ) = ( 1 &minus; &alpha; ) cos^2 (")
+        + mfrac("g_&phi; P + &phi;_b", "2") + mrow(")"), display=True),
+    "act_usv": mathml(mrow("U &middot; &Sigma; &middot; V")),
+    "act_alpha": mathml(mrow("&alpha;")),
+    "act_h": mathml(mrow("h")),
+    "act_phib": mathml(mrow("&phi;_b")),
+    "act_G": mathml(mrow("G")),
+    "act_R": mathml(mrow("&#8476;")),
+    "act_vpi": mathml(mrow("V_&pi;")),
+    "act_cube": mathml("<msup><mrow><mo>|</mo><mi>z</mi><mo>|</mo></mrow><mn>2</mn></msup><mi>z</mi>"),
 }
 
 
@@ -1034,6 +1084,12 @@ TOLERANCE_BODY = page_body("tolerance")
 # a short ranking protocol, so every number on the page says so.
 OPTICS_BODY = page_body("optics")
 
+# --------------------------------------------------------------------- ACTIVATION
+# The chip given one nonlinearity between two layers (Phase 5). Every number on it
+# is restated from docs/phase5_activation.md, and tests/test_activation_numbers.py
+# holds the page's accuracies to that document.
+ACTIVATION_BODY = page_body("activation")
+
 def _document(body: str, page: Page) -> str:
     """Wrap a rendered body in the shared document shell."""
     return (
@@ -1169,9 +1225,23 @@ def render() -> dict:
     # board is, and decides for itself when to run the forward pass.
     opt = opt.replace("@@COMPARE_MOUNT@@", compare_mount(
         "compare", gallery=14, stage_id="stage3d", stage_model="deep"))
-    # Last page in the reading order: the hand-off loops back to the machine.
     opt = _chrome(opt, "optics")
     out["optics.html"] = _document(resolve_links(opt), PAGE_BY_KEY["optics"])
+
+    # The device curve and the live two-layer chip share one widget file and one
+    # engine. activation.js reads its bundle at mount rather than at module scope,
+    # so the order below is a convenience, not a hazard; it is asserted anyway.
+    # Last page in the reading order: the hand-off loops back to the machine.
+    act = ACTIVATION_BODY.replace(
+        "@@ACTIVATION_BUNDLE@@",
+        script_tags("mesh.js", "deep_mesh_weights.js", "activation.js"))
+    act = act.replace("@@ACTIVATION_MOUNT@@", "\n".join((
+        mount_script("eo-curve", "window.PhotonnActivation.mount(el, {mode: 'device'});"),
+        mount_script("eo-net", "window.PhotonnActivation.mount(el, {mode: 'network'});",
+                     defer=True),
+    )))
+    act = _chrome(act, "activation")
+    out["activation.html"] = _document(resolve_links(act), PAGE_BY_KEY["activation"])
 
     return out
 

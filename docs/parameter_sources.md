@@ -104,23 +104,24 @@ Sources (URLs):
   https://arxiv.org/abs/2308.16181. Verified 2026-08-14. *(Volume and page not
   confirmed: nature.com sits behind an auth redirect, so the page cites it by DOI.)*
 
-### Nonlinearity routes — mostly UNSOURCED, and the page says so
+### Nonlinearity routes — two of three sourced since Phase 5
 
-`/optics` closes by naming three ways the field is trying to give an optical network
-the nonlinearity a mask stack cannot have. **Only one of the three is sourced.**
+`/optics` names three ways the field is trying to give an optical network the
+nonlinearity a mask stack cannot have. The optoelectronic family is split in two on the
+page, because the two cost different things and only one of them keeps the light:
 
 | Route | Status |
 |---|---|
 | Input encoded in the scattering parameters rather than the wave | **Sourced** — Wanjura & Marquardt, above |
-| Optoelectronic conversion loops | `UNSOURCED` — described mechanically, no citation |
+| Detect, compute, re-send a **fresh beam** | **Sourced** — Meyer et al. 2026, Fig. 1b (photodiode → TIA → ADC → digital → DAC → input modulator); see *The activation* below |
+| Tap the **same light** to a photodiode that drives an interferometer | **Sourced** — Williamson et al. 2020, with Bandyopadhyay et al. 2024 as the on-chip relative; **built and measured here** as Phase 5 (`phase5_activation.md`) |
 | Intensity-dependent materials (saturable absorbers, phase-change) | `UNSOURCED` — described mechanically, no citation |
 
-This is the one place on the site where a claim runs ahead of its ledger, so it is
-handled the way the convention above requires: the two unsourced routes are stated
-as mechanisms rather than as results, no performance number is attached to either,
-and the page says in its own words that this study tested none of them and vouches
-for none of them. **Anything more than that needs a verified source first.** This is
-the largest open citation task in the project.
+The materials route is now the one place on that page where a claim runs ahead of its
+ledger, so it is handled the way the convention above requires: stated as a mechanism
+rather than a result, with no performance number, and the page says the project vouches
+only for the one route it built. **Anything more than that needs a verified source
+first.**
 
 **Two derived numbers on that page, for the record.** The 60 ps transit is the
 18 mm stack length divided by `c`. The ~1 fJ per inference is the 1 pW × 1 ms
@@ -135,7 +136,8 @@ nothing in this project models those.
 The seven quantities the MZI-mesh error budget sweeps, what each one drives, and the
 class of source that would settle it. Nothing here has a value yet; the middle column
 is what the sweep covers, not a claim about any process. Filling this table in is the
-**second-largest open citation task in the project**, after the nonlinearity routes.
+**largest open citation task in the project**, now that two of the three nonlinearity
+routes are sourced.
 
 The device the mesh budget implies is a **telecom-wavelength silicon photonic
 processor** (1550 nm, thermo-optic phase shifters, directional couplers or MMIs), so

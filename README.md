@@ -16,7 +16,7 @@ forward pass in your browser: draw a digit or pick one from the frozen MNIST tes
 it diffract through five trained phase masks onto ten detectors. No libraries, no network,
 nothing precomputed.
 
-Four more pages read on from it:
+Five more pages read on from it:
 
 - [**the wave optics underneath**](https://roosado.github.io/photonn/physics.html) — with a
   diffraction explorer that recomputes scalar diffraction live as you move the controls
@@ -27,13 +27,17 @@ Four more pages read on from it:
   closing on the chip, which fails a different way
 - [**how much better the optics could be**](https://roosado.github.io/photonn/optics.html) —
   what depth buys, and why more of it is not the answer
+- [**a second layer, paid for in light**](https://roosado.github.io/photonn/activation.html) —
+  the chip given one nonlinearity between two meshes, running live: what crossing the wall buys,
+  and what it costs to build
 
 **The through-line, stated once.** A stack of phase masks is *one linear operator* no matter how
 tall it is, so depth converges on the best that operator can do rather than compounding the way
 depth does in an ordinary network. Eleven times the masks buys 10.5 points of accuracy and costs
 2× tighter phase control, while the one fabrication error that already fails does not move at
-all. The way past that ceiling is a nonlinearity, which this project characterises and
-deliberately does not try to build.
+all. The way past that ceiling is a nonlinearity. The glass stack gets none; the chip gets one,
+built from its own parts (Phase 5), and the measurement is that it makes a second layer worth
+3.4 points and pays for it in light rather than precision.
 
 Two codebases, one project, separated by a one-directional boundary:
 
@@ -66,7 +70,7 @@ it should be claiming. Each row links to where that work is written up in full.
 | **17 Aug** | The detector layout **re-scored against the masks that ship**, on data that is neither trained on nor the frozen test set. The shipped boxes still win, and the 40 % of light that misses them is still not headroom — but depth turns out to make the readout almost indifferent to box size. | [`phase2_dnn.md`](docs/phase2_dnn.md#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17) |
 | **19 Aug** | The front page's amplitude/phase paragraph becomes a **widget**: two waves, one slider, and a detector reading that goes to zero when they are held half a wavelength apart. Drawn from the closed form it illustrates, and held to it to 1e-12. | [`site/README.md`](site/README.md) |
 | **19 Aug** | The front page stops promising a **glass specification** and starts promising the failure modes: what limits these machines, which flaws break them, and **where light could actually pay** — focal-plane sensing, cytometry, RF front ends, orbit — with the GPU comparison left exactly as unflattering as it was. The "two families of machine" claim is retired. | [`site/README.md`](site/README.md) |
-| **5 Oct** | **Phase 5.** One electro-optic activation (Williamson et al. 2020) between two mesh layers. The paper's gain reproduced here, on its own input; on ours the chip gains **3.4 points** where a second linear layer gains nothing. The activation runs as a pure cubic, so the price is light, not precision: **10–100 mW** per input at 10 GHz against 10 µW for one mesh, with eight predictions registered before the budget: two wrong, one half right. | [`phase5_activation.md`](docs/phase5_activation.md) |
+| **5 Oct** | **Phase 5.** One electro-optic activation (Williamson et al. 2020) between two mesh layers. The paper's gain reproduced here, on its own input; on ours the chip gains **3.4 points** where a second linear layer gains nothing. The activation runs as a pure cubic, so the price is light, not precision: **10–100 mW** per input at 10 GHz against 10 µW for one mesh, with eight predictions registered before the budget: two wrong, one half right. The site gains a sixth page that runs the trained chip live. | [`phase5_activation.md`](docs/phase5_activation.md) · [`site/README.md`](site/README.md) |
 
 **Where things are written down.** [`docs/`](docs/README.md) is the reference — one file per
 question, indexed. [`site/README.md`](site/README.md) covers the generated pages and how the
@@ -96,7 +100,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`483 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`532 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
 `test_interference_widget.py`, `test_mount_queue.py`, `test_mount_smoke.py`, `test_plot.py` —

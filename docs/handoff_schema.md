@@ -1,4 +1,4 @@
-# Handoff schema (`schema_version = 0.3.0`)
+# Handoff schema (`schema_version = 0.4.0`)
 
 The single HDF5 file Python writes and MATLAB reads. **One-directional by
 design:** Python (`photonn/export.py`) writes; MATLAB (`photonn-hw/+io/read_handoff.m`)
@@ -10,14 +10,14 @@ Any change to this layout must bump `SCHEMA_VERSION` there **and** the
 `SUPPORTED_SCHEMAS` list in the MATLAB reader.
 
 Writers always emit the current version; readers accept every version in
-`SUPPORTED_SCHEMAS`. That is what lets 0.2.0 and 0.3.0 land without re-exporting
-the 131 MB `exports/d2nn_phase2.h5`.
+`SUPPORTED_SCHEMAS`. That is what lets 0.2.0, 0.3.0 and 0.4.0 land without
+re-exporting the 131 MB `exports/d2nn_phase2.h5` or the published 36-mode mesh.
 
 ## Layout
 
 ```
 /                                 (root)
-  @schema_version   str           e.g. "0.3.0" (checked by the reader)
+  @schema_version   str           e.g. "0.4.0" (checked by the reader)
   @created          str           ISO-8601 UTC timestamp
   @description      str           free text
   @test_acc         f64           test accuracy of the exported model (0.3.0+)
@@ -37,20 +37,31 @@ the 131 MB `exports/d2nn_phase2.h5`.
   # photonn.export.OPERATING_POINT with the model kinds that require it; the
   # writer rejects an unrecognised key and a missing required one, and both
   # readers refuse a file that lacks one rather than defaulting it.
-  @wavelength_m      f64          operating wavelength, metres      (d2nn, mesh)
-  @readout_gain      f64          region intensity -> logit scale   (d2nn, mesh)
-  @input_power_w     f64          entrance power, photon budget     (d2nn, mesh)
-  @integration_time_s f64         detector integration window       (d2nn, mesh)
+  # "all" below means d2nn, mesh and deep_mesh.
+  @wavelength_m      f64          operating wavelength, metres      (all)
+  @readout_gain      f64          region intensity -> logit scale   (all)
+  @input_power_w     f64          entrance power, photon budget     (all; for deep_mesh
+                                  also where the activation sits on its curve)
+  @integration_time_s f64         detector integration window       (all)
   @pixel_pitch_m     f64          grid pitch, metres                (d2nn)
   @phase_scale_rad   f64          full-scale mask phase             (d2nn)
   @input_frac        f64          entrance window as a fraction of N (d2nn)
   @encoding_code     f64          0 amplitude, 1 phase, 2 both      (d2nn)
-  @n_modes           f64          mesh width                        (mesh)
-  @n_classes         f64          readout classes                   (mesh)
-  @sigma_gain        f64          external gain undoing passivization (mesh)
+  @n_modes           f64          mesh width                        (mesh, deep_mesh)
+  @n_classes         f64          readout classes                   (mesh, deep_mesh)
+  @sigma_gain        f64          external gain undoing passivization (mesh, deep_mesh;
+                                  for deep_mesh the last layer's only)
+  @eo_alpha          f64          activation tap fraction           (deep_mesh)
+  @eo_g_phi          f64          phase gain, rad/W (Eq. 7)         (deep_mesh)
+  @eo_phi_b          f64          bias phase, rad (Eq. 5)           (deep_mesh)
+  @eo_tia_gain_ohm   f64          transimpedance gain G             (deep_mesh)
+  @eo_responsivity_a_per_w f64    photodiode responsivity R         (deep_mesh)
+  @eo_v_pi           f64          modulator half-wave voltage, V    (deep_mesh)
+  @eo_v_bias         f64          modulator bias voltage, V         (deep_mesh)
+  @eo_bandwidth_hz   f64          photodiode-amplifier loop bandwidth (deep_mesh)
 
 /parameters
-  @model_type       str           "d2nn" | "mesh"
+  @model_type       str           "d2nn" | "mesh" | "deep_mesh"
   # model_type == "d2nn":
   phase_masks       f64[n_layers, N, N]    trained phase profiles, radians
   # model_type == "mesh"  (all four datasets required since 0.2.0):
@@ -62,10 +73,23 @@ the 131 MB `exports/d2nn_phase2.h5`.
   phase_phi         f64[n_meshes * n_mzi]  external MZI phases, radians
   sigma             f64[n_modes]           diagonal transmissions, passivized to [0, 1]
   out_phase         f64[n_meshes, n_modes] per-mesh output phase screen, radians
+  # model_type == "deep_mesh"  (0.4.0): one mesh block per layer
+  @n_modes, @n_mzi_per_mesh, @mesh_order, @topology   as for mesh
+  @n_layers         int           SVD layers (>= 2); an activation bank sits
+                                  between each consecutive pair
+  @activation       str           "williamson2020_eo"
+  phase_theta       f64[n_layers, 2 * n_mzi]  row l = layer l's [V, U] phases
+  phase_phi         f64[n_layers, 2 * n_mzi]
+  sigma             f64[n_layers, n_modes]    all in [0, 1]: passive ahead of an
+                                              activation, passivized after the last
+  out_phase         f64[n_layers, 2, n_modes]
 
 /test_set
-  images            f32[n_samples, N, N]   frozen test images (encoded input)
+  images            f32[n_samples, N, N]   frozen test images (encoded input; for
+                                           files with inputs_re, the raw image)
   labels            i32[n_samples]         integer class labels
+  inputs_re         f64[n_samples, n_modes]  encoded unit-norm input, real part (0.4.0;
+  inputs_im         f64[n_samples, n_modes]  imaginary part   required for deep_mesh)
 ```
 
 ## Notes
@@ -91,6 +115,27 @@ the 131 MB `exports/d2nn_phase2.h5`.
   crosses the boundary is therefore a device that could exist.
 
 ## Version history
+
+### 0.4.0
+
+* The `deep_mesh` model kind (Phase 5, `docs/phase5_activation.md`): SVD mesh layers
+  with a bank of Williamson et al. (2020) electro-optic activations between them. Each
+  row of its parameter arrays is exactly one `mesh` file's parameters, so the as-built
+  side builds each layer with the code it already had.
+* The activation's constants on `/operating_point`, **both** the three the forward pass
+  uses (`eo_alpha`, `eo_g_phi`, `eo_phi_b`) and the raw device values they come from
+  (`eo_tia_gain_ohm`, `eo_responsivity_a_per_w`, `eo_v_pi`, `eo_v_bias`), because the
+  as-built model perturbs a device quantity, not a derived one. The writer and both
+  readers check that the raw values reproduce the derived ones through Eqs. (5) and
+  (7), so the two cannot describe different devices. Plus `eo_bandwidth_hz`, which sets
+  the activation's own detector noise.
+* `/test_set/inputs_re` and `inputs_im`: the encoded input as data. The Phase-5 input
+  is 16 complex Fourier coefficients, and the magnitude map `images` used to carry
+  for the 6x6 mesh cannot describe it. Required for `deep_mesh`, allowed for `mesh`
+  (the one-layer 16-mode baseline uses it); readers fall back to `images` without it.
+* `input_power_w` becomes load-bearing for `deep_mesh`: the activation responds to
+  watts, so the stored unit-norm inputs enter the chip scaled by its square root.
+* Additive. No `d2nn` or `mesh` layout moved; 0.1.0 to 0.3.0 files still load.
 
 ### 0.3.0
 

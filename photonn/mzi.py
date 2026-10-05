@@ -246,3 +246,154 @@ def svd_reconstruct(svd_settings) -> np.ndarray:
     u = reconstruct(svd_settings["u"])
     v = reconstruct(svd_settings["v"])
     return u @ np.diag(svd_settings["s"]).astype(complex) @ v.conj().T
+
+
+# -- Phase 5: the electro-optic activation ----------------------------------------
+#
+# Williamson, Hughes, Minkov, Bartlett, Pai & Fan, "Reprogrammable electro-optic
+# nonlinear activation functions for optical neural networks," IEEE JSTQE 26(1):
+# 7700412 (2020), doi:10.1109/JSTQE.2019.2930455 (arXiv:1903.04579). A tap coupler
+# sends a fraction alpha of a mode's power to a photodiode; the amplified
+# photocurrent drives the internal phase of an MZI that the remaining light crosses.
+# It is this module's own MZI with a phase set by the light's own power, which is
+# why it lives here rather than in a materials module the project does not have.
+
+def eo_phase_gain(*, alpha: float, tia_gain_ohm: float, responsivity_a_per_w: float,
+                  v_pi: float) -> float:
+    """Phase written on the modulator per watt of light entering the activation.
+
+    Williamson et al. Eq. (7): ``g_phi = pi * alpha * G * R / V_pi`` (rad/W).
+    ``alpha`` is the tapped power fraction, ``G`` the transimpedance gain (ohm),
+    ``R`` the photodiode responsivity (A/W) and ``V_pi`` the modulator's half-wave
+    voltage. Physical constants enter the activation only through this function and
+    :func:`eo_bias_phase`, so each is cited where it is passed.
+    """
+    return float(np.pi * alpha * tia_gain_ohm * responsivity_a_per_w / v_pi)
+
+
+def eo_bias_phase(*, v_bias: float, v_pi: float) -> float:
+    """Static phase from the bias voltage: Williamson et al. Eq. (5), ``pi V_b / V_pi``."""
+    return float(np.pi * v_bias / v_pi)
+
+
+def eo_activation(z, *, alpha: float, g_phi: float, phi_b: float) -> np.ndarray:
+    """Williamson et al. (2020) Eq. (6), element-wise on complex mode amplitudes.
+
+    ``f(z) = j sqrt(1-alpha) exp(-j[g|z|^2 + phi_b]/2) cos([g|z|^2 + phi_b]/2) z``,
+    with ``|z|^2`` the mode's power in the units ``g_phi`` is quoted per (watts for
+    a physical device, so a field in sqrt(W)).
+
+    **Sign convention.** The paper writes time as ``e^{-j omega t}`` and this
+    project's MZI as ``e^{+i ...}``; the two agree with ``f(z) = sqrt(1-alpha) *
+    [B P(theta) B]_{10} z`` built from :func:`beamsplitter` and :func:`phase_shifter`
+    at ``theta = -(phi_b + g|z|^2)``, element (1, 0) being the cross port: light
+    enters the top arm and leaves the bottom one.
+    :func:`photonn.validate.eo_activation_reference` builds exactly that, and the
+    tests hold the two together to ~1e-15.
+
+    **Where it operates.** Transmission ``|f|^2/|z|^2 = (1-alpha) cos^2(...)``. At
+    ``phi_b = pi`` and ``g|z|^2 << 1`` it is a pure cubic,
+    ``f ~ -sqrt(1-alpha) (g/2) |z|^2 z``, with no linear term: weak light is not
+    passed weakly, it is passed as its own cube.
+
+    Passivity is asserted at runtime (CLAUDE.md "invariants as runtime
+    assertions"): an activation that amplifies is a bug, and the only way to get
+    one here is an ``alpha`` outside ``[0, 1)``.
+    """
+    if not 0.0 <= alpha < 1.0:
+        raise ValueError(f"alpha is a tapped power fraction in [0, 1); got {alpha!r}.")
+    z = np.asarray(z, dtype=complex)
+    power = np.abs(z) ** 2
+    half = 0.5 * (g_phi * power + phi_b)
+    out = 1j * np.sqrt(1.0 - alpha) * np.cos(half) * np.exp(-1j * half) * z
+    assert_passive(z, out, alpha)
+    return out
+
+
+def clements_schedule(n_modes: int):
+    """The rectangular brick the trained meshes use: ``[[(top_mode, mzi_index), ...], ...]``.
+
+    Column ``c`` couples the pairs starting at mode ``c % 2``; MZIs are numbered in
+    column order. The same schedule as :class:`photonn.layers.MZIMeshLayer` and
+    ``photonn-hw/+meshmodel/schedule.m`` (a test holds the first two together).
+    """
+    columns, idx = [], 0
+    for c in range(n_modes):
+        col = []
+        for m in range(c % 2, n_modes - 1, 2):
+            col.append((m, idx))
+            idx += 1
+        columns.append(col)
+    return columns
+
+
+def brick_matrix(theta, phi, out_phase) -> np.ndarray:
+    """One trained mesh's operator from its stored angles, column by column, in NumPy.
+
+    ``diag(exp(i out_phase)) L_n ... L_1`` with each column built from
+    :func:`mzi_matrix`. Mirrors :meth:`photonn.layers.MZIMeshLayer.matrix`.
+    """
+    out_phase = np.asarray(out_phase, dtype=float)
+    n = out_phase.size
+    m = np.eye(n, dtype=complex)
+    for column in clements_schedule(n):
+        layer = np.eye(n, dtype=complex)
+        for top, idx in column:
+            layer[top:top + 2, top:top + 2] = mzi_matrix(theta[idx], phi[idx])
+        m = layer @ m
+    return np.diag(np.exp(1j * out_phase)) @ m
+
+
+def deep_mesh_forward(params: dict, x_unit, *, input_power_w: float, alpha: float,
+                      g_phi: float, phi_b: float):
+    """The Phase-5 deep mesh in float64, in physical units, from handoff-shaped arrays.
+
+    ``params`` holds ``phase_theta``/``phase_phi`` ``[L, 2 n_mzi]`` (each row
+    ``[V, U]``), ``sigma`` ``[L, n]`` and ``out_phase`` ``[L, 2, n]``, exactly as a
+    ``deep_mesh`` handoff stores them. ``x_unit`` is the encoder's unit-norm field,
+    ``[B, n]``; it enters the chip as ``sqrt(input_power_w) * x_unit``, so every field
+    here is in sqrt(W) and ``g_phi`` is in rad/W. Row-vector convention, ``U diag(s) V``
+    with V as stored -- the same two conventions ``+meshmodel`` holds.
+
+    Returns ``(out, taps)``: the output field ``[B, n]`` and, per activation bank, the
+    per-mode power entering it in watts. No noise of any kind: this is the design
+    model, and the reference both the MATLAB as-built model and the browser are held
+    to.
+    """
+    theta = np.asarray(params["phase_theta"], dtype=float)
+    phi = np.asarray(params["phase_phi"], dtype=float)
+    sigma = np.asarray(params["sigma"], dtype=float)
+    out_phase = np.asarray(params["out_phase"], dtype=float)
+    n_layers, n = sigma.shape
+    n_mzi = n * (n - 1) // 2
+    z = np.sqrt(input_power_w) * np.asarray(x_unit, dtype=complex)
+    taps = []
+    for layer in range(n_layers):
+        v = brick_matrix(theta[layer, :n_mzi], phi[layer, :n_mzi], out_phase[layer, 0])
+        u = brick_matrix(theta[layer, n_mzi:], phi[layer, n_mzi:], out_phase[layer, 1])
+        z = z @ (u @ np.diag(sigma[layer].astype(complex)) @ v).T
+        if layer < n_layers - 1:
+            taps.append(np.abs(z) ** 2)
+            z = eo_activation(z, alpha=alpha, g_phi=g_phi, phi_b=phi_b)
+    return z, taps
+
+
+def assert_passive(z_in, z_out, alpha: float, rtol: float = 1e-12) -> None:
+    """Raise if an activation put out more power than ``(1 - alpha)`` of what it took in.
+
+    Element-wise. Honours :data:`photonn.validate.STRICT`, like the other runtime
+    invariants.
+    """
+    from photonn import validate
+
+    if not validate.STRICT:
+        return
+    p_in = np.abs(np.asarray(z_in)) ** 2
+    p_out = np.abs(np.asarray(z_out)) ** 2
+    excess = p_out - (1.0 - alpha) * p_in
+    if np.any(excess > rtol * np.maximum(p_in, np.finfo(float).tiny)):
+        worst = float(np.max(excess))
+        raise ValueError(
+            f"activation is not passive: output exceeds (1 - alpha) of input power by "
+            f"up to {worst:.3e}. An electro-optic activation can only attenuate."
+        )

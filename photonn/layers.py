@@ -11,6 +11,8 @@ This is the only module in the package that imports ``torch`` at import time.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import torch
 from torch import nn
@@ -166,3 +168,33 @@ class MZIMeshLayer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x @ self.matrix().T   # rows of x are mode vectors
+
+
+class EOActivationLayer(nn.Module):
+    """The Phase-5 electro-optic activation, one per mode, as a differentiable layer.
+
+    A thin torch port of :func:`photonn.mzi.eo_activation` (Williamson et al. 2020,
+    Eq. 6), checked against it in the tests. ``g_phi`` is in rad per unit of
+    ``|z|^2`` -- rad/W when the field is in sqrt(W), which is how
+    :class:`~photonn.models.DeepMeshNetwork` drives it. The constants are buffers,
+    not parameters: training the device's gain or bias was cause 4 of the Phase-5
+    gate and bought nothing (``docs/phase5_activation.md``).
+    """
+
+    def __init__(self, alpha: float, g_phi: float, phi_b: float):
+        super().__init__()
+        if not 0.0 <= alpha < 1.0:
+            raise ValueError(f"alpha is a tapped power fraction in [0, 1); got {alpha!r}.")
+        self.alpha = float(alpha)
+        self.register_buffer("g_phi", torch.tensor(float(g_phi), dtype=torch.float64))
+        self.register_buffer("phi_b", torch.tensor(float(phi_b), dtype=torch.float64))
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        power = z.real ** 2 + z.imag ** 2
+        half = 0.5 * (self.g_phi.to(power.dtype) * power + self.phi_b.to(power.dtype))
+        # Not torch.polar(cos(half), -half): that modulus is signed -- negative
+        # throughout the phi_b = pi weak-light tail -- and polar's backward takes the
+        # sign of its result as the direction of d/d|r|, so it returns the gradient
+        # with the wrong sign. Forward agrees either way; training sat at chance.
+        rot = torch.polar(torch.ones_like(half), -half)
+        return 1j * math.sqrt(1.0 - self.alpha) * torch.cos(half) * rot * z

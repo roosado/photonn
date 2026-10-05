@@ -106,3 +106,42 @@ def mesh_payload(rng):
         test_labels=labels,
         description="mesh round-trip fixture",
     )
+
+
+def _deep_operating_point(n_modes):
+    """A consistent Phase-5 operating point: g_phi and phi_b follow from the raw values."""
+    alpha, gain_ohm, resp, v_pi, v_b = 0.1, 5000.0, 1.0, 10.0, 10.0
+    return dict(
+        _OPERATING_POINT["mesh"], n_modes=n_modes,
+        eo_alpha=alpha, eo_tia_gain_ohm=gain_ohm, eo_responsivity_a_per_w=resp,
+        eo_v_pi=v_pi, eo_v_bias=v_b,
+        eo_g_phi=float(np.pi * alpha * gain_ohm * resp / v_pi),
+        eo_phi_b=float(np.pi * v_b / v_pi),
+        eo_bandwidth_hz=1.0e10,
+    )
+
+
+@pytest.fixture
+def deep_mesh_payload(rng):
+    """A valid ``deep_mesh`` handoff payload (schema 0.4.0): two layers of four modes."""
+    n_layers, n_modes = 2, 4
+    n_mzi = n_modes * (n_modes - 1) // 2
+    images, labels = _test_set(rng, 28)
+    inputs = rng.standard_normal((len(labels), n_modes)) + 1j * rng.standard_normal(
+        (len(labels), n_modes))
+    inputs /= np.linalg.norm(inputs, axis=1, keepdims=True)
+    return dict(
+        model_type="deep_mesh",
+        parameters={
+            "phase_theta": rng.random((n_layers, 2 * n_mzi)),
+            "phase_phi": rng.random((n_layers, 2 * n_mzi)),
+            "sigma": rng.random((n_layers, n_modes)),
+            "out_phase": rng.random((n_layers, 2, n_modes)),
+        },
+        geometry=_geometry(n_modes, 2 * n_layers, regions=False),
+        operating_point=_deep_operating_point(n_modes),
+        test_images=images,
+        test_labels=labels,
+        test_inputs=inputs,
+        description="deep_mesh round-trip fixture",
+    )

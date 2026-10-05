@@ -151,9 +151,10 @@ def test_validate_catches_a_constant_deleted_after_the_write(tmp_path, d2nn_payl
         validate_handoff(path)
 
 
-def test_the_fixtures_are_as_complete_as_the_manifest(d2nn_payload, mesh_payload):
+def test_the_fixtures_are_as_complete_as_the_manifest(d2nn_payload, mesh_payload,
+                                                      deep_mesh_payload):
     """Guard the guard: a fixture that drifts behind the manifest tests nothing."""
-    for payload in (d2nn_payload, mesh_payload):
+    for payload in (d2nn_payload, mesh_payload, deep_mesh_payload):
         kind = payload["model_type"]
         required = {k for k, s in OPERATING_POINT.items() if kind in s.required_for}
         assert required <= set(payload["operating_point"])

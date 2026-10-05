@@ -54,4 +54,12 @@
 %   are present (private/phase_fields.m), so sigma stays in radians and bit depth
 %   in bits across both architectures and the two tolerance tables compare.
 %
+%   Activation (Phase 5, the deep mesh only -- docs/phase5_activation.md):
+%     eo_tap_spread        - Spread in each activation's tap fraction alpha.
+%     eo_bias_error        - Error in each activation's bias phase.
+%     eo_gain_error        - Systematic calibration error on the phase gain.
+%     eo_coupler_imbalance - Imbalance in the activation MZI's two couplers.
+%   The activation's own detector noise is applied inside
+%   meshmodel.evaluate_deep, because it depends on the light reaching it.
+%
 %   Error modeling lives here, never in Python (boundary is one-directional).

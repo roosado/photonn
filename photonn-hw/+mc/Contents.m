@@ -14,6 +14,8 @@
 %   Functions
 %     run_montecarlo      - Drive N realizations of a chosen error configuration.
 %     run_montecarlo_mesh - The same for the MZI mesh; shares the STATS contract.
+%     run_montecarlo_deep - The same for the Phase-5 deep mesh: every mesh source
+%                           per layer, plus the activation's own.
 %     sweep               - Sweep one source over a range, collecting statistics.
 %     pack                - Assemble a results struct for +viz and the .mat file.
 %     error_sources       - Every errorConfig field a driver recognises, per arch.

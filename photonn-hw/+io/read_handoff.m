@@ -17,7 +17,7 @@ function data = read_handoff(filename)
 %   reversed relative to the Python (row-major) writer. A Python f32[n, N, N]
 %   comes back here as N-by-N-by-n. Downstream code must account for this.
 
-    SUPPORTED_SCHEMAS = ["0.1.0", "0.2.0", "0.3.0"];
+    SUPPORTED_SCHEMAS = ["0.1.0", "0.2.0", "0.3.0", "0.4.0"];
 
     if ~isfile(filename)
         error("io:read_handoff:fileNotFound", "File not found: %s", filename);
@@ -68,7 +68,10 @@ function data = read_handoff(filename)
     shared = ["wavelength_m", "readout_gain", "input_power_w", "integration_time_s"];
     perModel = struct( ...
         "d2nn", ["pixel_pitch_m", "phase_scale_rad", "input_frac", "encoding_code"], ...
-        "mesh", ["n_modes", "n_classes", "sigma_gain"]);
+        "mesh", ["n_modes", "n_classes", "sigma_gain"], ...
+        "deep_mesh", ["n_modes", "n_classes", "sigma_gain", "eo_alpha", "eo_g_phi", ...
+                      "eo_phi_b", "eo_tia_gain_ohm", "eo_responsivity_a_per_w", ...
+                      "eo_v_pi", "eo_v_bias", "eo_bandwidth_hz"]);
 
     modelType = string(h5readatt(filename, "/parameters", "model_type"));
     if ~isfield(perModel, modelType)
@@ -106,6 +109,34 @@ function data = read_handoff(filename)
             data.parameters.n_mzi       = double(h5readatt(filename, "/parameters", "n_mzi_per_mesh"));
             data.parameters.mesh_order  = string(h5readatt(filename, "/parameters", "mesh_order"));
             data.parameters.topology    = string(h5readatt(filename, "/parameters", "topology"));
+        case "deep_mesh"
+            % Schema 0.4.0. Python writes theta/phi as f8[n_layers, 2*nMzi], sigma as
+            % f8[n_layers, nModes] and out_phase as f8[n_layers, 2, nModes]; h5read
+            % reverses every dimension, so they arrive as 2*nMzi-by-L, nModes-by-L and
+            % nModes-by-2-by-L. Column l is layer l, each in the [V, U] order a mesh
+            % file uses -- so one column is exactly one mesh handoff's parameters.
+            data.parameters.phase_theta = h5read(filename, "/parameters/phase_theta");
+            data.parameters.phase_phi   = h5read(filename, "/parameters/phase_phi");
+            data.parameters.sigma       = h5read(filename, "/parameters/sigma");
+            data.parameters.out_phase   = h5read(filename, "/parameters/out_phase");
+            data.parameters.n_modes     = double(h5readatt(filename, "/parameters", "n_modes"));
+            data.parameters.n_mzi       = double(h5readatt(filename, "/parameters", "n_mzi_per_mesh"));
+            data.parameters.n_layers    = double(h5readatt(filename, "/parameters", "n_layers"));
+            data.parameters.mesh_order  = string(h5readatt(filename, "/parameters", "mesh_order"));
+            data.parameters.topology    = string(h5readatt(filename, "/parameters", "topology"));
+            data.parameters.activation  = string(h5readatt(filename, "/parameters", "activation"));
+            % The writer checks that the derived constants follow from the device
+            % values (Williamson et al. Eqs. 5 and 7); check again on the way in,
+            % because the as-built side perturbs the raw values and the two must
+            % describe one device.
+            o = data.operating_point;
+            g = pi * o.eo_alpha * o.eo_tia_gain_ohm * o.eo_responsivity_a_per_w / o.eo_v_pi;
+            b = pi * o.eo_v_bias / o.eo_v_pi;
+            if abs(g - o.eo_g_phi) > 1e-9 * abs(g) || abs(b - o.eo_phi_b) > 1e-9 * abs(b)
+                error("io:read_handoff:eoInconsistent", ...
+                    "Handoff '%s': eo_g_phi/eo_phi_b do not follow from the device values.", ...
+                    filename);
+            end
         otherwise
             error("io:read_handoff:badModelType", ...
                 "Unknown model_type '%s'.", model_type);
@@ -114,6 +145,17 @@ function data = read_handoff(filename)
     % -- frozen test set -------------------------------------------------
     data.test_set.images = h5read(filename, "/test_set/images");
     data.test_set.labels = h5read(filename, "/test_set/labels");
+    % Schema 0.4.0: the encoded inputs as data, f8[nTest, nModes] real and imaginary
+    % parts, arriving nModes-by-nTest. Transposed here into the B-by-nModes row
+    % convention meshmodel uses. Empty for older files, whose input is the magnitude
+    % map in images.
+    try
+        re = h5read(filename, "/test_set/inputs_re");
+        im = h5read(filename, "/test_set/inputs_im");
+        data.test_set.inputs = complex(re, im).';
+    catch
+        data.test_set.inputs = [];
+    end
 end
 
 

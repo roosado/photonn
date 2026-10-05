@@ -13,7 +13,8 @@ import torch
 from torch import nn
 
 from photonn.detect import default_regions
-from photonn.layers import AngularSpectrumLayer, MZIMeshLayer, PhaseMaskLayer
+from photonn.layers import (AngularSpectrumLayer, EOActivationLayer, MZIMeshLayer,
+                            PhaseMaskLayer)
 
 
 class D2NN(nn.Module):
@@ -137,3 +138,103 @@ class MeshNetwork(nn.Module):
         region = intensity[:, :self.n_classes]
         total = intensity.sum(dim=1, keepdim=True).clamp_min(1e-12)
         return region / total * self.readout_gain
+
+
+class SVDMeshLayer(nn.Module):
+    """One ``U diag(sigma) V`` layer, as :class:`MeshNetwork` builds it.
+
+    ``passive`` holds sigma in (0, 1) through a sigmoid. That is required wherever
+    an electro-optic activation follows: a sigma above one is optical gain, and gain
+    ahead of the activation moves light up its curve, which no passive chip can do.
+    :func:`photonn.mzi.passivize`'s argument -- one overall scale cancels in
+    ``region / total`` -- holds only after the last activation, so only the last
+    layer is left free and passivized at export.
+    """
+
+    def __init__(self, n_modes: int, *, passive: bool):
+        super().__init__()
+        # u, then v, then sigma: MeshNetwork's construction order, so a seed draws
+        # the same initial phases here as in apps/eo_gate.py.
+        self.u = MZIMeshLayer(n_modes)
+        self.v = MZIMeshLayer(n_modes)
+        self.passive = passive
+        # sigmoid(4) = 0.982, next to the free layer's starting sigma of 1.
+        self.sigma = nn.Parameter(torch.full((n_modes,), 4.0) if passive
+                                  else torch.ones(n_modes))
+
+    def sigma_values(self) -> torch.Tensor:
+        """The transmissions the device realises (after the sigmoid, if passive)."""
+        return torch.sigmoid(self.sigma) if self.passive else self.sigma
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.u(self.v(x) * self.sigma_values().to(x.dtype))
+
+
+class DeepMeshNetwork(nn.Module):
+    """``n_layers`` SVD mesh layers with an electro-optic activation between each pair.
+
+    Phase 5's model (``docs/phase5_activation.md``): the activation is Williamson et
+    al.'s (2020), :class:`~photonn.layers.EOActivationLayer`, one per mode. Nothing
+    else changes against :class:`MeshNetwork`: same layer, same readout,
+    "integrate intensity, softmax". There is no activation after the last layer --
+    that would sit in front of the detector and reshape the readout, which is the
+    one thing this project does not grow. :class:`MeshNetwork` itself is not touched:
+    the published 0.7355 depends on it.
+
+    **Power is physical here, and nowhere earlier.** The encoder hands over a unit-norm
+    field; the light entering the chip carries ``input_power_w``, and ``g_phi`` is in
+    rad/W. Because Eq. (6) is ``f(z) = c(g|z|^2) z``, scaling the field by
+    ``sqrt(P)`` is the same as writing ``g * P`` on the unit-norm field and scaling the
+    output -- and the output scale cancels in ``region / total``. So the forward pass
+    carries the unit-norm field and applies the activation at ``g_phi *
+    input_power_w``: identical in exact arithmetic, and free of the float32
+    underflow a picowatt field would hit. :meth:`activation_input_power_w` reports
+    what the photodiodes actually see, in watts, and a test holds that it scales
+    with ``input_power_w``.
+    """
+
+    def __init__(self, n_modes: int, n_classes: int = 10, *, n_layers: int = 2,
+                 alpha: float, g_phi: float, phi_b: float, input_power_w: float,
+                 readout_gain: float = 10.0):
+        super().__init__()
+        if n_modes < n_classes:
+            raise ValueError(f"n_modes ({n_modes}) must be >= n_classes ({n_classes}).")
+        if n_layers < 2:
+            raise ValueError("a deep mesh needs at least two layers; one is MeshNetwork.")
+        if input_power_w <= 0.0:
+            raise ValueError(f"input_power_w must be positive; got {input_power_w!r}.")
+        self.n = n_modes
+        self.n_classes = n_classes
+        self.n_layers = n_layers
+        self.readout_gain = float(readout_gain)
+        self.input_power_w = float(input_power_w)
+        self.layers = nn.ModuleList(
+            SVDMeshLayer(n_modes, passive=(i < n_layers - 1)) for i in range(n_layers)
+        )
+        # The activation as the unit-norm field sees it: g in rad per unit of the
+        # input's total power. EOActivationLayer is linear in g, so this is exact.
+        self.acts = nn.ModuleList(
+            EOActivationLayer(alpha, g_phi * self.input_power_w, phi_b)
+            for _ in range(n_layers - 1)
+        )
+        self.alpha, self.g_phi, self.phi_b = float(alpha), float(g_phi), float(phi_b)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            if i < len(self.acts):
+                x = self.acts[i](x)
+        intensity = x.real ** 2 + x.imag ** 2
+        region = intensity[:, :self.n_classes]
+        total = intensity.sum(dim=1, keepdim=True).clamp_min(1e-30)
+        return region / total * self.readout_gain
+
+    @torch.no_grad()
+    def activation_input_power_w(self, x: torch.Tensor) -> list:
+        """Per-mode power entering each activation bank, in watts: ``[(B, n), ...]``."""
+        out = []
+        for i, layer in enumerate(self.layers[:-1]):
+            x = layer(x)
+            out.append((x.real ** 2 + x.imag ** 2) * self.input_power_w)
+            x = self.acts[i](x)
+        return out

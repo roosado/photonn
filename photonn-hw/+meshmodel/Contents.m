@@ -21,3 +21,12 @@
 %   schedule      - Clements rectangular topology: columns, pairings, layout coords.
 %   mesh_matrix   - Compose one n-mode mesh operator from its per-MZI settings.
 %   evaluate      - Full forward pass over the test set -> accuracy/predictions.
+%
+%   Phase 5 (docs/phase5_activation.md): two SVD layers with an electro-optic
+%   activation between them. Power is physical here and nowhere earlier.
+%   eo_activation - Williamson et al. (2020) Eq. (6), as the cross port of an MZI
+%                   whose couplers may be imbalanced.
+%   deep_params   - Ideal deep_mesh parameter set: one mesh set per layer, one
+%                   activation device per (mode, bank).
+%   evaluate_deep - Forward pass of a deep_mesh handoff, with the activation's own
+%                   detector noise and the readout's.

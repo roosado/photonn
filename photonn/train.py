@@ -235,6 +235,50 @@ def encode_modes(images, *, n_modes: int = 36, device=None) -> torch.Tensor:
     return v.to(torch.complex64)
 
 
+def fourier_order(size: int = 28) -> np.ndarray:
+    """Flat indices of a ``size x size`` FFT grid, smallest ``|k|`` first.
+
+    Williamson et al. (2020) keep "the N coefficients with the smallest k" but do not
+    say how they break ties, and N = 16 lands inside the ``|k|^2 = 5`` shell (eight
+    coefficients, three kept). The rule here, stated so it can be checked: sort by
+    ``kx^2 + ky^2``, ties broken by a stable sort over the row-major ``fftshift``-ed
+    grid. A deterministic choice, not the paper's.
+    """
+    k = np.fft.fftshift(np.fft.fftfreq(size) * size)
+    kx, ky = np.meshgrid(k, k, indexing="ij")
+    order_shifted = np.argsort((kx ** 2 + ky ** 2).ravel(), kind="stable")
+    shifted_to_raw = np.fft.ifftshift(np.arange(size * size).reshape(size, size)).ravel()
+    return shifted_to_raw[order_shifted]
+
+
+def encode_fourier(images, *, n_modes: int = 16, device=None) -> torch.Tensor:
+    """Encode images as their ``n_modes`` lowest-|k| Fourier coefficients, unit L2.
+
+    The Phase-5 input (``docs/phase5_activation.md``), adopted because the gate
+    showed the activation buys nothing on :func:`encode_modes`' 6x6 amplitudes and
+    3.4 points here. It is Williamson et al.'s (2020) MNIST preprocessing:
+    ``c(kx, ky) = sum_{m,n} exp(+j kx m + j ky n) g(m, n)`` -- the paper's sign, which
+    is ``conj(fft2)`` -- keeping the coefficients nearest ``k = 0`` by
+    :func:`fourier_order`. Both members of a conjugate pair can be kept, and a
+    complex-linear mesh cannot derive ``c*`` from ``c``, which is how N complex
+    modes carry real and imaginary content.
+
+    An encoding change, not a task change: still MNIST, still one image per field.
+    Optically it is a lens and a spatial filter, which is why the paper chose it.
+    """
+    x = torch.as_tensor(images, dtype=torch.float32)
+    if x.ndim == 2:
+        x = x[None]
+    if device is not None:
+        x = x.to(device)
+    size = x.shape[-1]
+    idx = torch.as_tensor(fourier_order(size)[:n_modes].copy(), device=x.device)
+    c = torch.conj(torch.fft.fft2(x.clamp(0.0, 1.0).to(torch.float64)))
+    v = c.reshape(c.shape[0], -1)[:, idx]
+    v = v / v.abs().pow(2).sum(dim=1, keepdim=True).sqrt().clamp_min(1e-12)
+    return v.to(torch.complex64)
+
+
 def _encode(imgs, model, scheme, device, encoder):
     """Encode a batch: use ``encoder`` if given (mesh), else the D²NN field encoder."""
     if encoder is not None:

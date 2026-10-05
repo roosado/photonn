@@ -183,3 +183,17 @@ def read_test_set(path):
     """``(images, labels)`` of the frozen test set."""
     with h5py.File(str(path), "r") as f:
         return f["test_set/images"][...], f["test_set/labels"][...]
+
+
+def read_test_inputs(path):
+    """The encoded test inputs as a complex ``[n_test, n_modes]`` array, or ``None``.
+
+    Schema 0.4.0 carries them as data (``/test_set/inputs_re``, ``inputs_im``) because
+    the Phase-5 input is complex; a ``deep_mesh`` file always has them. Older mesh
+    files do not, and their input is the magnitude map in ``images``.
+    """
+    with h5py.File(str(path), "r") as f:
+        ts = f["test_set"]
+        if "inputs_re" not in ts:
+            return None
+        return ts["inputs_re"][...] + 1j * ts["inputs_im"][...]

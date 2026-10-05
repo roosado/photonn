@@ -62,7 +62,13 @@ function out = evaluate(handoff, opts)
     operator = mU * diag(complex(sigma(:))) * mV;
 
     % -- frozen test set -------------------------------------------------
-    x = reshape(double(handoff.test_set.images), nModes, []).';   % B-by-nModes
+    % Schema 0.4.0 carries the encoded input as data (the Phase-5 Fourier input is
+    % complex); older files carry the 6x6 magnitude map and it is reshaped instead.
+    if isfield(handoff.test_set, 'inputs') && ~isempty(handoff.test_set.inputs)
+        x = handoff.test_set.inputs;                                % B-by-nModes
+    else
+        x = reshape(double(handoff.test_set.images), nModes, []).';   % B-by-nModes
+    end
     labels = double(handoff.test_set.labels(:));
     if isfield(opts, 'subset') && ~isempty(opts.subset)
         x = x(opts.subset, :);

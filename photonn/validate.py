@@ -85,6 +85,32 @@ def airy_pattern(n: int, dx: float, wavelength: float, aperture_radius: float, z
     return Field(amplitude.astype(complex), dx_out, wavelength, z=z)
 
 
+def eo_activation_reference(z, *, alpha: float, g_phi: float, phi_b: float) -> np.ndarray:
+    """The electro-optic activation rebuilt from the MZI primitives, one mode at a time.
+
+    Williamson et al. (2020) describe the device, not an equation to trust: a tap of
+    ``alpha``, then the remaining ``sqrt(1-alpha)`` of the field crossing an MZI whose
+    internal phase the tapped light set. So build that MZI from
+    :func:`photonn.mzi.beamsplitter` and :func:`photonn.mzi.phase_shifter` at
+    ``theta = -(phi_b + g|z|^2)`` and read the cross port,
+    ``sqrt(1-alpha) [B P(theta) B]_{10} z``. :func:`photonn.mzi.eo_activation`
+    (the paper's closed form, Eq. 6) must equal this to round-off -- the
+    activation's counterpart of Clements reconstruction.
+
+    Deliberately a Python loop over 2x2 products: it is the slow, obvious
+    construction the fast one is checked against.
+    """
+    from photonn.mzi import beamsplitter, phase_shifter
+
+    z = np.asarray(z, dtype=complex)
+    b = beamsplitter(0.5)
+    out = np.empty_like(z)
+    for idx, zi in np.ndenumerate(z):
+        theta = -(phi_b + g_phi * abs(zi) ** 2)
+        out[idx] = np.sqrt(1.0 - alpha) * (b @ phase_shifter(theta) @ b)[1, 0] * zi
+    return out
+
+
 # -- runtime invariant assertions ---------------------------------------
 #: Whether the propagators enforce the sampling criterion as they run.
 #:

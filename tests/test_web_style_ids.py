@@ -49,7 +49,8 @@ def style_id_owners():
 def test_at_least_the_known_widgets_declare_one():
     """Guard the guard: a renamed constant would make this file assert nothing."""
     owners = style_id_owners()
-    for expected in ("d2nn_stage.js", "digit_source.js", "d2nn_compare.js", "interfere.js"):
+    for expected in ("d2nn_stage.js", "digit_source.js", "d2nn_compare.js", "interfere.js",
+                     "activation.js"):
         assert expected in owners, f"{expected} no longer declares a STYLE_ID"
 
 

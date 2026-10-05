@@ -24,6 +24,7 @@ EXPORTS = os.path.join(os.path.dirname(HERE), "exports")
 
 D2NN_H5 = os.path.join(EXPORTS, "d2nn_phase2.h5")
 MESH_H5 = os.path.join(EXPORTS, "mesh_phase3.h5")
+DEEP_H5 = os.path.join(EXPORTS, "deep_mesh_phase5.h5")
 
 
 def need(path):
@@ -60,3 +61,12 @@ def test_load_handoff_reads_the_masks():
 
     hand = load_handoff()
     assert hand["masks"].shape == (hand["n_layers"], hand["n"], hand["n"])
+
+
+def test_deep_mesh_web_reads_the_handoff():
+    need(DEEP_H5)
+    from apps.export_deep_mesh_web import build
+
+    payload, reference = build()
+    assert 0.0 < payload["provenance"]["accuracy"] <= 1.0
+    assert len(reference["logits"]) == len(payload["gallery_labels"])

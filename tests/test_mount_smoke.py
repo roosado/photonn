@@ -38,7 +38,7 @@ pytestmark = pytest.mark.skipif(node is None, reason="node not on PATH")
 MOUNTABLE = (
     "errors.js", "interfere.js", "explorer.js", "digit_source.js",
     "d2nn_stage.js", "scaling.js", "optics.js", "analogy.js",
-    "d2nn_demo.js", "d2nn_compare.js",
+    "d2nn_demo.js", "d2nn_compare.js", "activation.js",
 )
 
 

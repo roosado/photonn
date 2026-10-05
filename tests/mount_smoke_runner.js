@@ -37,6 +37,9 @@ const WIDGETS = [
   { file: "analogy.js", opts: {}, globals: ["PhotonnAnalogy"] },
   { file: "d2nn_demo.js", opts: {}, globals: ["PhotonnD2NN"] },
   { file: "d2nn_compare.js", opts: {}, globals: ["PhotonnD2NNCompare"] },
+  // Network mode: it decodes the trained bundle and runs the chip, so it reaches
+  // further than device mode, which test_activation_widget.py mounts on its own.
+  { file: "activation.js", opts: { mode: "network" }, globals: ["PhotonnActivation"] },
 ];
 
 /* Modules a widget reads off `window` at module scope. Loaded first, into the
@@ -57,6 +60,8 @@ const DEPENDENCIES = {
   "scaling.js": ["optics_sweep.js"],
   "optics.js": ["optics_sweep.js"],
   "analogy.js": ["analogy_geom.js"],
+  // Read at mount rather than module scope, but emitted first on the page anyway.
+  "activation.js": ["mesh.js", "deep_mesh_weights.js"],
 };
 
 function recordingCtx(calls) {

@@ -151,13 +151,12 @@ nonlinearity between mesh layers and asks the project's question of the result.
   sends a fraction α of each mode's light to a photodiode; the amplified photocurrent sets
   the internal phase of an MZI that the rest of the same light crosses. The signal stays
   optical and coherent: no fresh beam, no digital step between layers
-- It is our own MZI with a power-driven phase, and is verified against the `mzi`
-  primitives the way Clements is verified by reconstruction (agreement to 1.8e-15 was
-  measured in a scratch probe, 2026-10-04)
-- **Gate first.** Reproduce the paper's linear-versus-activated gain inside this framework
-  before anything enters the library. The first probe (36 modes, 5 epochs) did *not*
-  reproduce it. If the gain does not reproduce, that is the phase's finding: write it up
-  and stop
+- It is our own MZI with a power-driven phase, verified against the `mzi` primitives
+  (`validate.eo_activation_reference`) the way Clements is verified by reconstruction
+- **Gate: passed** (2026-10-05). The paper's gain reproduced on its own setup, not on our
+  6×6 input, so Phase 5 runs on the paper's 16-mode Fourier input (`train.encode_fourier`)
+  — an encoding change, not a task change. The gate, the model, the budget and the
+  predictions registered before it are in `docs/phase5_activation.md`
 - Then the Phase-4 question, asked of the new machine: how precisely must the activation
   be built, and what does crossing the wall cost the mesh's existing tolerances. Absolute
   optical power stops cancelling in the readout once an intensity-dependent element sits
@@ -258,7 +257,9 @@ Kept here so a later session does not reopen a question the project already answ
    with datasheets rather than material constants. Materials and the D²NN stay out.
    In-situ training stays out too, which is why the on-chip version (Bandyopadhyay et al.,
    *Nat. Photon.* 18:1335 (2024), trained in situ) is evidence that the device exists, not
-   a method to copy.
+   a method to copy. **Measured 2026-10-05** (`docs/phase5_activation.md`): it buys 3.4
+   points as a pure cubic, and costs light rather than precision — 10–100 mW per input at
+   10 GHz, where one mesh needs 10 µW.
 
 ---
 

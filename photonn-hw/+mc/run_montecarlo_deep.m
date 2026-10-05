@@ -17,6 +17,9 @@ function stats = run_montecarlo_deep(handoff, errorConfig, nRealizations, baseSe
 %     .eo_noise            - the activation's own detector noise (stochastic), a
 %                            struct with .bandwidth_hz and .tia_noise_a_per_rthz
 %     .input_power_w       - run the chip at this input power instead
+%     .wavelength_reaches_activation - false applies delta_lambda_m to the mesh
+%                            layers only: the control that says how much of the
+%                            drift's damage is the activation's (default true)
 %     .detector            - readout noise (stochastic)
 %     .subset              - test-set indices
 %
@@ -74,7 +77,7 @@ function stats = run_montecarlo_deep(handoff, errorConfig, nRealizations, baseSe
         end
 
         % -- wavelength drift, through the activation --
-        if has(errorConfig, 'delta_lambda_m')
+        if has(errorConfig, 'delta_lambda_m') && getdef(errorConfig, 'wavelength_reaches_activation', true)
             scale = handoff.operating_point.wavelength_m / ...
                     (handoff.operating_point.wavelength_m + errorConfig.delta_lambda_m);
             p.eo.vPi = p.eo.vPi / scale;              % V_pi grows with wavelength

@@ -19,6 +19,7 @@ are right.
 | How precisely the **diffractive network** must be built | [`tolerance_d2nn.md`](tolerance_d2nn.md) |
 | How precisely it must be **assembled**, as opposed to fabricated | [`tolerance_d2nn.md` § Geometry](tolerance_d2nn.md#geometry-where-the-parts-sit) |
 | How precisely the **chip** must be built, and how the two failure modes differ | [`tolerance_mesh.md`](tolerance_mesh.md) |
+| Whether **one physical nonlinearity** between two mesh layers makes depth real, and what it costs to build | [`phase5_activation.md`](phase5_activation.md) |
 | Where every physical constant comes from, and which ones are still unsourced | [`parameter_sources.md`](parameter_sources.md) |
 | What crosses the Python → MATLAB boundary, and in what format | [`handoff_schema.md`](handoff_schema.md) |
 | What the scaffolding looked like before any physics was trained | [`phase0_baseline.md`](phase0_baseline.md) |

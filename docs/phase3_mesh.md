@@ -277,6 +277,10 @@ pytest -q tests/test_mzi.py tests/test_correspondence.py
   was extended to **0.2.0** to carry Σ and the output phases, which 0.1.0 omitted —
   108 of the model's 2 628 parameters, without which the as-built side could not
   reproduce the ideal accuracy at all.
+- ~~**Depth**~~ — **done as Phase 5**, see [`phase5_activation.md`](phase5_activation.md):
+  two layers with an electro-optic activation between them. A second linear layer is
+  still worth nothing (16-mode Fourier input: 0.8604 against one layer's 0.8598); the
+  activation makes it worth 3.4 points, at a cost in light rather than precision.
 - **A second mesh size.** The budget is one point. Whether the phase tolerance scales
   as 1/√L or 1/L with mode count needs a second trained mesh, and would be the mesh's
   answer to the D²NN's 5-mask-vs-56-mask fragility result.

@@ -195,6 +195,48 @@ Registration covers translation only. A rotated plate induces a displacement tha
 grows with distance from the axis, so it is a different error and probably a worse
 one; it is named here so its absence is on the record rather than implied.
 
+## The activation (Phase 5) — design values, one measurement
+
+The electro-optic activation between the two mesh layers
+([`phase5_activation.md`](phase5_activation.md)) comes from a **simulation** paper, so most
+of its values are *design* values: what the authors chose, not what a device was measured
+to do. The column says which is which. The as-built budget measures this network's
+**edges** against each quantity; the margin against a real device needs the measured
+column filled.
+
+| Quantity | Value used | Status | Source |
+|---|---|---|---|
+| Tap fraction α | 0.1 | design | Williamson et al. 2020, Sec. VI-B / Fig. 6 |
+| Bias phase φ_b | π | design | same |
+| Phase gain per unit input power, g_φ·P_in | 0.05π rad | design ("selected heuristically") | same |
+| Input power P_in | 1 mW | design choice | this project's mesh nominal (`tolerance_mesh.md`) |
+| ⇒ g_φ | 157.1 rad/W | derived | Eq. (7) |
+| Photodiode responsivity ℜ | 1.0 A/W | **measured**, read from a plot | Meyer et al. 2026, Fig. 2e inset: SiGe photodiode on imec iSiPP50G at 3 V reverse bias, ≈ 1.0 A/W (rising from ≈ 0.6 at 0 V). Also Williamson's Table I design value |
+| Modulator V_π | 10 V | design example | Williamson et al. 2020, Sec. VII. `UNSOURCED` as a measured device |
+| Bias voltage V_b | 10 V | derived | Eq. (5) at φ_b = π |
+| Transimpedance gain G | 5.0 kΩ (74 dBΩ) | derived | whatever makes Eq. (7) give g_φ. `UNSOURCED`: no datasheet here shows this gain at 10 GHz |
+| Loop bandwidth / symbol rate | 10 GHz | design | Williamson et al. 2020, Table I ("modulator and detector rate") |
+| Amplifier input-referred noise | swept 0 – 100 pA/√Hz | `UNSOURCED` | the budget's edge is 10 pA/√Hz at 1 mW, past 100 at 30 mW |
+| Bias stability, coupler split, tap spread | swept | `UNSOURCED` | edges in `phase5_activation.md` |
+
+**The responsivity was read from a figure**, not a table: the inset of Meyer et al.'s
+Fig. 2e plots responsivity against photodiode bias, and the 3 V point sits at about
+1.0 A/W. Treat the second significant figure as unreliable.
+
+- I. A. D. Williamson, T. W. Hughes, M. Minkov, B. Bartlett, S. Pai & S. Fan,
+  "Reprogrammable electro-optic nonlinear activation functions for optical neural
+  networks," *IEEE J. Sel. Top. Quantum Electron.* **26**(1), 7700412 (2020),
+  doi:10.1109/JSTQE.2019.2930455 — preprint https://arxiv.org/abs/1903.04579. Equations,
+  Table I and the MNIST setup were read from the arXiv TeX source, 2026-10-04.
+- L. Meyer et al., "Deep neural network inference on an integrated, reconfigurable
+  photonic tensor processor," *Nature Communications* **17**, 3396 (2026),
+  doi:10.1038/s41467-026-71599-2. Read from the PDF; the responsivity as above, and its
+  Fig. 1b data flow (photodiode → TIA → ADC → digital → DAC → input modulator) is the
+  *fresh-beam* electronic route, the one the activation is not.
+- S. Bandyopadhyay et al., *Nature Photonics* **18**, 1335 (2024) — the on-chip relative
+  (a microring, trained in situ). *(Cited by volume/page only; no URL verified.)* Evidence
+  that the device exists, not a method this project copies.
+
 ## Outstanding `UNSOURCED` / modelling choices
 
 Not every number is a directly-measured constant; some are deliberate modelling

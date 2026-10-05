@@ -14,6 +14,17 @@ layers and asks the project's question of the result:
 Question 1 was a gate (plan of record: CLAUDE.md, Phase 5). It passed, on the paper's
 input rather than ours. Question 2 is the deliverable.
 
+**The answer, in one paragraph.** On 16 Fourier modes the activation makes a second layer
+worth **3.4 ± 0.4 points** (0.8929 against one layer's 0.8598, three seeds), where a
+second layer with nothing between is worth nothing. It does so as a pure cubic: no mode
+ever reaches the activation's threshold, and the activation bank passes 2.5 × 10⁻⁵ of the
+light. So the price is **light, not precision**. The mesh's own tolerances barely move,
+but the chip now needs **10 mW to 100 mW** per input at 10 GHz, where one mesh needs
+anything above 10 µW, and at the paper's own setting of 1 mW it starves. Every new
+precision requirement the activation brings, its bias, its couplers, its amplifier noise
+and wavelength drift, relaxes as the power rises, so at the top of the window
+they stop binding.
+
 ## The device
 
 Williamson, Hughes, Minkov, Bartlett, Pai & Fan, "Reprogrammable electro-optic nonlinear
@@ -301,5 +312,232 @@ against what came back in [the budget](#the-as-built-budget).
 
 ## The as-built budget
 
-Measured after the predictions above were committed. Results follow in this section once
-`run_error_budget_deep.m` has run.
+Measured after the predictions above were committed (`b41375e`), by
+`photonn-hw/run_error_budget_deep.m`. Both machines run through **one protocol**: the
+same fixed 2 000-image draw from the frozen 10 000 (ideals 0.8875 deep, 0.8575
+baseline), 10 realizations per stochastic magnitude, seeds 29000–50999. Each is judged
+against **95 % of its own ideal**: 0.8421 for the activated chip, 0.8127 for the one-layer
+chip. Edges are brackets, *holds at X, fails at Y*. Figures in
+`photonn-hw/figures_phase5/`, every sweep in `summary.txt` beside them.
+
+### Headline result
+
+| Source | One layer, 16 modes (0.8555) | Two layers + activation (0.8864) | Change |
+|---|---|---|---|
+| Phase-shifter error | 0.03 / 0.05 rad | **0.03 / 0.05 rad** | **unchanged** |
+| … layer 1 only | | 0.02 / 0.03 rad | |
+| … layer 2 only | | 0.05 / 0.08 rad | |
+| Mesh coupler split | 0.01 / 0.02 | 0.01 / 0.02 | unchanged |
+| Thermal crosstalk | 0.002 / 0.005 | 0.002 / 0.005 | unchanged |
+| Per-MZI loss | 0.5 / 0.8 dB | **0.3 / 0.5 dB** | one step tighter |
+| … layer 1 only | | 0.3 / 0.5 dB | |
+| … layer 2 only | | 1.2 / 2.0 dB | |
+| DAC resolution | 7 / 6 bits | 6 / 5 bits | within one bit |
+| Wavelength drift, at 1 mW | 5 / 10 nm | **2 / 5 nm** | 2.5× tighter: the activation |
+| … at 30 mW | | 10 / 20 nm | |
+| **Input power, 1 ms symbols** | 1 pW / 0.1 pW | **100 µW / 10 µW** | **8 decades** |
+| **Input power, 100 ps symbols** | 10 µW / 1 µW | **10 mW / 3 mW** | **3 decades** |
+| **Input power, upper edge** | none (flat to 0.3 W) | **holds 100 mW, fails 300 mW** | **new** |
+
+The activation's own sources, which have no one-layer counterpart:
+
+| Source | At 1 mW | At 30 mW |
+|---|---|---|
+| Bias-phase error (1-σ) | holds **1 mrad**, fails 3 mrad | holds 30 mrad, fails 100 mrad |
+| Activation-MZI coupler split (1-σ) | holds **3 × 10⁻⁴**, fails 1 × 10⁻³ | holds at every value swept (to 0.03) |
+| Amplifier input noise, 10 GHz | holds 10 pA/√Hz, fails 30 | holds at every value swept (to 100) |
+| Tap-fraction spread (absolute, α = 0.1) | holds 0.02, fails 0.05 | — |
+| Phase-gain calibration (multiple of design) | holds from ×0.1 to ×101, fails at ×301 | — |
+
+The light cone: the per-MZI map (θ + 0.5 rad, logit RMS) finds **0, 0, 0 and 6**
+MZIs with exactly zero effect in layer 1's V and U and layer 2's V and U, and the six are
+the closed form's six, one for one.
+
+### Predictions against measurements
+
+| # | Registered | Measured | |
+|---|---|---|---|
+| 1 | phase edge √2 tighter at 64 columns than 32 | identical brackets, 0.03 / 0.05 rad | **failed** |
+| 1b | layer 1 alone binds harder than layer 2 alone | 0.02 / 0.03 against 0.05 / 0.08 rad; layer 1 carries 70 % of the per-MZI sensitivity | held |
+| 2 | lower power edge ~25 µW at 1 ms and ~5.4 mW at 100 ps; a window one to two decades wide at 10 GHz | 10 – 100 µW and 3 – 10 mW brackets, both containing the prediction; window 10 – 100 mW | held |
+| 3 | layer 1's loss edge ~⅓ of layer 2's; layer 2 level with the baseline | ¼ (0.3 / 0.5 against 1.2 / 2.0 dB); layer 2 is 2.4× **looser** than the baseline | half held |
+| 4 | 6 dead MZIs in layer 2's U mesh, none in layer 1 | 6, matching the closed form exactly; none elsewhere | held |
+| 5 | bias holds ≤ 0.3 mrad, fails by 3 mrad at 1 mW; 30× looser at 30 mW | holds 1 mrad, fails 3 mrad; exactly 30× looser at 30 mW | held, conservatively |
+| 6 | activation coupler ≈ 2√2 tighter than its bias | 3 × 10⁻⁴ / 10⁻³ against 10⁻³ / 3 × 10⁻³: 3.3× | held |
+| 7 | gain error is the power sweep: holds to ×30, fails near ×100 | holds ×101, fails ×301, matching the power sweep point for point | mechanism held; registered bracket one step conservative |
+| 8 | amplifier edge where its per-symbol phase equals the bias edge: 1 – 2 pA/√Hz | holds 10, fails 30 pA/√Hz | number **failed** by 10×; mechanism held |
+
+Three of the misses say something:
+
+- **Prediction 1 failed, and that tests plan 10's hypothesis from a second direction.**
+  Doubling the serial depth from 32 columns to 64 did not move the phase edge. Serial
+  accumulation is real in a linear mesh (`tolerance_mesh.md`, finding 1), but here the
+  edge is set by *where* an error sits relative to the nonlinearity: layer 1's errors pass
+  through the cubic, layer 2's do not, and layer 2 is the more tolerant of the two by more
+  than the √2 its extra columns would cost.
+- **Predictions 5, 7 and 8 were conservative for one reason.** The registered brackets
+  were read off the full-test-set power sweep, where 100 mW scores 0.8795, and that point
+  was taken as failing; against this model's 0.8421 bar it holds. Every mechanism behind
+  them held quantitatively (the 30× power scaling of the bias edge, the gain error
+  tracking the power sweep exactly, the amplifier noise mapping onto the bias edge: 6 –
+  19 pA/√Hz from the measured 1 – 3 mrad). Prediction 8's number inherited prediction
+  5's lower bound and was 10× off.
+- **Prediction 3's second half failed.** Layer 2's MZIs tolerate 1.2 dB of loss each,
+  more than the one-layer chip's 0.5. The light reaching layer 2 is the activation's
+  output, already a cube; a mode-dependent tilt after it is not cubed again, and the
+  readout depends on it more weakly than on layer 1's.
+
+### Findings
+
+#### 1. Crossing the wall costs light, not precision
+
+Every source the linear chip already had keeps its edge, to within one grid step, except
+loss and wavelength, and each of those has a mechanism of its own (findings 4 and 5). The
+activated chip needs its phase shifters, couplers and heaters built **no more precisely**
+than one mesh does. What the activation adds instead is a power requirement the linear
+chip never had: it holds only between 10 mW and 100 mW at its design rate, where the linear
+chip holds anywhere above 10 µW.
+
+#### 2. The power edge is photon starvation, and it rises with speed in power but falls in energy
+
+The noiseless sweep showed the function does not change below 30 mW, so the lower edge is
+photons alone. The readout's photon count goes as `P³T` in the tail, against `PT` for the
+linear chip, and the two symbol times measure the consequence:
+
+| | 1 ms symbols | 100 ps symbols |
+|---|---|---|
+| one layer, lower edge | 1 pW (**1 fJ** per inference) | 10 µW (**1 fJ**) |
+| two layers + activation, lower edge | 100 µW (**100 nJ**) | 10 mW (**1 pJ**) |
+| ratio | 10⁸ in power | 10³ in power |
+
+The linear chip's budget is energy per inference and does not care how it is delivered.
+The activated chip's is not: delivering the same inference in shorter, brighter pulses
+costs **five orders of magnitude less energy**, because the activation responds to power.
+It wants exactly the regime Williamson et al. designed it for, fast. And at the setting
+they chose, 1 mW at 10 GHz, it is below its own edge: **0.98 photons** reach the readout
+per inference, and the chip classifies at 0.18.
+
+The window also has a top. Above 100 mW the brightest modes write radians on their
+modulators, the activation leaves the regime it was trained in, and at 300 mW the network
+is at 0.35. The linear chip has no such ceiling.
+
+#### 3. The activation's precision is bought with power
+
+At 1 mW the activation is the most demanding component anywhere in this project: its bias
+must hold to **1 mrad** (30× the mesh's 0.03 rad phase edge), its MZI's couplers to
+**3 × 10⁻⁴** of 50:50 (30× the mesh's 0.01), and its amplifier's noise to 10 pA/√Hz at
+10 GHz. All three are errors that leak a *linear* term through a device biased dark, and
+they compete with a cubic signal that grows with power. At 30 mW every one of them is 30×
+looser: bias 30 mrad, couplers past 0.03, amplifier past 100 pA/√Hz, and wavelength drift
+back to 10 nm. **The right operating point is the top of the window**, and there the
+activation's tolerances stop binding. What is left is the power bill: 30 mW per input at
+10 GHz, three thousand times the linear chip's 10 µW.
+
+#### 4. Depth's cost lands upstream of the nonlinearity
+
+Layer 1 carries 70 % of the network's per-MZI sensitivity (shares 0.38, 0.32, 0.20, 0.10
+for layer 1 V and U and layer 2 V and U). Its phase errors fail at 0.03 rad alone; layer
+2's hold to 0.05. Its loss fails at 0.5 dB/MZI; layer 2's holds to 1.2. A relative error in
+a mode's amplitude ahead of the activation comes out tripled, which is what a cube does, so
+a builder spends the precision budget on the first mesh and can relax the second below what
+a single linear mesh needs.
+
+#### 5. Wavelength drift becomes an activation problem
+
+At 1 mW the activated chip holds 2 nm where the linear chip holds 5. The control, the
+same drift with the activation left at its design wavelength, holds 5 nm, so the
+difference is entirely the activation. Its bias sits on a dark fringe, and `φ_b = πV_b/V_π`
+moves with `V_π`, which grows with wavelength: 5 nm writes 10 mrad there, common to every
+mode. Like the activation's other errors this relaxes with power: at 30 mW the chip holds
+10 nm.
+
+#### 6. Gain calibration is free, and it is the one correctable error
+
+A common error in the activation's phase gain, from ×0.1 to ×101, does not move the
+accuracy. In the cubic tail a common gain is a common scale and cancels in the readout,
+and because `g_φ` and `P_in` only ever appear as their product, a gain error is the
+noiseless power sweep run at a different power. The D²NN's calibration gain was the only
+correctable error in its budget too (`tolerance_d2nn.md`). Here it is also the one that
+does not matter.
+
+#### 7. The light cone survives the activation, on the far side only
+
+Layer 2's U mesh has exactly the six dead MZIs the closed form of
+`tolerance_mesh.md` finding 6 predicts at 16 modes, which plan 10 registered as a
+prediction for a 16-mode mesh. Layer 1 has none: the activation hands every mode on to a
+full second mesh. Six of 480 MZIs (one in 80) need no tolerance at all, against 156 of
+the 36-mode mesh's 1 260 (one in eight): a 16-mode mesh read on 10 outputs has little room
+outside its cone.
+
+### Required precision per component
+
+To hold 95 % of the ideal 0.8864 (≥ 0.8421), running at 30 mW, one input per 100 ps:
+
+- **Input power: 10 – 100 mW.** Below it the readout starves; above it the activation
+  leaves the regime it was trained in. This is the binding constraint, and it is new.
+- **Mesh phase shifters ≤ 0.03 rad**, couplers ≤ 0.01, heater coupling ≤ 0.002: what one
+  16-mode mesh needs. Layer 2 alone may relax to 0.05 rad.
+- **Per-MZI loss ≤ 0.3 dB in layer 1**; layer 2 may take 1.2 dB.
+- **Wavelength ≤ 10 nm** (2 nm if the chip were run at 1 mW).
+- **Activation bias ≤ 30 mrad, couplers ≤ 0.03, amplifier ≤ 100 pA/√Hz at 10 GHz**, tap
+  fraction within ±0.02 of 0.1, phase gain anywhere within ×0.1 – ×100 of design.
+- **DAC ≥ 6 bits.**
+
+### Figures (`photonn-hw/figures_phase5/`)
+
+| File | What it shows |
+|---|---|
+| `tolerance_power.png` | the power window: both machines at both symbol times, and the noiseless curve |
+| `tolerance_eo_bias.png` | the activation's bias error at 1 and 30 mW |
+| `tolerance_eo_coupler.png` | the activation MZI's coupler imbalance at 1 and 30 mW |
+| `tolerance_eo_amp.png` | the activation amplifier's input noise at 1 and 30 mW |
+| `tolerance_eo_tap.png`, `tolerance_eo_gain.png` | tap spread; gain calibration |
+| `tolerance_phase.png`, `tolerance_loss.png` | both machines, and each layer of the deep one alone |
+| `tolerance_coupler.png`, `tolerance_crosstalk.png`, `tolerance_quant.png` | both machines |
+| `tolerance_wavelength.png` | both machines, the 30 mW run, and the drift-kept-out-of-the-activation control |
+| `sensitivity_map.png` | per-MZI sensitivity, four meshes on the Clements rectangle |
+| `confusion_ideal.png` | the as-built deep mesh at its best, 0.8864 |
+| `summary.txt`, `error_budget_deep_results.mat` | every sweep |
+
+### Caveats
+
+- **Every device value but one is a design value or `UNSOURCED`.** The responsivity is
+  measured (and read from a plot); α, φ_b, the normalised gain, V_π and the 10 GHz rate are
+  Williamson et al.'s design values, and the 5 kΩ transimpedance is whatever makes their
+  product come out. The edges are properties of this network and this device model; the
+  margins against a real photodiode, amplifier and modulator are not in this document.
+- **The amplifier is a white input-referred noise density over the loop bandwidth.** No
+  bandwidth roll-off, no 1/f noise, no gain-bandwidth limit, no settling: the phase is
+  written within one symbol by assumption, as Williamson et al. assume.
+- **One input per symbol.** At 1 ms the loop is given a 1 kHz bandwidth to match. A chip
+  that held each input for 1 ms but ran its loop at 10 GHz would average many noise draws
+  in the readout, which this model does not do.
+- **Read noise and ADC are the camera model of the earlier budgets** (2 e⁻, 12 bits,
+  Gaussian shot noise). At the photon counts near the 100 ps edge the Gaussian
+  approximation to Poisson is rough; it is the same approximation both machines get.
+- **The activation's devices are independent.** No crosstalk between neighbouring
+  photodiodes or modulators, and the activation's modulator has no heater, so it takes no
+  part in the mesh's thermal crosstalk.
+- **The mesh sources were measured at 1 mW, the precision list is quoted at 30 mW.** The
+  noiseless function is the same at both (0.8864 and 0.8869), so their edges should carry;
+  they were not re-measured there. The activation's sources and wavelength were.
+- **One seed, one width, one depth.** The gate measured seed spread; the budget is one
+  trained model, as the 36-mode budget was.
+
+### Reproduce
+
+```bash
+python -m apps.eo_gate --arm all --seeds 20260725 20260726 20260727 --workers 11
+python -m apps.train_deep_mesh                # 0.8864 -> exports/deep_mesh_phase5.h5
+python -m apps.train_deep_mesh --one-layer    # 0.8555 -> exports/mesh16_phase5.h5
+python -m apps.deep_mesh_report               # operating regime, noiseless power sweep
+```
+
+```matlab
+addpath('photonn-hw')
+run_error_budget_deep()                        % about two minutes
+run_error_budget_deep(struct('sources', {{'power'}}))   % one source, the rest carried
+```
+
+The driver refuses to run unless the as-built model reproduces both handoffs' stated
+accuracies exactly, 0.8864 and 0.8555.

@@ -176,9 +176,21 @@ function results = run_error_budget_deep(opts)
         cfg = @(d) struct('delta_lambda_m', d, 'coupler_dispersion_per_nm', COUPLER_DISP, 'subset', subset);
         aD = mc.sweep(h, arrayfun(cfg, dlam), 1, 50000, deepMC);
         aB = mc.sweep(b, arrayfun(cfg, dlam), 1, 50000, baseMC);
+        % Control: drift through the mesh layers only. The activation is biased on a
+        % dark fringe, and its bias phase pi*V_b/V_pi moves with V_pi, so how much of
+        % the damage is the activation's is a measurement, not an assumption.
+        cfgM = @(d) mergeStruct(cfg(d), struct('wavelength_reaches_activation', false));
+        aM = mc.sweep(h, arrayfun(cfgM, dlam), 1, 50000, deepMC);
+        % And at 30 mW, where the activation's bias tolerance is thirty times looser.
+        cfgP = @(d) mergeStruct(cfg(d), struct('input_power_w', 3e-2));
+        aP = mc.sweep(h, arrayfun(cfgP, dlam), 1, 50000, deepMC);
         results.wavelength = pair(dlam * 1e9, aD, aB, thresh, threshB);
-        overlay(figDir, 'tolerance_wavelength.png', dlam * 1e9, {aD, aB}, ...
-            {'two layers + activation', 'one layer'}, [thresh threshB], 'wavelength drift (nm)', false);
+        results.wavelengthMeshOnly = mc.pack(dlam * 1e9, aM, thresh);
+        results.wavelengthP2 = mc.pack(dlam * 1e9, aP, thresh);
+        overlay(figDir, 'tolerance_wavelength.png', dlam * 1e9, {aD, aP, aM, aB}, ...
+            {'two layers + activation, 1 mW', 'same, 30 mW', ...
+             'same at 1 mW, drift kept out of the activation', 'one layer'}, ...
+            [thresh thresh thresh threshB], 'wavelength drift (nm)', false);
     end
 
     % ============ the photon budget: the window ==========================
@@ -212,11 +224,7 @@ function results = run_error_budget_deep(opts)
                                sprintf('one layer, T = %s', tlabel(T(k)))}]; %#ok<AGROW>
             bars = [bars thresh threshB]; %#ok<AGROW>
         end
-        curves{end + 1} = noiseless(:);
-        labels{end + 1} = 'two layers + activation, no noise';
-        bars(end + 1) = thresh;
-        overlay(figDir, 'tolerance_power.png', powers, curves, labels, bars, ...
-                'input power (W)', true);
+        powerWindow(figDir, powers, curves, noiseless, thresh, threshB);
     end
 
     % ============ the activation's own sources =========================
@@ -365,6 +373,33 @@ function overlay(figDir, name, mag, curves, labels, bars, xname, logx, reverseX)
     ylabel('classification accuracy');
     legend('Location', 'southwest', 'Interpreter', 'none');
     viz.save_figure(f, figDir, name);
+end
+
+function powerWindow(figDir, powers, curves, noiseless, thresh, threshB)
+%POWERWINDOW The photon budget as one picture: colour is the machine, line is T.
+%   CURVES is {deep 1 ms, base 1 ms, deep 100 ps, base 100 ps}, each nMag-by-nReal.
+    deepC = [0.17 0.30 0.55];  baseC = [0.80 0.40 0.10];
+    f = figure('Color', 'w', 'Position', [100 100 680 430]);
+    try, theme(f, 'light'); catch, end
+    hold on;
+    spec = {deepC, '-o', 'two layers + activation, 1 ms'; baseC, '-o', 'one layer, 1 ms'; ...
+            deepC, '--s', 'two layers + activation, 100 ps'; baseC, '--s', 'one layer, 100 ps'};
+    for i = 1:4
+        plot(powers, mean(curves{i}, 2), spec{i, 2}, 'Color', spec{i, 1}, 'LineWidth', 1.6, ...
+             'MarkerFaceColor', spec{i, 1}, 'MarkerSize', 4, 'DisplayName', spec{i, 3});
+    end
+    plot(powers, noiseless, ':', 'Color', [0.45 0.45 0.45], 'LineWidth', 2.0, ...
+         'DisplayName', 'two layers + activation, no noise');
+    yline(thresh, ':', 'Color', deepC, 'LineWidth', 1.0, 'HandleVisibility', 'off');
+    yline(threshB, ':', 'Color', baseC, 'LineWidth', 1.0, 'HandleVisibility', 'off');
+    set(gca, 'XScale', 'log');
+    grid on; box on; ylim([0 1]); xlim([min(powers) max(powers)]);
+    xlabel('input power (W)');
+    ylabel('classification accuracy');
+    % Placed in the empty band between the starved floor and the plateaus, where no
+    % curve runs; 'best' and the compass positions each covered one.
+    legend('Units', 'normalized', 'Position', [0.24 0.29 0.30 0.21], 'Interpreter', 'none', 'FontSize', 8);
+    viz.save_figure(f, figDir, 'tolerance_power.png');
 end
 
 function writeSummary(path, r)

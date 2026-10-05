@@ -66,6 +66,7 @@ it should be claiming. Each row links to where that work is written up in full.
 | **17 Aug** | The detector layout **re-scored against the masks that ship**, on data that is neither trained on nor the frozen test set. The shipped boxes still win, and the 40 % of light that misses them is still not headroom — but depth turns out to make the readout almost indifferent to box size. | [`phase2_dnn.md`](docs/phase2_dnn.md#the-light-that-misses-the-boxes-is-not-headroom-re-scored-2026-08-17) |
 | **19 Aug** | The front page's amplitude/phase paragraph becomes a **widget**: two waves, one slider, and a detector reading that goes to zero when they are held half a wavelength apart. Drawn from the closed form it illustrates, and held to it to 1e-12. | [`site/README.md`](site/README.md) |
 | **19 Aug** | The front page stops promising a **glass specification** and starts promising the failure modes: what limits these machines, which flaws break them, and **where light could actually pay** — focal-plane sensing, cytometry, RF front ends, orbit — with the GPU comparison left exactly as unflattering as it was. The "two families of machine" claim is retired. | [`site/README.md`](site/README.md) |
+| **5 Oct** | **Phase 5.** One electro-optic activation (Williamson et al. 2020) between two mesh layers. The paper's gain reproduced here, on its own input; on ours the chip gains **3.4 points** where a second linear layer gains nothing. The activation runs as a pure cubic, so the price is light, not precision: **10–100 mW** per input at 10 GHz against 10 µW for one mesh, with eight predictions registered before the budget: two wrong, one half right. | [`phase5_activation.md`](docs/phase5_activation.md) |
 
 **Where things are written down.** [`docs/`](docs/README.md) is the reference — one file per
 question, indexed. [`site/README.md`](site/README.md) covers the generated pages and how the
@@ -95,7 +96,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Physics, layer, model, handoff, site and browser-cross-check tests pass (**`442 passed`**). The
+Physics, layer, model, handoff, site and browser-cross-check tests pass (**`483 passed`**). The
 checks that run the browser sources under Node — `test_asm_crosscheck.py`,
 `test_d2nn_crosscheck.py`, `test_web_contract.py`, `test_error_widgets.py`,
 `test_interference_widget.py`, `test_mount_queue.py`, `test_mount_smoke.py`, `test_plot.py` —

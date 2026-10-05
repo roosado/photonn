@@ -207,6 +207,29 @@ sets** — 28×28 in a 128² field against MNIST downsampled to 6×6 — at diff
 accuracies must never be compared**, and the 0.7355 is not evidence that a mesh classifies
 worse than a diffractive stack; it is evidence that 36 modes is a small input.
 
+## At two layers, with an activation between
+
+Phase 5 re-ran this budget against a two-layer mesh with an electro-optic activation
+between the layers ([`phase5_activation.md`](phase5_activation.md)). It runs on 16
+Fourier modes, not 36 pixels, so its baseline is a **16-mode one-layer mesh trained the
+same way**, not the 36-mode mesh above; the edges below compare with that baseline only.
+Re-measured edges, *holds / fails*, each against its own 95 % bar:
+
+| Source | One layer, 16 modes | Two layers + activation |
+|---|---|---|
+| Phase error | 0.03 / 0.05 rad | 0.03 / 0.05 rad (layer 1 alone 0.02 / 0.03; layer 2 alone 0.05 / 0.08) |
+| Coupler imbalance | 0.01 / 0.02 | 0.01 / 0.02 |
+| Thermal crosstalk | 0.002 / 0.005 | 0.002 / 0.005 |
+| Per-MZI loss | 0.5 / 0.8 dB | 0.3 / 0.5 dB (layer 2 alone 1.2 / 2.0) |
+| Wavelength drift | 5 / 10 nm | 2 / 5 nm at 1 mW, 10 / 20 nm at 30 mW |
+| DAC | 7 / 6 bits | 6 / 5 bits |
+| Input power, 1 ms | 1 pW / 0.1 pW | 100 µW / 10 µW |
+| Input power, 100 ps | 10 µW / 1 µW | 10 mW / 3 mW, and an upper edge at 100 mW / 300 mW |
+
+**Doubling the serial depth did not move the phase edge** (32 columns to 64). Finding 1's
+serial accumulation is real in one linear mesh; across the activation, what sets the edge
+is which side of the nonlinearity an error sits on. The cost of the activation is power.
+
 ## Required precision per component
 
 To hold classification accuracy within 5 % of the ideal 0.7355 (i.e. ≥ 0.6987):

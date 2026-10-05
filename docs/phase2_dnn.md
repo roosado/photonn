@@ -251,10 +251,12 @@ not a deep nonlinear network.
    pixels** before the optics. Phase encoding applies a nonlinear `exp(i·π·image)`
    map; that is why the encoding choice measurably changes achievable accuracy —
    it is doing nonlinear work the linear optics cannot.
-3. Per CLAUDE.md scope, we **characterise and document** this limit; we do not
-   add physical activation functions, and we do not grow the electronic head. If
-   a larger electronic head would lift accuracy, that is a *finding*, not a bug to
-   fix.
+3. Per CLAUDE.md scope, we **characterise and document** this limit for the
+   diffractive network; it gets no physical activation, and we do not grow the
+   electronic head. If a larger electronic head would lift accuracy, that is a
+   *finding*, not a bug to fix. The mesh has since been given one activation built
+   from its own parts, as a device to put a tolerance on: see
+   [`phase5_activation.md`](phase5_activation.md).
 
 ---
 

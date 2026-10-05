@@ -47,7 +47,7 @@ const WIDGETS = [
  * "cannot read n_layers" three frames later -- the same module-scope ordering
  * hazard build_site.py guards for mesh_weights.js and errors.js. */
 const DEPENDENCIES = {
-  "errors.js": ["mesh_weights.js", "error_mask.js"],
+  "errors.js": ["mesh_weights.js", "mesh.js", "error_mask.js"],
   "explorer.js": ["asm.js"],          // reads window.ASM inside compute()
   "digit_source.js": ["asm.js", "d2nn_weights.js", "d2nn.js"],
   "d2nn_stage.js": ["asm.js", "d2nn_weights.js", "d2nn.js"],

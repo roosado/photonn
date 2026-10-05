@@ -1378,6 +1378,193 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
 
 </script>
 <script>
+/*
+ * mesh.js -- the MZI mesh, built in the browser. Pure computation, no DOM.
+ *
+ * Two widgets draw a trained chip: the coupler-imbalance widget on /tolerance
+ * (errors.js, KINDS.mesh) and the two-layer activated chip on /activation
+ * (activation.js). Both need the same four things -- the 16-bit code decoder, the
+ * Clements schedule, the factored 2x2 MZI block, and a mesh built column by
+ * column -- and two copies of them would be the pattern ffe6311 spent a commit
+ * removing from the canvas code. So they live here, once, like asm.js does for
+ * the propagator.
+ *
+ * Moved out of errors.js unchanged. The extraction was held to the operator the
+ * old code built: tests/mesh_operator_runner.js dumped |U.diag(sigma).V| at
+ * epsilon = 0 and 0.01 before and after, and the two dumps are byte-identical.
+ *
+ * Every page that inlines this must inline it before the widget that reads it;
+ * build_site.py's script_tags order is the guarantee and test_site_widgets checks
+ * the built page.
+ *
+ * Usage:  window.PhotonnMesh.{decode16, schedule, mziBlock, meshMatrix, ...}
+ */
+(function () {
+  "use strict";
+
+  /** Base64 to bytes, without TextDecoder (absent under the Node runners). */
+  function b64ToBytes(b64) {
+    const bin = (typeof atob === "function")
+      ? atob(b64)
+      : Buffer.from(b64, "base64").toString("binary");
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  /** Decode 16-bit little-endian codes back to the span they were quantised over. */
+  function decode16(b64, span) {
+    const bytes = b64ToBytes(b64);
+    const out = new Float64Array(bytes.length >> 1);
+    for (let i = 0; i < out.length; i++) {
+      const code = bytes[2 * i] | (bytes[2 * i + 1] << 8);
+      out[i] = (code + 0.5) / 65536 * span;
+    }
+    return out;
+  }
+
+  /**
+   * The Clements schedule: column c couples mode pairs starting at c % 2.
+   *
+   * Derived rather than shipped. It is three lines of arithmetic and it is the
+   * same rule MZIMeshLayer._schedule applies, so re-deriving it costs nothing and
+   * removes one more array that could go stale against the model.
+   */
+  function schedule(n) {
+    const cols = [];
+    let idx = 0;
+    for (let c = 0; c < n; c++) {
+      const pairs = [];
+      for (let m = c % 2; m < n - 1; m += 2) pairs.push([m, idx++]);
+      cols.push(pairs);
+    }
+    return { columns: cols, nMzi: idx };
+  }
+
+  /**
+   * The 2x2 MZI block, written as the two couplers and two phase shifters it is
+   * physically made of: B(s2) . P(theta) . B(s1) . P(phi).
+   *
+   * With both splits at 0.5 this collapses to i.e^{i.theta/2}.[[e^{i.phi}s, c],
+   * [e^{i.phi}c, -s]], which is the closed form photonn.mzi.mzi_matrix and the
+   * torch layer both use. It is written factored anyway, because the factored
+   * form is the only one an imbalanced coupler can enter -- exactly the reason
+   * photonn-hw/+meshmodel/mzi_matrix.m is written this way too.
+   */
+  function mziBlock(theta, phi, s1, s2, out) {
+    const k1 = Math.asin(Math.sqrt(Math.min(1, Math.max(0, s1))));
+    const k2 = Math.asin(Math.sqrt(Math.min(1, Math.max(0, s2))));
+    const c1 = Math.cos(k1), n1 = Math.sin(k1);
+    const c2 = Math.cos(k2), n2 = Math.sin(k2);
+    // A = B(s1) . P(phi): P(phi) = diag(e^{i.phi}, 1), so it scales column 0.
+    const cp = Math.cos(phi), sp = Math.sin(phi);
+    const a = [c1 * cp, c1 * sp, 0, n1,      // [0][0], [0][1] = i.n1
+               -n1 * sp, n1 * cp, c1, 0];    // [1][0] = i.n1.e^{i.phi}, [1][1]
+    // P(theta) scales row 0 of A.
+    const ct = Math.cos(theta), st = Math.sin(theta);
+    const b = [a[0] * ct - a[1] * st, a[0] * st + a[1] * ct,
+               a[2] * ct - a[3] * st, a[2] * st + a[3] * ct,
+               a[4], a[5], a[6], a[7]];
+    // B(s2) . that.  B = [[c2, i.n2], [i.n2, c2]].
+    out[0] = c2 * b[0] - n2 * b[5];  out[1] = c2 * b[1] + n2 * b[4];
+    out[2] = c2 * b[2] - n2 * b[7];  out[3] = c2 * b[3] + n2 * b[6];
+    out[4] = c2 * b[4] - n2 * b[1];  out[5] = c2 * b[5] + n2 * b[0];
+    out[6] = c2 * b[6] - n2 * b[3];  out[7] = c2 * b[7] + n2 * b[2];
+  }
+
+  /**
+   * One mesh, built column by column into an n-by-n complex matrix.
+   *
+   * Column by column rather than as one product because that is where a per-MZI
+   * error has to be able to enter; `splits` is 2 per MZI, in schedule order.
+   */
+  function meshMatrix(n, sch, theta, phi, outPhase, off, splits) {
+    const re = new Float64Array(n * n), im = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) re[i * n + i] = 1;
+    const blk = new Float64Array(8);
+    const rowA = new Float64Array(2 * n), rowB = new Float64Array(2 * n);
+    for (let c = 0; c < sch.columns.length; c++) {
+      const pairs = sch.columns[c];
+      for (let p = 0; p < pairs.length; p++) {
+        const m = pairs[p][0], j = pairs[p][1];
+        mziBlock(theta[off + j], phi[off + j],
+                 splits ? splits[2 * j] : 0.5, splits ? splits[2 * j + 1] : 0.5, blk);
+        const r0 = m * n, r1 = (m + 1) * n;
+        for (let k = 0; k < n; k++) {
+          const ar = re[r0 + k], ai = im[r0 + k], br = re[r1 + k], bi = im[r1 + k];
+          rowA[2 * k] = blk[0] * ar - blk[1] * ai + blk[2] * br - blk[3] * bi;
+          rowA[2 * k + 1] = blk[0] * ai + blk[1] * ar + blk[2] * bi + blk[3] * br;
+          rowB[2 * k] = blk[4] * ar - blk[5] * ai + blk[6] * br - blk[7] * bi;
+          rowB[2 * k + 1] = blk[4] * ai + blk[5] * ar + blk[6] * bi + blk[7] * br;
+        }
+        for (let k = 0; k < n; k++) {
+          re[r0 + k] = rowA[2 * k]; im[r0 + k] = rowA[2 * k + 1];
+          re[r1 + k] = rowB[2 * k]; im[r1 + k] = rowB[2 * k + 1];
+        }
+      }
+    }
+    // The output phase screen: a diagonal e^{i.psi} on the left, so it scales rows.
+    for (let i = 0; i < n; i++) {
+      const cp = Math.cos(outPhase[i]), sp = Math.sin(outPhase[i]);
+      for (let k = 0; k < n; k++) {
+        const r = re[i * n + k], q = im[i * n + k];
+        re[i * n + k] = r * cp - q * sp;
+        im[i * n + k] = r * sp + q * cp;
+      }
+    }
+    return { re: re, im: im };
+  }
+
+  /**
+   * One SVD layer as a single complex matrix: U . diag(sigma) . V, V as stored.
+   *
+   * The convention photonn.mzi.deep_mesh_forward and +meshmodel hold: no
+   * conjugate transpose anywhere. Built once per layer, then applied per input.
+   */
+  function svdMatrix(n, sch, theta, phi, outV, outU, sigma, off) {
+    const v = meshMatrix(n, sch, theta, phi, outV, off, null);
+    const u = meshMatrix(n, sch, theta, phi, outU, off + sch.nMzi, null);
+    const re = new Float64Array(n * n), im = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < n; k++) {
+        let ar = 0, ai = 0;
+        for (let j = 0; j < n; j++) {
+          const s = sigma[j];
+          const ur = u.re[i * n + j] * s, ui = u.im[i * n + j] * s;
+          const vr = v.re[j * n + k], vi = v.im[j * n + k];
+          ar += ur * vr - ui * vi;
+          ai += ur * vi + ui * vr;
+        }
+        re[i * n + k] = ar;
+        im[i * n + k] = ai;
+      }
+    }
+    return { re: re, im: im };
+  }
+
+  /** y = M x for a complex matrix and a complex vector given as (re, im) arrays. */
+  function apply(M, n, xr, xi) {
+    const yr = new Float64Array(n), yi = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      let ar = 0, ai = 0;
+      for (let k = 0; k < n; k++) {
+        const mr = M.re[i * n + k], mi = M.im[i * n + k];
+        ar += mr * xr[k] - mi * xi[k];
+        ai += mr * xi[k] + mi * xr[k];
+      }
+      yr[i] = ar;
+      yi[i] = ai;
+    }
+    return { re: yr, im: yi };
+  }
+
+  const api = { b64ToBytes, decode16, schedule, mziBlock, meshMatrix, svdMatrix, apply };
+  if (typeof window !== "undefined") window.PhotonnMesh = api;
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+})();
+
+</script>
+<script>
 (function(){var M={"n": 128, "mask_b64": "knN0dm2BgI54jYqKgot5cn2Eb3t9eJSLiIeLXaJkenZlpX/gkQORIhoSqF1/0PpnvaxinqS3rQthHF1124SzaSRZRFLHfLqUCnHwWgfpv7GIwazgg+JsdG9X/RLXfuj9apeQh3V2foGlgmSJfXGJeHuCa3aAdXNdbo2Bh4BpiJWJdnlrm4qgiIqGeoZzlYuImm9/fH+Oinp3cZuCiT6UdXlHC1W73MtC2rbrLFm7Fj+uzUZPio6U0TgTSsPxaic0klg3Ydv/6JkKeQNGEc2WVbSpvZCH7ExiNELyHFmXUJtzo41einVwhIN1bpOAgYx/dX+NiZiegXx3iYaUeXiFdn94fXiJaXd4f3hsf4WegImDc4V4kpiHf3dVhIhvTXtuaUoNTELumjncxtJESZjaJRASz3mJ55GSbjh2u9ujs3DMIDSDaAHQw/pm7iwSjY8p2NWqpnfhXlx5N80Sj6oTjXCYt0VkdoKFe5GDkHaEc36IdnOOYHaUe3qHh4GWjn9zb2KSeZZ9aGeHlI5xfIlviYV6gXhsd5h5Z4OidntgfIfdcbNR9BHoMOllrdnwatXc34mhLmIkm4cXJ5nT7rVXW7tTRQ27oee3qXLgWOj2qirPrnmxX8lLQ3UayvXxfQp6muCjSFt/m5m7ZWt9dFt6dXJsYn15joiRgoeAgY6GeYWQfHd6em6MiH97emWHhJx7gXthiXh7n5SRa3SMcG5bf71whO4Yn1ymAX1MZfdeyhkHdcgsrBueDedBn/Fbo4nt2hg/iW2Up6yNhewGM/CI+c+ggLy2vmFBM1h709eQ32ef48xaXoR2d5GTbotvoXp5dl99iWZgh36BgH6KgYx8e4B5jXqTepB9nYJ+cYCBh5yIcX1jbH17jYl3c4d7Y39dWwXitzmylZ7jXNw13TbM+NdCoOCnkHnSMCyDME6UoIro8jVdFoC3xpqE8g4ojorh1mNDpTvQeDHpGXf5vqTc8aO/5qtla3xxc32LaYSGeoeXkJeVY35uk4+GeIiQdmqNi4duhnyJcZOLeXySjI2JiYB+hJl9gHx+cW1haqaUZZOtr76uCbiYXLBqtGHBUKcIxG2j7K+In/4lFXX7/m2Ng2MTFrvah4uVSYhOJNVndPHoopiVUwpaINgnXvmdk8a127bYT0RljlZrfm+Ud5WNeIN5e36KiHaElYB1lHZoi32Uf4OPhY15fIh6lYCKbIyWf4CBk3Ryfoh/e4CRo29VGj6e0NzkwqxUbl7dG9UznhzEeJHAoRmM9jf+WHRJkmmR/U9Yq8ojiGY7aULZZli04cWFoHdV7UEq4xD/LoOU2qO8x8+Vdlp7fnyFeWF4jZR0c3uHinxyfYiHc2l4iHZ/co9+goGAe3CEgniAdZRvkYSUkpKJfmuKnHSFgHWPdj8i/Ne3ukNzlKtxOJ0itRSA/8B3jtai0XTWAAxHZEdPUKvf/F6JzdVeNRZjQJ0rQieE49eSaTwABg3+xeMEbpTEqbx4tqeNa2Znh4GleWSTeWmVjXuDg4J9inyHgZmcd290a3h0eWmDeoyLg5V8g4mCco10fHV8Y4Z0hombgXNeTyrk2o1uSd2bTvwpzPmODlPO4k13m5nKcqMoDDcrIytKWtf7NnOwIUWpAmU7iR8+3Mi5uLNlN+M189ewltQxjrigxL+RgkZFgY2gioJ5hXqMh5WMgoSDgHCDcYJrdX9+dHx6kYt1e6CNcX+Yn3t5fW2If3yHf3RtfX1uj2SgulRlLua9kYctqGcnzOyl7UuDT+nScnzChtV0qu3yW+IAFkKU43UbWlPcN5TaRxy1ExuxhSOovaM1xAHU269urwyBY521hp6hM2mFepSFdnRogJR9jHFofJRwfYh3coCGgHaQhpdvgX18j3aKfY5pjH5zb4x1iIJvc3h0YpSQn4uJVoRT8LWIbTyKY/lh/0veO1oI3NBTe7KP/1S3PdgLsM/iHELklQ4hQs0md+pf/Wg1bt50IkWylDe3PYTMeiRkB4eZb6TZ5p04mrp/sX9rb2aAoHR4kIR9j3l7eoF1h4SIoZJxeHZ6kGt0kIWMmYmIk39ym4uTem19fWFKcpuXbq/FbLfXo49ZHTUo5o7CEK8BMh+8q4N2lG/GW5aZyzR0q/yqjsZ78vsW3CZP2GTrYyA/lz36rqKF97E0+LmFl1PtmqNif9XwhOOkroR/d3l3ZmWLdnB1kXSAbX5yi4OCfqKWiZd6j2Kbe3WHk3tqeXWAgIeAiG56fGKXm4FPkpFooXRhUsSyg2IqMfDEcYPfhYHs/4D8aF2VcqdYOmzYr1HTyXG4D2EliiObEoqhbvIL7iSjB+N+dmpBqTHFf5yAwgCeqU+1x9cmv3KannCVaXR+bnp+g36kdY90iIqgbH+HinqAl3uDZ4FugIWEco+MdnSanoGIen52e4WZa1+CfWl5esSPuZZsRu+hjowt8MddLJbcX+5ZZTf2WqL1O+UuMMftXZztOjR34obqYkdM6zHpIIkYrh0DQESS6GDCkmd87X2rN4KwwRtLkLu1RnRjcX50dZOfbIisfIGHfIRyf32Wf4uNeoB2eHl4cWpyeHt2jI+DkoxsZ42Ccn5IbIiEWX1yna+bfU0x/YJG8mfVsRGBmviSxVhJu7kzqIdM0ePu6hg/uNcMQI3ExmWFk+jNG80dY/Vu73xkIp8A75N9TYLqYWq0XJGr9Sh1odGWdVpScXR0gpuBh5qPcGB9eWVwi3J+fX5wcVxwb21+kGuVi39riJN/dXByfHGodlmZoIVTfpVvMYxlfTz1OCmKUVzDhnKIBGivJVSWhsF2dLu485/c6zFkYgVMr/zT/k+HueubzydIDRD8ZD77U+Cdc2IFgK8zX5eMn7LqFHyPs6SEoM11b1ZmkI1rpI1sYHKIg3trf45ycXF/fGuIepGWk4eCeYaCjnaAemGQjaB3dWl4co13mmYAwqFeMBstIHYliIj9oFvGPbI5UU47sURCNHdNOg7zKTWYUTyA1b2gypZp5EYDOVG+6adICXZGzC1kRNh4kWJUkER+oMnoa2umtq6GoVKViYJvmqajdo9slWt1cIV8d4F8dnd/ZnR6fYWIkoRfdHx5dot7eXt+b1c9SXZcXYuWZOmgVWAZcYI4ARp1ux9jMXj+tS4oZ1EfNF8rSUQg5MINxdjYKmC1pHd+TU37GSgYLBnZnR6oMNKxF8wufkCHdEXGCkmAy40jUJvZdIqSWZJ8QFh2jn6HdoeGe3d7YnxnfIF7ipJah253Unlzh3VyZY+EgmiGeWGALDxykBuryI9jqn3nVC1DCMDHg0+q4ERRIvc2ZXKZN/EJXwr95xfcpZ/mrU4LA7aDf0dAbRavEgMEA8Cd5m//y7D8pT5lBBtlFaPeWm3BQbBltNSnc4F8sJdYSGBkapR1bHN6eYB2c2ZsdXJleXBqk1+Dal5wkYt3blZtUIiWp8jHnpx8opWTej8AbLR1QP/W7pd92UzVWzgDXRceRREdsc9JPT0v2aWdImXrrPqVmTofMYtLvZZgvq7Ppy8MTcSTjll0DkzLT0QBY9gvU5WASWqq3OGKdaHRqF54Xm1mnnlmcHt+dX56lol9eH6RlHt0cXydnY55cHl6WnZpVcuNmX2FdmWRcnh1Y2JZexAS/dd7sj/yz64tl+xF9NXi4QikxT+wZcDEid9fkOR0DWO8x/QUgUUOf1NyLqTmlfVYUHyE81zse6CsAf42qQ8vAF13P46Qrai+mKzArp53g36VmW53eHlzhJNyjJ6ElHZUhGRofnpwe6GPaXFokauZpYJvMyrETJS9WVC7uEkV487dqp1uj8+qwP33tQHoMTWN6JSUUoQpb5xdtDRcbC8Md6uAoR6Y/zm3J0YS19OctxBXWJfJSe5OhrPGvgUa90DCv3lWhUx5jZOGjbCUsJ3PzqpiX21+b3pkc2GOdHiQgGVveY6ciWyUnbypfrOIgHaMbz8J7Lrkuq+TS4A6k/C1esZviv9vqTCf9lmPFJ7nNi2MxKwbUx1cvQ6wL7oO2Aw8qVNwUgKTzorPI+iItVxinjUMjbdFAPtCcNATRsTgDS5PtE2SfTVZZoiZm2lqkaK3W5GybYpiel1um5qRYXGWmoaSiXB0f3yYmaWkfGNOSFY/hezdgct+oWBRQxwney8v6oBM2UCO8VvKId4rfO6IKoZ5rPUz5jN7+k9BP6hgBW+ebywAEVhhPXv80HLSXkpaELBpmn7vTBqBk7zwGaDf8hUkK33RCC5AZn7IV0Zrjre/T6FpkrBof6GLiXaKmq6MeZFimpN9UIpYVU5RJlvcm/EmrnRbgldxKiw+EeUe9A3jrj6ICmMYcMZC1gpswwQl8F3SCqf/PrWcWiPk9Pj1PZBFBKzCWxEtW/SRNawIG1MVQEWQV8dP/lFvtzKiyt6m6PUQpoDfBjE8fqPc51aFvu7OkpSQlF6hrL2hhsm4f392fZyHlIOYipyVn3eBnaW6hoYr3XRYYjAcEgn32/S9laQvsfG87eR8n0rA44G6vMnU96XeV+wTcFqDHD1Ko7f/XBpjjZAI4rcJ7R7lbbf5BOSeNlNNnkC/DVmi81qW3yrcIWeCe+vXCCNMbYVTbJGnx5+JcY6VkbehpoKhnItVX2ebX2gxbHlPSkx2UHpoPrNjDymVYRZD8erf7euqe5VbH+GQjTow7Cd2ZMr5WasQlAOTwPsD+iZWdunu3Lh2T67Z3MEMeRa4K9mls2k+bdeSILgpBz9tK5TuUYzxVoOQu66W3eD+VqjN3zwqskxXhHqeh4d9epxwm6aisKbZzNeSlZO0rnd9cKGJubetmmN6jGBaNT5LGlIB4FFSN971nf26qka2ENKUPYFGru//paBZ/UqUpqrxNmFllAE8vSILuaw7jmRONLTmCDFdDQw/u2j5fxXPZqvwL/8vXKHzNG1wh78rwTM8Y5PB2iSeiyw8fb2WZnJ9q15miY6QmZumj1gyLBxPVvntNBlskVd1PyhEQYf7G4sCGZ7Aby/f9bh5qFgsy4WWqlMq2R+N0F2oIY8oYomH5sSxGTG50PcwJsyRfn8zd0nNo2ns1TjMxEZzMuh726xOfEulvgk2ns7N+xpCZ47Jh8IhPRG90AsqDt5HAtv3BDgrDCFIXluBjQfr5dajfFmPkn1ZC1AwGTYN68UpGdfG2rPnnHZl0c/Al299UCgRe4tZ1P6kOoWsOi1XsvgTh716q+TXt3PO35UmubeQT2BUIE9kG8sfHe6VGD4vs258OACgAfXMITxMe3mY3yZrQ5GPYqDC1rfDvJaUq9KhrbDA5syzspdwdI/IxbG9dVQ3a521m62OmYR8SoUgEJf2onhVuBst73Z1kmb4sciC0VReBK8qt3ANZLof2vpuxejEmXqErvRIlHfxxJnXfWSOQSgEMXkn3OkArq+yZxTwaV6E64+/k07l6Mf9O0t4aXmknJa7iI2wuqa/LWSDdqy+oZ6Lfn5WSg07YavAoK2lf3NIZUU2HkhCHAZEOZ9sRhqBRBgA67Oxbz4/EPTZfRt4XUD4PqbHPmdLivWY5WfR/3qYHaWplc0J/5/pm66RiDixUyDaVgefkkgdJz1p/8hcO09sXZTqzAM7X5XdJTZQVVx4b4i0VZKRp5a90bvW0pS0tbjAFIN+lI+huIx3aMW578Chqq6fUBthOCHqomEeYg3FKMyjZHpSN8Jse2CKu11CxgR6cddKrBlq/3a78rF4eKUsMhZEbukDCi6dcn9YM5EquTwP1iY5vrFVkUsJds5vItGLCW45qvbvERAqGS5Ght4PL0xbcmRVa3GBiquXhZyMjn+MgWpvqMk9IjEd+SQYxizTyE4JfTbBf0xRLRLWunuvfpxnVg3MfxHrwqJMIP751YkwggGJ0jaVV4kE201bZNc3VRdqvbU48HPpYi0qEYnHzdyfUM7H0UAOztQmCI0WhUroMPZ4t12Ut9XyZXrIk8r+3UJ9l2K2u7bEr8vqxQK9mw4MEB0H/AXvjQTYKykzTjsAXHK88TgBuVdq/2NZRQiETSspc1Ue//STU3BrLt2StweFBFHM90yU9iRlV3DD0Ew2N0aC505EkQw13TEMA9fanZc0FFsy25VSu3PBhgNPA5/vtxxlvW2Adsc2L01meMorWWhkiriSfbiDobvLPVRUjqy/y3eHGwwlTVE2BEc9I8/m5wO3l86mGLWU6KyEiGRzVwIf28V+wTGsZjMXkQx+sHdp9G3ZkHujCqnrWqkLcDMEGmVfd3pueD0jflvBiiUV6Lnk8/acRihE/NP+zitDG62SZulKYH6zuNGinLXZ3wUJARX7GEX9+ConO0AQCx1QP/wBJBNscpOglKeur7TiEMDApXYWTlxVMk4qEgMUiz/XxO/R9eJ6IhHp1JdW4RZw5yrdSqwdkhDGVIDicbbdF39aeH6BfYCCXi1ZWlpUO04cE/PljWHmlbePuaRE/uKUhMgUOh3h/vKZy/4qJj8bTERwA1Wdh2V7nK7Ui77oAt/L1UlUbTpPXZ1+oKSLsQHv2M6x29fQFAH687G7kcnEkap7g8qoeXRhPyDvrBeCxjte3xhgyQNVhq4bZwuQxws/aIGDiIaPgHRtaHx7hmpTUT9baSDJkkDmglWACMN/y/v/NoZFgc7F/AwshsjkSn3VAgcMP4Dl6tfiJcn8Ei1bHARKWvEKQFs17Bcebxv32tz5Tlxaj18yukzt6Yz1/7+bdKFpCr2Q1DrjoqZlFC1B9H3opOleyiOq1ydPYqPlH0JzhJKNi4ePh4aKrZeSdmtxd42IhRCIsSpc6WSClBzPxEN/wsfzSnymCLrJPIadW1ZcZn2avLvoIZGo2SdndnaOoLXN+Cbj0s02V3iZ6F1sv6Gvi2d9il0u9MyKfRd0NRcAGwnu2MOU/cOym1prDKggVNSbIHj5WJTwMWOYwvopUHSOnpiOlJWapK+rwp2NhJudn4uPUpoFeYl1f9xgD6dFffZb+nZke7Hc8RJUxjVkhZ+MrMrY4Dc1YHue9QTeBTdmeVmBxoGIfpyQFcmObRe7znU3/9PnuKiybETMfmerlX1/YEr7Y0fu86R4YBYmC8f/gO5x4DiM2yFOdKDVAztYeIqRnZ2VnKGnwLemo6OrqbzBxJ+GyfFmvGXWIU/gfz+pQ3nLa/trimKPiqve6goybpoyVXyZpod9hqLzUlVqgIaci5pjmH/l7wceHiQg/9UCQFU78jAg7uYFxKwN/ThYb0f8tZ9PAZVIGP7y+aD1Xs5vEX/dTaf8WLVrnNQNOmB6i5uirZaYpszBt8WyscTLzszBtopXLPfcmOQoBaA3jDizmmUfWr70NGam7T0bR1iuyBL8Dis+sYGCxtiLxvj36fXFbIFfjuD8+/PVpI1/d4mEvpFoLaR4YS51c28Uybwer5BwVT0lrlwk14DOYKm0F2Yio/lbtwtryDWK1BlLdpKAhb1egZ6lnrCYuO/C+YvOirMb24hnHrcIYrExqmihXWKgU6v6AzhtSn5HlaO74gytv+6bN3KeyNbjzLakmqwFZlI+b211W4fVwyLzIPTGkRDDIuH4ttNGtaWjafoyGFb+wra4y5KUfSk3wpln4CyJ4z6p/FKtDG7CEWqx9jRqi1RzXCI+eZM5yo2krtG8gHdKbkflnYgbYr06wgx6MIjdd9q7E1Ggq+kqMaj2Iczqse4PJDVOR0Zwgs8KVonDG53H2i5pTjEtuahodEEwKSoV7MNLN04l6N4DyMeGe0PRsXyP/XIbCdh2U/q2POeH5GbZJoXhQZ72Tqf6RpXhJX0EQn0Ke7YVyIaDlKIheRu9dqJXBXuyP6INgutu3jvTAbwdADWPv/tVSaXiK2+u0OLd+hjy5PwqHPEKDSlCDW14kzElPFP99/bdy8X43JNLQQ43OSwrHvX9IesRqSsxO+KeUWlGPD5FO/hWDMyl3EXDQpf7XLgRccolf84Za8oac8YieLoLdKGY6/eVXrFQvW6PWnFN/33xXsszpjGW+IUDZ+AUU5W/ruskaKa72PARL01rj6Ckp6/L1VH2EPsoT/kYDBEQIiIL9+3s8N/Oj4qfabp8CFwxI/UdEtxtQBvx3pFCLAng8MGvmpd2Iy0HL6gRY8Yqh+E3kO5Cm/JRpvNIlvVDe9mYKd5NjJjDk1MG1apS2mTRQqYahwVv11OnPXtA3m+Af6HKbPncsBIjQFV0j63K2+DYG+DY3laXHT8rFjA3JDYyPiLYtloqC/TBobKyvcu/sJJcG3hX06h/8ZZjXC16Qg6kT8/LulflAXIHHrQTf9c1mf9dq/5TqvxbpQ90wc42bGWQakcM1MqxVLQ63yy1Ka4XfeJPpi686XIvw2D3lCMFIT13lp/gJldrjKCnzuHgGLW5sL7a57nkvcC7qaKjhFL24c7CppyAMTXe4NTS5+LYqZYX6peCcEsu96IJiuXR341Nl2XSKNa19p4IZs8liu5Lp/xOnf5Rpf9vme9jyGrjv+fIsn82JzbgfnVvO/WDKro5uwaSZTXkn0ntgxhlRo+Yrxidzw9ckNHiBSQxJ9f6Cu2by970Dg/q2rq9psnL/szLxvLMpV4C1pRKyfLOi1I9agsOJOEa17FfHkvhfhnorSXnlaVnF68oohzSUcQ7pxl240qxFXXgM4jeLyGAYTFJOyYA3qGDdZHnvp+MNdBmH55D+MKFSwazZAmmNK59vdff6/Ysbw237CRAYXF2uSVQ+Sc6PENbeU5MtN7MzLvqoybbwpWWonHk4L6jhF0p0LeQVQaVaS1A7UWHq1dKdCHzsOTICaA0wUO6ROJN00zUQKUKcdswkvFGp/hXepCijoh3c0ofz7CdFDED98hd+JUvwV0QzpdZEMFsDqszBPJwZ+4ZLk1qiZzbYJmhs7i65ShBPkNFc4eJusOLes7W2eY+Ly4dDssC5vAG1MeVfUhvG/AW8c6XyIt4dDpKLjADKQHJ76ocwEvJUtt1+2/vYdpLtx6H70+vBl20E4/Bp9GWrJ6RYkPY0lQvj0xgNJ9IzmTxdw3UlFMNv2sLqjQtVSFdVlWBoqvXCBrs6qSdJ1t5foymLUtfixf5JvYS7FdNSPPKk3NNLCcTEsg0QqpfYFI5Feu9ckZWIXFrYltFCgghBpEkwDvFWONl8ncDgfdt5E+8IIryT6wJRngwJFqbxo+vlotMD+S4Yy6IeqNevG/5gxegHMqMSwSxWe+TH2B0YberwMfO094kazpuqZxPa4WV8flJc4/sAyE4OTZAVi0G+YmNXzKrsuHP1df6/efe5/PMup6EQbaNPTeGS2U5GArCxjC3U89Y2l7rbv+MEXLnVMEkjuM/m+tAmRltlpSnsKikk1MY6btXXbk+zZ69S85o/Y8WuW4z65lA1HEDraqBeMSeWFaU9zD9W4iSm4eAo7C7QpKZoAkJ5L3PwGQoKA2832fTutGxbwinBQjq7+bgw9++qa6bT4GJdXtYVEAu99nyE7I0yEjYYupl+3L8cdtPuSOK7lypJmi1DYIWf7auvNChd7vRhGRCjmS+95ERtFfqeQmaPRDHeTC/fdbLiYmCupBoWYbfFnxSmYaInrf1rbupiarQ28Px8t/44OrCwOTm7crSGxbEUiYS6e7RsIAQ89zZvRDD8sPtqHwuCQjHGNDphx+5L79P2WTtZNta1TysDnXHL223JOQbbxVuoYiNnI1ja29sKFOydLIfsSynP9No/n8IfrJ8LM+N5Jx9YlA3gjt0eCBhj4CjxLOkmcLRlb3K2PQGrdi0wo4A79bRkJKfjImJrKGloZBmZayon7m6seblxLWj4IK0Zq2KfSjdjOGON5wwwlHSTM1ExkqrNHb5gm81oh8uTzPWVhi4xruljmVWnqiM6jjgbiXN+Iges0HUXNZNvk0Ik0fc7foLZGWgD2dfcoH1K6mrylZ3npqpj56psH1+lW5yipSmgaddXkA/Qj1NPENMUDFCblZQMkUT5NGqpbeZlpFIHPjXnQ/olUX8iC6xL9sr+4GmUTHtcSzVvWHsaVOepH1nAI7SvLumhWNcjLt0h0m+bpBvSeF8EqQsrhydCyltjtXc8fQ9MUYwGAoWDyxzycctMSMyRk4cMhYcMi0kIhELOTRKQmbHJTgeERQkOjYhD9q6c2ckc0lCLSMG5PLLFRNODL1K972lpWQUu7U4sH+ycY9QyphTF6qkRAbSdjCZbzAeVaW4tZeYYbnpoRTKhaeFEncUpT/ccP986W/X/kgsIdr37gMJ1O0Y2QQe2noZFh8mEissJhgeKTEjCwQMGjc0MDFJC/vq2dfr6+3/BO3QsJaEV7eJiLCDWZ1kkXhFUcWmNH1UNCH/xWsxAdy2nie2jErtfyfru5d4U0YomYudY5VOk7Knon0Zfe35Mh2Ox4WmWu17E61BzU3DMKfeBAnmy8jJuezBraTYysvj/+j67wMI8PUE8fnx/+/33OcVJSshEjj9ztKzvgzrwdu737/g07alypeyeKei4IHdugutjyUKdFqCCCkAwQQg27qhn8SMRO+yckOmeSx8RqOa4rJOmNxjtrGqban+Nys4H34aeasnulDwiR+oIpYUV9NDVIKfsZKZ45/Cr56jp9dvnLbBx8zDx8rUybSu0dmzpu0NGe/7GfXMv6mceCaTe3KvmohwXTIEGPLgkGFnNkgjAzb+0+/63M6hcqagQDPYuXzasnY5AcSXUGFRl2dHsDZedtBLpLegmIBPWHpcXFdfTFRXnBakI8Ja8Hj3bAJTqRrqRH+PXG66qm5RWElQblSNlpt+aX6QjJKHc3l0XDlhM1juyaxsgZOXlXxvSoRENjcx54JjUhAnVlFJD/oD7deRD/Dmm8V2U51QOv/MfAPQvLCIXyLfpWcxyoqjfGosb1LUWOFOjZ2RZEdHlH9/j6hxbHJ1z2j7kCK5QcQ1ridhT6GSYQ9yLbf44/8Q9hrG9klfWklfUmpNRj9dakg8s2trlJdjXFs/OSPLkiShmoZoOTd/ob6ZbzO8ppR6r71rQMWgrj5tmuDfnplzdGR3hp+TlmtI+cCKT/yoOZdhe1GfaJm5Ssl4eWFCMmB6hIGo1LOQgjGaHbhI3XgBe/WX9Q27RtCrzBQ/RPvpJQY8iFz1FxMeIFJCJislJXiW0gFBNwuRHWJIQt7/2q6o4gC+3Kufj62PgVcj0KKfk25tWXFbaDxeTx/o1M0cEO/GgHBSi3FsRQ/epWYx+a+Zi3KCXLNbifWnOk09IvF/aqWCp6WxrapzilrtghWoPMBCrSal9i9gaQilyLi53s7/u+vzudHx3/anqL/Czdni5voP2dfSJ1LW4r/si3qCOmpSmFRZXWx1XE6fZC9bS0InPzWNYgo/20YvDN3CmeO7vc3kUzw+Ti8T57WGRQnXsZqNeZGfn3isRvB4QhvwvIGDrJbssKKjsYRnEKEtvlbcYedU2HmdcKe8219LeaGjlqfR0K6FszhpZ3aJiH58brCAg56Oi6hlbYSKp7yM2tzQmIaPkr+dkXjw5Zhm8hv7M+3QpTHYoLmE+tFvXG5Fw4Eny5zS4e8R/t+6kmEs8KyJe5Btm5yYbRXsm5N6VHslxJK3n960nLFUqTq9R+Bg9n8GfOV3yF7EsM4ZL0t/p3enbrowbn5EP19+RnWU40iXt7az90l4in94hqONzgZIZmQ+tmy2lqSHdJ9tkpOZeX6Jh39mfXV3lHWJeWglcSwBqLmydHNmwrasnn9ULgG+hWjIo2WabJGbVSrUm3x0Ve2wmrSvyqimosNd4WbxfPuPIagMN4eKLKuF9Pv/In/RkzuDvXykSNLyHUdcdo+ahZCps/ASIyxmQnxoYgb0z8npBvz3G+7zzMQAdo1CC+UQ/ScFXkEXBqkShFQ0MeRrIvf1E9/mRVJUfFtVNQ7jt45UE5NdSV9WdTvHcaKHmng6v4BuqaKoqnVke6Z6Ep4aoDegIJ3vYa11Zj8p+x0QkMtC2QouYH63m6qg+i0vYWby+0slGSQegmfJOH2ku4jZk4xBG7hXUEb7Li5eSB304Omqb5aTanEZOOKGG+i+zzTC+MK4Lv/D6QgpEgLlx5tqLhHYSS4CfXKbbPyK551yqXRwXa6ZhWupfjv/ZPCJEpcaqSauSo4nYyweJ7Xgux9PSlqYwQUZQ2R6tq334+PiweSs3sT+AydLVQFG6yIZ94+4e1bJqHdUTZNyKPMW++fJsZmaZ0xcLRMEvB23tGakzInEoGLes3xtwsy/s5VyUxncsYNiUl5TmxvEZcGkvZByScCzPaV1fqpaR0zyoUmNMlo/uz0cHAkA8tHEtGxwx5OwEZm97SYfLBE6dOvJYGKSMV1lWlx0mRRWeZ6yq5WLCXyoobp3NDd6RS4E9+Whm3BKTFMY3SfBPKhevrZDCiCnOWNAHOG6b1RQbXRXRyUGv4plL0YsDm6GtlfZoLWtXxrtgKQhy3dZf5bnEb8JmyPl/uO55dHGtqmjf2hRBShwbnmcuJWowTdgeHiUh56/U4hXcoTNbtOQ0/NadFZuaUzcv3BtV2RRRD4wDenbRTZCIQkQC8WGM1n6doMXWnvx05mNRwIK0JCb/Q8CGgbqxp9gMQCrd5djP098hKmmpJ/hsJwoZDEOVjMsWYefU6djj5CLjnlzeW1lUU4vHPbIqDdZaghc9D5AVCBeWnZYTXSpuWF3PnBdeZicLVaTiI6CApZh9L+ONA+9fchxGQnN7Mq/noevf1RLD/TcNdPsRdV3c1MdwuCPPiGrhKjCqY9yPQfgmU0vKXZ8oJmThIStioViNNo1Q92E/an9PUEkQDwlUClBKhkgHg//AeLSs2doq674hXOk9Ag+ksjvHe0vG1QKQC0mLfIHIzhhAT4r4qVeLD0eyhwF7ayHz9n4ujuZtPHXURK5ahTVtI2vm5V2djU3AcB0YVvO3+gcDEdANRDcoXg/57eXh2VPLGCKZ4lcOEPZaZYglXydTKrNp62q7dL+3uDQv83Ht6mnjnl2Iytyz/8OSoHExsoDTER4nhukjcLboCrCuMfXuvQko5hWZEty1EhSQilYTw44OKt3fFpfUEFHOyoxDTs1PXALZw6QVhO4Xx8BwMi3j7qN6/TRrWlJHruLel7JgHFylX3WQqWRfFU+YnN7jl+SaH1JU2Z1dJR/hnRoa25VTUAxIFrO4zR8oNoeE4z53/M4QT7g+CtWUWqx6yspZGJ2d4pkVzZBJUYttI8DFvi2uaieln9ykYmHSxo+GfEz+uquYUZCcFUKwpcG0q1mxEGKOlOxQIxJ8dnDXDOFeXxTSHp8iJiZny1Z0E+GfrZIeWxGNe/XAhkbJBolGwsLCfDs3sfD+XaA6lF9mt7oM2yprVJD5/GqFnq9+rzY/x8Z4BUgWGHw8dBXf288rrl5akCZjYGAlIBaaWVUOuR+572tjlhPBQkW58qSlrR4MuB2/lLXGmD0aumHaHkHxkIb7PKNKydLWmqq/lKRVYaVnIljZvRAdX6MqLK+t8C1qqikhoh6Z3aA9AXfJz1HamB6fHp3ZId7q8Pa/jPcC/Qns3XOwLlVmHB3wqCVcnDoI5NGeY8KzuUt/sXO8MGrZqOLl2w3lyEZ2+axdoNKNA7qeBK8/pOV7IEqlSvzao1/vKuXkF6i3GHjPanrR27FHkxDMUFLouUYES9EU1VYXFdMSEYmHhoAVC6rp4vb3+QgKClHY5fmEy1hZq6g0aja7qCtjVFkecjYoUwXPPTf5MXJ+urr2+PYpqdom7quNg7IjQ23UdKIlE66sXc1Kt3DojMioS5Z706mEc83v5RILDR2STVWSivOdGpta7OhRJGz5wjx7hxKiKW00+Dt8Pj58/Dt5My6nqZj2x3IK0mFl+BVG42Nj6/Iv6636fms4/dJxyZR5+bTV+YS/M/Woo2zp0wCx62jxLFxTx4jKKAG800G6CLZnZNxgYRvTwrq3eXuS65rtA+cBFeofuQlOhqtw6LfqED81pI15F7RUo3yFmV/iUOMzuYaPlVwfo+PmZ2ZkpKEbFg3+qmf34HB8+31OlBtc+CQfoBCXoqipafELYhTjJqSh4xhi69wa5WXfE5cHQXHEtTqv8PzzCheyvOmcA7qXLKch5RNN8vmy7JSbb8dlYZ74lOxAVwTj8S15lt2VYdPC7mFPwiyD4YBV5qzCi881znVd8/c9AshLy06OjkvLCT76tKgJ/DXMkiGr+/SA7XpCkf5CQgrTXAaKWQ68Dg048SqW3uheHXm5NxwGwgyMPRVPBU/OC8qFzEgEDBNoEMsrQ4LrumOwopmvk5kWjAW7gaN9VGlFaAYVjue3x7hZPKtZTXR+1qsH44CVUWlTfuIUxUSDU4wv7i0n93S1My9vpl0ZmvijObe/R9Ua0iPXJDHJqALeOoqPFknITvMhlwoO0lMo8hjWnx1lYGep3oG+MmbssWposAghnZ3GeSsWKSmP/QbjvqKPQTVtVcP8M78sXuM70i8EYDTiwx9JZ8gmUMW2Ih0+lzLeR68KADbpm1PQSsfGyUB5ZlaPLZxWF0+Jv/8cXN8q4LK+Lt+BfIxKYGEe7b6cxtxfIeUlLOvqqTMx/La3BJDgFv+/Wv2ssX45GqJGMapoeME7pjsXUkoKd/uSPvhvJMyxruUf4eVcRMop/6G2UvAPfhNBZAhwpUMu4FYrzPBUAOhgUUPjDq+f2tgTUhFOhv7z5FG+Kk+vliNt/MVIFCPvvgTaGnFeKVKQ3l6LWVR8y1igW5igpPJcoWc8hgBHoJtepiypGn6za0S0q+LeGHh07XKsZO7nWEHbEcgV+RxIrmmEgSm1C2eagI8gOpJ1jZUc71GHIsr31wXiElJdiOqn00uZjfbqZqSjWtlYl1PORHlp18Rt2ngYkISWWN4rjd/fomI+MraqdHxlNnOGfD7Af1aLwhxyOL28J+6xaOpt53crnaxnHiDak9CCR/oIgj5P3vnbiLhUxrwBPbSyuGs/ScKtbOgfZNjXDDDfYYrnKPF8sE277B3IGVLerSEkLpjR26Hl6a3yrCPgnp4bVpEH/G6dSLLbQWzNlyUqQNOdbGJFiTFgLlDi812nXlhqHm+xhd0j4G885XPj5qvYbum8tedPntUYeskFvTIrZ2Sl3JgiBz04Mmof6eRQngjQAElq08YXbDlOni6iR7n1LAxxK3ZM2sANZzvTYCVkbSshU9OlHucqrq0spqBg3xzZUoj/cN7Mtd2HZSjN9ukzAEWHzhNUWkwg59ebuJk/UpsfTIR+I0yYXtdboqHgZF6L2JfcibN1vuYj6A+/NfB69XFsmbduybgwqJ9j2F6tbBZc1fR5beTdW6YaDv5bOu5HThkBFL3dPtKoA1agKnStdrU7mWFoImQqamal4d/e3RlSyoBxH423JYGVIf2QUtumqm039KX99zLOfdyqLjE/kXSkdPM//cHWeXn0MnFuNSBwKMINolvZTEpNiwlIzAa998o8vLz9fgE0UjgsrfBBgnx07yCLBIr6IfdtfbkfZZrani74S2O6T+e+VKQstAFjAYuBzFSf4OPlZB9bGBsZVtGJ//co3Qou8nhW5TpC0BgpWqcucrfLfOH7iY6V3qpiK5trxFpiB/0XI8I5ewOqKuwZEthmtQF3yQBEt+3w+PelIJgiorpuz48+sCmnZuKazpQPyG9WhbaG8G3fNiYz0B72P8daGvVKH7gNnqhu7W+j9sUCT8pW2d4XmdCMEpdbEIrANmdV+6vQeA8swYpO3VX9avfINj0N0D8JQ8NM0xOVwlAisRtz55X6gFkFB1FcvH1PSgnJtm9AxjJysmLroL78OLMzri6yu28goLQ86UEoaCginhBFgnlwIOm5JtBfZ0ITwGfha4OYKYVVYSGrvnEuW9z+jrJPE0iXiYWK05IOyUR04xDF30P0vNaY9nWJekXP56RwFqL7snUL8D4ITzi5R9PgsUHEicH++zUAwYzqUcTF0wRNAch6hcHUQQ0/kAuFfnSIOTlAss53tq9SAHs+7xx9gNT4XN55NE213SD48ZES6mxy6byd7NVc1kaMBvts6IjOJuFtj+XytF1KiY8Du2pZVXeVFhriUqHvZoBMingUWR/tOBOp5W2vZe03yo4a9UCqd/OFzJni3tieUE5HxLKxJSsG6cjIU8M8dbP4krr+77N2HoT5ribWm5tLj8CELfUrW4dzTpzN7JIVMPaBHB3zBULR/39BikJPj7pQAqfqZ1yGrj/GaRqOgNY6/QAzKV5Luy7u+z4L16NzERPon4KGhZ9qL/HETE0Sypsqmkyfb279QLS5dLXdxlWKm5lCg3aMvfvb4AY793pkFkzHA4Gz6y4f4xesdlUKeSfEqu2ZxnreiRHuPKT9b8ErchlX0L2O38D6gPcuz0+alAGM7Lh1kVt5JF209VSob+lwLUdgRh/tH5EZ7NraX2x+hALMausuf4XUfrJEQ8qaF+gfO/w7z8ORzVkncD/yS4c8uw5OtY4BZWFO0d+tXw25q2SYLquj2xGGebXiT4iAWsqv0C8wFeykEZm1EWVUi7lOIF7r++JlHQPGqStx36l1qEIattzWb87AQREhEyyfxinVDoC3Yx4qrB7IXRt59paWo1HQ0U+dp6Fi4yJkpWx0urSSH67BVWaiNNMZ4CEmrJivJFFUYAFlj4WBdwC1K/hrqrey4TIwpdwRDwmJRQR6VTYApsQ0OimpPKT8kRsfMS3GIG0vb6/pSolCQjaFVjrfoKOH5JsuqEc3gr7lR/ObY6Nw8vMnZn1NH13hJwug0uk9ZKRhaXVAR8G0JCb7QI5ERtS2VB9xjrBkGGXe2BwX0gFGiQI+KqzycsBv6Kgga6tn35JPPEA1+u2dyRZi6kN/5+GjTc6bL9rKOSQZQCw3P97aQgfOQEnFCIt/15pRFcNTPle2sPycFtJQRSh9tGH38iH+nTnkL4YeXe0TzirsvMQUz9t9fCyrND/71LyJvUoIyz9TFmMjWdFuLaBsJF4o5FCS/jBBfbfoBv+7+mvm6JgZSPVHcS8jkeQN5QpFLl5lY2JbD/3Gm54CmqJZNwb4rGnclTkAkM0Z59JAyvJmSGAr2HAxGF2sA+olh0QzDyVMsU6pXXb7mSrpZaMtdbcIDcupuU1S8rdCTEld+dyRWc4hXWSnbigpEE3UZ13T5DAc1h3NRzrlZ5qUDMYD/UK5qK9q0Es/+HYyKwFxaW0ZxR0KuG7p/lH5SHFh8+zlDFE3VPaGf5k1TCc+U0l8joBRkf1kXuq7cm5gX8EaYZJSZNs7YxY7gobhl6k1dzwGTtbnVqfv005aQEiF2Kw1tVdgZSd13oISGKkUpCth7c5FC+1kn99/RDzNsK6l2qNR6WZhShnbm1PIktV7deqqc99w3tbGhtoYRMXRQrIEVYG/745uiCcHboQhfJB42Xj3svwPIi0meFTqWkS1721uwmEw8pDbsxQFrLAdbeLnVTB2c79PBV0gYrP/NILDtY/R3uU7xy92Laq/4Kgu9LHRZ6yiqUp1MxykKJmvt4oIjCJ49zb1rWXnk8k5ZlMMezU/trksYeTfD2lJ2bRWRbT6yaPF6OMatlB3EyUTZWPuvZTwzs4Bw3QD7ThLDb/bzNJL2K2lBjEbmla478C8BRQZqvdWhp/2dMi2xwXNlFbRG5pzZUrYw8d3LUnRqu7x+UY35KaiV6pq46UfImB5tqgnoCOwINYgotSVEQq98exWERNiVbZnJMoCrZYyLkuvE0j1ZoB/4uWLnyFe9tL0U+kPeDnZ3UGy/ZfHF2+agvgg6FFdu+2fRa0jGvDxkMWaTy0DUWOdaw+68cqU2aAnaG5vsS5vlZhWmuRcI2dyq+qJYSQrrm4x2qjn49/iIp1hZORYI2Gp82evaeTemE09NOTsqN/xqQq2m410dmmhlwOlGbkEBu1r32ce5wdNmvB4laBv4B/uobtFehXUut/cGDM1o4S4JEg/riGiRfLoilpbI/B/VSr2JTB3fgIbJe4zioSV1WQna5+cEBid6C3nVldYXuNpHOKaEx7n3t+nHVtZFaQXTtAlvYWxcaLeHVPZGcsDT+yt+JutXAjx7qGfJ+OUGVP/QJmrcxwyzpaaRxy1fovlJqZKQhS4JxvPHF/pSrWv8oTxBELp27Hdse7Vn2f4gRLT3qYsNkDQlh6k7HnlGicoXaPmnmTfaJ+hbh3j3WGf3BJcZd1joKNinF8kHZzazjDqZ+/VkTY770iycWhqXVOznL+61HOFVbi0qo2spW4MKOopdorcKzCZUaxEFLvb/f/fC5YgrDHl4ivvX/0jDoRzengwkbUmNihxalkzGMENzR6Xc3U7QlCiptXrHZsYW6cXWZthZhZg3ySjYSCk3+ag5Sacqyie6Wdj5WUm42HYX2ijJiDcUNGQen0ua/+xXOhgkAkb//owyLhIffYve9plhKPh/iRKd2OJNY81VBJNCKabaCR8GmmwM5Xx6DIzzkS+9YelriR4rePvq5mju9D4ZG//x05Q0t5gouVsH1llKOAlX6WdniJgZiMhZp+eXyZjYeBfpN9c7GLg4F7poKDWntkv6OgFMGFXife3buSMsv8DmleZGxJDvrtpBUQNkafOcZoroH6AJZWqI+EyZdLOdmm5+zajMTsIo7IVP7+fUkI6kjPw8KTxZX5G4rSvD6Po9QHPZuBtq+9v69ynWN+houMg42Hf6F9h3aFiIJ7eYFriJ95e4J8gpyNgJuFfXh3eW1QnG5eR202OfT1Au62yrSA2pF6gJ8y5gZSOFVscFwu18FfxS0zgOKlHIvFpntYSuIssxLF5FM3nBVoWllM6AjhLv7Lsq/2tYt2kT5Ib4uwtwKk1qtmua9yllmTlHaNb459in6ZfY+aknKIgX+Tf4BroZOGg3Rxh25wlHlzgGaPkoyCZrh9fG3KUGtnaCvWajURleUm3YHETDQs4ZysvHHZyFWXOxyD0no/1ryCkF+9dT3WLS7fdw2pfrG3s2k0JdtNKteF0Y2vyVPXTUWFzp1gRaeJZ4KZi46TkKqScnV1ZoKMcYWHdYV9kYyVg42FiYh/eZZ5h5KGhY2QdpyVfZihcXFqjImEbVpAKKVOkyF3BhaaIGHtW/+/iIhkr7YMlk6vT8syFqXynYg85ta3vIBqVPxKNOBvTOqWFtvXmjRDH5Fd15JbzseXtItPmZ3+obZZraiwocCji6FRXm59cmxthWuPlYGBhYKIZ3SJlHB1eHhvhnx8fVeGdIuKXqGKYYN7cm5ZMruLe4Vca3Gms5bNa8pPiw16Dw+CPL3RjzMXarZ0/CmlnAfdwblMDNeBo6Ffn1VY8LB+lK1SHwy1J3EPIHr7zobLoopxoouqtQmZtHy7hKhrSImJa158c41/n5iGi4iRjJ6UlXKPeoBogo57a2CYhneFjnuJeIB3fXx3d3hkXIBddJqfiqGLcJ4jRUBkEA+WL+38Xsh0EN4MXogBb53+A+SZSPjwMaBVAUKeinbOhnvrGWnf0XlH4mI4/aRonRHgp/vLmmzdquV2MZChg7NkmK+eiIWHbn6JeG2GfHicfIqUd3iEnVyAfZGJio13fH2PeYWQeo9uZ4aOhnlyZnOHhnGCdZdnQrp3jFp1VCch/plA5iiRD74LB/O+NIzKltc/fbtXynwU/XrS6ZeYTetOnfyajXPtmVvbdFcjOZl0Gc9+jn+UeppjvqlysayMioA6l2uehpqEdmZikJCIk35yeoiBg4BtgY2Mk3N6gH6GeoSJkJaKe4mElXV+Uoh5f3R4baCJZHFfkr9shotT5a+tXDTsD5dnvW48IONj8bmpD2ivni2q3SwzohIJr6ls1mWWKZeAexCH1fF7cFivnaH8wHzXjGKb0oUzYjqMn9HPdoNIep1zfX5dgoWKjn+DgHWMeYqXiXF2gIiTd4OKd36ClIiFf413jIWCeXJueJB1cFx9f49viUOfrISJiHw8shwhYVAl493ybcdqeKT2pLpWkumXPnx7I87KIinM0TfdO7/1s12WFqdHAoQXU9KYxbHhou68SMRkPlGQNZi5noSjqYKJdpJ2g3Nte46GcX11e4B2fXKGaX6AiIiNf4OLkneJen2EfIiKm4N6YXCMhHSNkYdXbF6fe5B3nZenl1Go970vT00nwFK7K/go5Pejvux685VsXKU8BRZDr//hUPqAthHSZ4l8l4YLr0iamOveiOi+AdlRwn5H9yAzjbJne6GYj2N/nY2BjIN4gn1+jH6CgIuMint4f4eDg4SThpF+hYCMgIhydod+gpFuh3eCcoxqdlxhkXJroI2ie11WMJ4WGUVZ5H0iy9cyKwhkCcegpqfWrpabvTLhSlYeJbRTE73CDuaoULWprjJ2Su6aCfLdOKVpyWsFjBzANTWiz4Slu6lDaoN5iH2JiIOThJd7g3ZlbnqcgniKgHN/jYyLg2eZfJScjnxra3t0g3lyhH9tk4WQfnpWokaleV+ZkE0qtmNLAbcCmEsJnDZWUlEwhfXtwgHX18+Dh0mierMeFEItz7o+5qtYJc+9O1x3Zr7t3MglqlDhkTF7QYBcl5vHfa3Dek9nkX9yh4SBfoCDe4GLiXplcYF/h495hHyJgot0f4SIh3+alHp0iIuKfoRwmYN6iJaLhGqdXVRpelZ0NT2DQWR9zkx895CXRakliBG2HclKRH4T8l5NqwvVjyPQLWDsqTXkR3IjviEhVSiradyu6KeZacOVVlFuc0ZKvIhsw7CsioGefoVriYV8hoaKkH58jHZzkX+GhHZ5f359hnlfb5F2h2N6gIB1kIpwenmHn3J6lH1je4CRZHSBZEVGppd0WGAE8+G7h8B5/TmrJ9BGtDe5T3Nhdk0Oxze57r9BbKrZP+8fZBuLuFDyWE67ydL4D8Nw3Itf2W9fReGgl4i5lZR+Z4GFjneMiYV3aZKOcYCJe4uEgIp4eXaCh36BiH9yjHJ7cHeDhm53h3hyfYaDhn2CmI+ClHB/nIiAXk65vJGLUCZM6bLcyIacK2X8FDScxE6IKO2JubCLhP8N0F8GBk5N7PqHE56OYmFWHQm6lRw1c4XlqoT5gUSkFIDPVqKmgcCJi3p+h4+Gc3mPkIaBg4Z/jIFqhpCGeo97iZBkhISEgoaGineKhYSejop5kmV2fHx/lo6TbZSVj3BIRoLJdJCNmg0n+Y22po8bb/MEDWuZGpkr+qv4x7SFRg7ST1YVA+clJ6BhpDM4fSMu4u/KGOR4YfCiduV4UlXsmqGHlpysmGeLm4WWiZOVnH2CiI99kHuFfmtmcWuJc3WDimt5eo5/dXSIkIeLiIB3jZqEd2OCknR4fWZSb6Kmi3NhQftWqIuAegDU8c0jfCPEwMbms4kSoCcJoKTFeahT43FoTiwcxBdBxI2PclVoJQjMydEe0XqN+7t37GYvXtN3OGqRbL/GV3mBgXp6f5RtgYx6eXt+hpJ3e3+Gi4N5eICEcoV7kYqBf32Fan+Lg46HjX5vdGx5kWuEb3VydWiVlm5VNJeif9m3UxH/YyKcBEOu83YaVK+jGBrCU/B10DzWe0JJPCMu31uuB+2qPEonJu0t1dHXlaPzsQncYzFgr79gc4aUlolygotlgn6IdHN6iYyMfop7iX2SmHJ6jIKJf4iIdXR+goOTjHuekIiScKd/kIBveaR3ZX14XaOLRoafkF0YmpAQ/sxxoTyX6oJEEI1I7HqYL8bJ1fVJzZO2iK2rd1o3I2vI76LEPXIgLyRL8yOy18uyf9OzlalXF0L8onR9rY5/ZH15j4aIkoJ4gH+Qj3CPgIWVkHqBfW5th5iEinFxZ3eVn397jYGBjW2IZYiRhYR0j4GSc2aBhpKpq2Z9cgixe2x60amRxov0lTu6+wi4loLSote1AT8HcI/gcVhV9+l5b8Ozr5DjeftSKijU46XHvLOU646ackhvLNp7AY+Bd51taH+BiHKCgoeFi3xufXt8ZHp4i4COan+Ed4eDkg=="};if(typeof window!=='undefined')window.PHOTONN_ERR_MASK=M;if(typeof module!=='undefined'&&module.exports)module.exports=M;})();
 </script>
 <script>
@@ -1432,6 +1619,12 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   const MESH_SRC = (typeof window !== "undefined" && window.PHOTONN_MESH)
     ? window.PHOTONN_MESH
     : null;
+
+  // The mesh build itself (apps/web/mesh.js), read at module scope like plot.js,
+  // so mesh.js has to be emitted before this file.
+  const MESHLIB = (typeof window !== "undefined" && window.PhotonnMesh)
+    ? window.PhotonnMesh
+    : (typeof require !== "undefined" ? require("./mesh.js") : null);
 
   const CSS = `
 .ex-root{--ex-fg:#1b1f24;--ex-muted:#5a6472;--ex-panel:#f4f6f9;--ex-border:#d7dde5;
@@ -1900,108 +2093,12 @@ footer .colophon{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:
   // mesh is built the first time the mesh widget mounts and cached after.
   let MESH = null;
 
-  /** Decode 16-bit little-endian codes back to the span they were quantised over. */
-  function decode16(b64, span) {
-    const bytes = b64ToBytes(b64);
-    const out = new Float64Array(bytes.length >> 1);
-    for (let i = 0; i < out.length; i++) {
-      const code = bytes[2 * i] | (bytes[2 * i + 1] << 8);
-      out[i] = (code + 0.5) / 65536 * span;
-    }
-    return out;
-  }
-
-  /**
-   * The Clements schedule: column c couples mode pairs starting at c % 2.
-   *
-   * Derived rather than shipped. It is three lines of arithmetic and it is the
-   * same rule MZIMeshLayer._schedule applies, so re-deriving it costs nothing and
-   * removes one more array that could go stale against the model.
-   */
-  function schedule(n) {
-    const cols = [];
-    let idx = 0;
-    for (let c = 0; c < n; c++) {
-      const pairs = [];
-      for (let m = c % 2; m < n - 1; m += 2) pairs.push([m, idx++]);
-      cols.push(pairs);
-    }
-    return { columns: cols, nMzi: idx };
-  }
-
-  /**
-   * The 2x2 MZI block, written as the two couplers and two phase shifters it is
-   * physically made of: B(s2) . P(theta) . B(s1) . P(phi).
-   *
-   * With both splits at 0.5 this collapses to i.e^{i.theta/2}.[[e^{i.phi}s, c],
-   * [e^{i.phi}c, -s]], which is the closed form photonn.mzi.mzi_matrix and the
-   * torch layer both use. It is written factored anyway, because the factored
-   * form is the only one an imbalanced coupler can enter -- exactly the reason
-   * photonn-hw/+meshmodel/mzi_matrix.m is written this way too.
-   */
-  function mziBlock(theta, phi, s1, s2, out) {
-    const k1 = Math.asin(Math.sqrt(Math.min(1, Math.max(0, s1))));
-    const k2 = Math.asin(Math.sqrt(Math.min(1, Math.max(0, s2))));
-    const c1 = Math.cos(k1), n1 = Math.sin(k1);
-    const c2 = Math.cos(k2), n2 = Math.sin(k2);
-    // A = B(s1) . P(phi): P(phi) = diag(e^{i.phi}, 1), so it scales column 0.
-    const cp = Math.cos(phi), sp = Math.sin(phi);
-    const a = [c1 * cp, c1 * sp, 0, n1,      // [0][0], [0][1] = i.n1
-               -n1 * sp, n1 * cp, c1, 0];    // [1][0] = i.n1.e^{i.phi}, [1][1]
-    // P(theta) scales row 0 of A.
-    const ct = Math.cos(theta), st = Math.sin(theta);
-    const b = [a[0] * ct - a[1] * st, a[0] * st + a[1] * ct,
-               a[2] * ct - a[3] * st, a[2] * st + a[3] * ct,
-               a[4], a[5], a[6], a[7]];
-    // B(s2) . that.  B = [[c2, i.n2], [i.n2, c2]].
-    out[0] = c2 * b[0] - n2 * b[5];  out[1] = c2 * b[1] + n2 * b[4];
-    out[2] = c2 * b[2] - n2 * b[7];  out[3] = c2 * b[3] + n2 * b[6];
-    out[4] = c2 * b[4] - n2 * b[1];  out[5] = c2 * b[5] + n2 * b[0];
-    out[6] = c2 * b[6] - n2 * b[3];  out[7] = c2 * b[7] + n2 * b[2];
-  }
-
-  /**
-   * One mesh, built column by column into an n-by-n complex matrix.
-   *
-   * Column by column rather than as one product because that is where a per-MZI
-   * error has to be able to enter; `splits` is 2 per MZI, in schedule order.
-   */
-  function meshMatrix(n, sch, theta, phi, outPhase, off, splits) {
-    const re = new Float64Array(n * n), im = new Float64Array(n * n);
-    for (let i = 0; i < n; i++) re[i * n + i] = 1;
-    const blk = new Float64Array(8);
-    const rowA = new Float64Array(2 * n), rowB = new Float64Array(2 * n);
-    for (let c = 0; c < sch.columns.length; c++) {
-      const pairs = sch.columns[c];
-      for (let p = 0; p < pairs.length; p++) {
-        const m = pairs[p][0], j = pairs[p][1];
-        mziBlock(theta[off + j], phi[off + j],
-                 splits ? splits[2 * j] : 0.5, splits ? splits[2 * j + 1] : 0.5, blk);
-        const r0 = m * n, r1 = (m + 1) * n;
-        for (let k = 0; k < n; k++) {
-          const ar = re[r0 + k], ai = im[r0 + k], br = re[r1 + k], bi = im[r1 + k];
-          rowA[2 * k] = blk[0] * ar - blk[1] * ai + blk[2] * br - blk[3] * bi;
-          rowA[2 * k + 1] = blk[0] * ai + blk[1] * ar + blk[2] * bi + blk[3] * br;
-          rowB[2 * k] = blk[4] * ar - blk[5] * ai + blk[6] * br - blk[7] * bi;
-          rowB[2 * k + 1] = blk[4] * ai + blk[5] * ar + blk[6] * bi + blk[7] * br;
-        }
-        for (let k = 0; k < n; k++) {
-          re[r0 + k] = rowA[2 * k]; im[r0 + k] = rowA[2 * k + 1];
-          re[r1 + k] = rowB[2 * k]; im[r1 + k] = rowB[2 * k + 1];
-        }
-      }
-    }
-    // The output phase screen: a diagonal e^{i.psi} on the left, so it scales rows.
-    for (let i = 0; i < n; i++) {
-      const cp = Math.cos(outPhase[i]), sp = Math.sin(outPhase[i]);
-      for (let k = 0; k < n; k++) {
-        const r = re[i * n + k], q = im[i * n + k];
-        re[i * n + k] = r * cp - q * sp;
-        im[i * n + k] = r * sp + q * cp;
-      }
-    }
-    return { re: re, im: im };
-  }
+  // decode16, schedule, mziBlock and meshMatrix live in mesh.js now, shared with
+  // the activation page's two-layer chip. Moved unchanged: the operator below is
+  // byte-identical to the one this file built before the move.
+  const decode16 = MESHLIB.decode16;
+  const schedule = MESHLIB.schedule;
+  const meshMatrix = MESHLIB.meshMatrix;
 
   /** |U . diag(sigma) . V| -- the magnitude of the map the chip computes. */
   function operatorMag(M, n, sigma, splits) {

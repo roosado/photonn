@@ -34,6 +34,8 @@ env.win.PHOTONN_MESH = weights;
 const atob = (b64) => Buffer.from(b64, "base64").toString("binary");
 // plot.js first: errors.js reads window.PhotonnPlot at module scope.
 loadWidget(fs.readFileSync(path.join(WEB, "plot.js"), "utf8"), env, { atob });
+// mesh.js before errors.js, as /tolerance emits them: the operator is built there.
+loadWidget(fs.readFileSync(path.join(WEB, "mesh.js"), "utf8"), env, { atob });
 loadWidget(fs.readFileSync(path.join(WEB, "errors.js"), "utf8"), env, { atob });
 
 const probe = env.win.PhotonnErrors._mesh;

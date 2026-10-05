@@ -1137,9 +1137,10 @@ def render() -> dict:
         "@@ERRORS_BUNDLE@@",
         # mesh_weights.js FIRST: errors.js reads window.PHOTONN_MESH at module
         # scope, so loaded the other way round the widget silently falls back
-        # to its synthetic stand-in and draws a chip nobody trained. The order
-        # is this list, not a `+` between two functions.
-        script_tags("mesh_weights.js") + "\n" + error_mask_bundle())
+        # to its synthetic stand-in and draws a chip nobody trained. mesh.js
+        # before errors.js too: it reads window.PhotonnMesh at module scope. The
+        # order is this list, not a `+` between two functions.
+        script_tags("mesh_weights.js", "mesh.js") + "\n" + error_mask_bundle())
     tol = tol.replace("@@ERRORS_MOUNT@@", "\n".join(
         error_mount(f"err-{kind}", kind) for kind in
         ("crosstalk", "phase", "detector", "loss", "wavelength", "quant", "mesh")

@@ -70,3 +70,9 @@ def test_the_mesh_bundle_precedes_the_widget_that_reads_it():
         "mesh_weights.js is emitted after errors.js, so the mesh widget will draw "
         "its synthetic stand-in instead of the trained chip"
     )
+    # mesh.js too, since the mesh build moved out of errors.js: it is read at
+    # module scope, and a page that emitted it late would throw before mounting
+    # any of the seven widgets.
+    engine = html.find("window.PhotonnMesh = api")      # mesh.js publishes
+    assert engine >= 0, "mesh.js is not on the page at all"
+    assert engine < reader, "mesh.js is emitted after errors.js, which reads it at load"
